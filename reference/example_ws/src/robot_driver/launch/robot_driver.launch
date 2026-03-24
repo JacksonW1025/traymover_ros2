@@ -1,0 +1,5 @@
+<launch>
+  <node pkg="robot_driver" name="robot_driver" type="robot_driver" output="screen">
+     <rosparam file="/home/spirit/.ros/driver_param/driver_config.yaml" command="load"/>
+  </node>
+</launch>

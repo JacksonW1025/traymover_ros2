@@ -1,0 +1,8 @@
+{left_pwm_scale: 1.0, right_pwm_scale: 1.0,   
+  speed_dwa: 3, navigtaion_safeset: 0, imu_compensate: true,
+  useSonar: false, stop_rotate: 0, scan_obstacle_distance: 0.3,  useCliff: false,
+  kp: 0.4, ki: 0.04, kd_: 0.2, dirkp: 0.5, dirki: 0.04, dirkd: 0.2,
+  imuAngleFlag: false, imuAnglex: 0.0, imuAngley: 0.0, imuAnglez: 0.0, 
+  motor_gear_reduction: 5600, wheel_diameter: 0.17,
+  wheel_track: 0.455, tick_meter_ratio: 10, ledWarnStatus: false,autoReInitMotor: true,
+  dec_step: 2,stop_threshold: 10}

@@ -1,0 +1,22 @@
+turn_on_traymover_robot:
+  ros__parameters:
+    # 串口配置
+    usart_port_name: "/dev/ttyUSB0"
+    serial_baud_rate: 115200
+
+    # 底盘机械参数 (暂用example_ws默认值，接入STM32后根据实际底盘调整)
+    wheel_diameter: 0.17       # 轮径 (m)
+    wheel_track: 0.455         # 轮距 (m)
+    gear_reduction: 5600       # 编码器 tick/圈
+    tick_meter_ratio: 10       # 里程计比例系数
+
+    # 电机比例
+    left_motor_scale: 1
+    right_motor_scale: 1
+
+    # 传感器与外设
+    alarm_led: 1               # 报警灯 (0=灭, 1=亮)
+    ir_threshold: 20           # 红外传感器参考值
+
+    # 超时保护
+    cmd_vel_timeout: 0.5       # cmd_vel超时 (秒)，超时后自动发送零速度帧
