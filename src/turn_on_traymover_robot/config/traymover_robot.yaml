@@ -4,11 +4,24 @@ turn_on_traymover_robot:
     usart_port_name: "/dev/ttyUSB0"
     serial_baud_rate: 115200
 
-    # 底盘机械参数 (暂用example_ws默认值，接入STM32后根据实际底盘调整)
-    wheel_diameter: 0.17       # 轮径 (m)
-    wheel_track: 0.455         # 轮距 (m)
+    # 坐标系
+    robot_frame_id: "base_footprint"
+    odom_frame_id: "odom"
+    publish_odom_tf: false
+
+    # 里程计来源:
+    #   none            -> 不发布 /odom，仅做底盘控制
+    #   stm32_feedback  -> 使用 STM32 回包中的编码器增量发布 /odom
+    odom_source_mode: "stm32_feedback"
+
+    # 底盘机械参数
+    wheel_diameter: 0.20       # 轮径 (m)
+    wheel_track: 0.445         # 轮距 (m)
     gear_reduction: 5600       # 编码器 tick/圈
     tick_meter_ratio: 10       # 里程计比例系数
+    left_encoder_sign: 1       # 编码器方向 (1 或 -1)
+    right_encoder_sign: 1      # 编码器方向 (1 或 -1)
+    poll_rate_hz: 20.0         # 查询/控制轮询频率
 
     # 电机比例
     left_motor_scale: 1

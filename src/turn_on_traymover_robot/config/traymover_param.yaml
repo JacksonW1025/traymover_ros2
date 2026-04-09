@@ -1,0 +1,16 @@
+imu_mode: N300_pro
+lidar_type: lscx
+
+# lslidar X10 / N10 系列串口配置
+x10:
+  lidar_port: /dev/traymover_lidar
+  angle_disable_min: [0]
+  angle_disable_max: [0]
+
+# 雷神 C32 / CX 系列网络配置
+lscx:
+  device_ip: "192.168.1.200"
+  pointcloud_topic: "/point_cloud_raw"
+  frame_id: "laser"
+  angle_disable_min: [0]
+  angle_disable_max: [0]
