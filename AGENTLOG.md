@@ -67,7 +67,7 @@
 
 #### 1. `traymover_robot_keyboard` 包
 - `traymover_keyboard.py` — 键盘控制节点
-- 运行: `ros2 run traymover_robot_keyboard traymover_keyboard`
+- 运行: `/home/wheeltec/traymover_ros2/install/setup.sh`
 - 控制: IJKL方向, qz速度调节, 空格停车, b切换全向
 
 #### 2. `turn_on_traymover_robot` 包

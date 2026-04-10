@@ -554,12 +554,15 @@ class TurnOnTraymoverRobot(Node):
         odom_msg.pose.pose.orientation.z = quat[2]
         odom_msg.pose.pose.orientation.w = quat[3]
 
-        odom_msg.twist.twist.linear.x = feedback.linear_velocity_mps
+        left_dist = float(left_ticks) * self.meters_per_tick
+        right_dist = float(right_ticks) * self.meters_per_tick
+        dt = 1.0 / self.poll_rate_hz if self.poll_rate_hz > 0 else 0.05
+        odom_msg.twist.twist.linear.x = (left_dist + right_dist) * 0.5 / dt
         odom_msg.twist.twist.linear.y = 0.0
         odom_msg.twist.twist.linear.z = 0.0
         odom_msg.twist.twist.angular.x = 0.0
         odom_msg.twist.twist.angular.y = 0.0
-        odom_msg.twist.twist.angular.z = feedback.angular_velocity_rads
+        odom_msg.twist.twist.angular.z = (right_dist - left_dist) / self.wheel_track / dt
 
         if stationary:
             odom_msg.pose.covariance = list(ODOM_POSE_COVARIANCE_STOPPED)

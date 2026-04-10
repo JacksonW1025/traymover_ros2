@@ -16,4 +16,7 @@ __pycache__/
 .claude/
 
 # Reference (symlinked, not part of this repo)
+reference/autoware
+reference/autoware_data
+reference/autoware_map
 reference/wheeltec_ros2

@@ -1,7 +1,7 @@
 turn_on_traymover_robot:
   ros__parameters:
     # 串口配置
-    usart_port_name: "/dev/ttyUSB0"
+    usart_port_name: "/dev/ttyCH341USB0"
     serial_baud_rate: 115200
 
     # 坐标系
@@ -20,7 +20,7 @@ turn_on_traymover_robot:
     gear_reduction: 5600       # 编码器 tick/圈
     tick_meter_ratio: 10       # 里程计比例系数
     left_encoder_sign: 1       # 编码器方向 (1 或 -1)
-    right_encoder_sign: 1      # 编码器方向 (1 或 -1)
+    right_encoder_sign: -1     # 编码器方向 (1 或 -1)
     poll_rate_hz: 20.0         # 查询/控制轮询频率
 
     # 电机比例
