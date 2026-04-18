@@ -4,7 +4,7 @@ traymover_ekf_filter_node:
         # -------------------------------
         # 通用滤波器配置
         # -------------------------------
-        frequency: 10.0  # 决定EKF每秒输出几次位置估计，这里表示1s输出20次。注意：需要考虑输入数据的频率(/odom,/imu_data_raw)
+        frequency: 30.0  # EKF 输出频率 (Hz)。需高于 scan 发布频率,否则 message_filter 会丢 scan。
         sensor_timeout: 1.5  # 如果某个传感器超过这个时间没发消息，EKF 就不再用它的数据，只预测，不校正。可防止某个坏传感器卡住滤波器。
 
         two_d_mode: true  

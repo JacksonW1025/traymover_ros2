@@ -17,6 +17,8 @@ from geometry_msgs.msg import TransformStamped, Twist
 from nav_msgs.msg import Odometry
 from rclpy.node import Node
 import serial
+from sensor_msgs.msg import BatteryState
+from std_msgs.msg import Int16, UInt8
 from tf2_ros import TransformBroadcaster
 from tf_transformations import quaternion_from_euler
 
@@ -26,7 +28,9 @@ FRAME_HEADER = b'\x7F\x7F'
 FRAME_LENGTH = 0x28
 FRAME_TAIL = b'\x0D\x0A'
 
+MSG_ID_GET_BAUD = 0x01
 MSG_ID_GET_MOTOR_DATA = 0x02
+MSG_ID_GET_MOTOR_STATUS = 0x03
 STATUS_SUCCESS = 0x60
 
 ODOM_POSE_COVARIANCE_MOVING = (
@@ -81,6 +85,25 @@ class MotorFeedback:
     version: int
 
 
+@dataclass(frozen=True)
+class MotorStatus:
+    power_temperature: int
+    power_current: int
+    driver_mode: int
+    left_pwm: int
+    right_pwm: int
+    move_dir: int
+    android_cmd: int
+    left_code: int
+    front_code: int
+    right_code: int
+    tof_switch: int
+    left_scale: int
+    right_scale: int
+    motor_filter: int
+    version: int
+
+
 def clamp_int16(value: int) -> int:
     return max(-32768, min(32767, value))
 
@@ -93,8 +116,8 @@ def compute_checksum(frame, end_index: int = 37) -> int:
 def build_frame(
     vel_x_ms,
     vel_th_rads,
-    wheel_diameter_m=0.20,
-    wheel_track_m=0.445,
+    wheel_diameter_m=0.17,
+    wheel_track_m=0.455,
     gear_reduction=5600,
     tick_meter_ratio=10,
     left_motor_scale=1,
@@ -148,6 +171,26 @@ def build_frame(
     frame[35] = gear_bytes[1]
     frame[36] = 0x00
 
+    frame[37] = compute_checksum(frame)
+    frame[38:40] = FRAME_TAIL
+    return bytes(frame)
+
+
+def build_motor_status_frame(
+    motor_reset: int = 0,
+    get_version: int = 0,
+    clear_motorcode: int = 0,
+    clear_motoralarm: int = 0,
+):
+    """Build the 40-byte motor status query frame."""
+    frame = bytearray(FRAME_SIZE)
+    frame[0:2] = FRAME_HEADER
+    frame[2] = FRAME_LENGTH
+    frame[3] = MSG_ID_GET_MOTOR_STATUS
+    frame[4] = int(motor_reset) & 0xFF
+    frame[5] = int(get_version) & 0xFF
+    frame[6] = int(clear_motorcode) & 0xFF
+    frame[7] = int(clear_motoralarm) & 0xFF
     frame[37] = compute_checksum(frame)
     frame[38:40] = FRAME_TAIL
     return bytes(frame)
@@ -237,6 +280,33 @@ def parse_motor_feedback_frame(frame: bytes) -> MotorFeedback:
     )
 
 
+def parse_motor_status_frame(frame: bytes) -> MotorStatus:
+    validate_frame_basics(frame)
+
+    if frame[3] != MSG_ID_GET_MOTOR_STATUS:
+        raise ValueError(f'unexpected msg id 0x{frame[3]:02X}')
+    if frame[4] != STATUS_SUCCESS:
+        raise ValueError(f'unexpected status 0x{frame[4]:02X}')
+
+    return MotorStatus(
+        power_temperature=int.from_bytes(frame[5:7], 'big', signed=True),
+        power_current=int.from_bytes(frame[7:9], 'big', signed=True),
+        driver_mode=frame[9],
+        left_pwm=int.from_bytes(frame[10:12], 'big', signed=True),
+        right_pwm=int.from_bytes(frame[12:14], 'big', signed=True),
+        move_dir=frame[14],
+        android_cmd=frame[15],
+        left_code=frame[16],
+        front_code=frame[17],
+        right_code=frame[18],
+        tof_switch=frame[19],
+        left_scale=int.from_bytes(frame[20:22], 'big', signed=False),
+        right_scale=int.from_bytes(frame[22:24], 'big', signed=False),
+        motor_filter=frame[24],
+        version=int.from_bytes(frame[25:27], 'big', signed=False),
+    )
+
+
 def meters_per_tick(
     wheel_diameter_m: float,
     gear_reduction: float,
@@ -252,6 +322,14 @@ def meters_per_tick(
 
 def normalize_angle(angle: float) -> float:
     return math.atan2(math.sin(angle), math.cos(angle))
+
+
+def charge_status_to_power_supply_status(charge_status: int) -> int:
+    if charge_status == 0:
+        return BatteryState.POWER_SUPPLY_STATUS_NOT_CHARGING
+    if 0 < charge_status < 5:
+        return BatteryState.POWER_SUPPLY_STATUS_CHARGING
+    return BatteryState.POWER_SUPPLY_STATUS_UNKNOWN
 
 
 def integrate_diff_drive_step(
@@ -284,10 +362,10 @@ class TurnOnTraymoverRobot(Node):
     def __init__(self):
         super().__init__('turn_on_traymover_robot')
 
-        self.declare_parameter('usart_port_name', '/dev/ttyUSB0')
+        self.declare_parameter('usart_port_name', '/dev/ttyCH341USB0')
         self.declare_parameter('serial_baud_rate', 115200)
-        self.declare_parameter('wheel_diameter', 0.20)
-        self.declare_parameter('wheel_track', 0.445)
+        self.declare_parameter('wheel_diameter', 0.17)
+        self.declare_parameter('wheel_track', 0.455)
         self.declare_parameter('gear_reduction', 5600)
         self.declare_parameter('tick_meter_ratio', 10)
         self.declare_parameter('left_motor_scale', 1)
@@ -302,6 +380,7 @@ class TurnOnTraymoverRobot(Node):
         self.declare_parameter('left_encoder_sign', 1)
         self.declare_parameter('right_encoder_sign', 1)
         self.declare_parameter('poll_rate_hz', 20.0)
+        self.declare_parameter('status_poll_rate_hz', 1.0)
 
         self.port_name = self.get_parameter('usart_port_name').value
         self.baud_rate = self.get_parameter('serial_baud_rate').value
@@ -321,6 +400,7 @@ class TurnOnTraymoverRobot(Node):
         self.left_encoder_sign = int(self.get_parameter('left_encoder_sign').value)
         self.right_encoder_sign = int(self.get_parameter('right_encoder_sign').value)
         self.poll_rate_hz = float(self.get_parameter('poll_rate_hz').value)
+        self.status_poll_rate_hz = float(self.get_parameter('status_poll_rate_hz').value)
 
         if self.left_encoder_sign == 0:
             self.left_encoder_sign = 1
@@ -329,6 +409,11 @@ class TurnOnTraymoverRobot(Node):
         if self.poll_rate_hz <= 0.0:
             self.get_logger().warn('poll_rate_hz must be positive; falling back to 20.0 Hz.')
             self.poll_rate_hz = 20.0
+        if self.status_poll_rate_hz < 0.0:
+            self.get_logger().warn(
+                'status_poll_rate_hz must be >= 0.0; falling back to 1.0 Hz.'
+            )
+            self.status_poll_rate_hz = 1.0
 
         self.odom_enabled = self.odom_source_mode == 'stm32_feedback'
         if self.odom_source_mode not in ('none', 'stm32_feedback'):
@@ -347,9 +432,15 @@ class TurnOnTraymoverRobot(Node):
         self.odom_yaw = 0.0
         self.receive_buffer = bytearray()
         self.serial_read_timeout = min(0.1, max(0.02, 1.0 / self.poll_rate_hz))
+        self.status_poll_period = (
+            1.0 / self.status_poll_rate_hz if self.status_poll_rate_hz > 0.0 else None
+        )
         self._last_warning_times = {}
         self._feedback_active_logged = False
         self._last_feedback_mono = None
+        self._last_status_poll_mono = float('-inf')
+        self._latest_motor_feedback = None
+        self._latest_motor_status = None
 
         try:
             self.meters_per_tick = meters_per_tick(
@@ -386,6 +477,11 @@ class TurnOnTraymoverRobot(Node):
             Twist, '/cmd_vel', self.cmd_vel_callback, 2
         )
         self.odom_pub = self.create_publisher(Odometry, 'odom', 10)
+        self.battery_state_pub = self.create_publisher(BatteryState, 'battery_state', 10)
+        self.power_level_pub = self.create_publisher(UInt8, 'power_level', 10)
+        self.charge_status_pub = self.create_publisher(UInt8, 'charge_status', 10)
+        self.power_temperature_pub = self.create_publisher(Int16, 'power_temperature', 10)
+        self.power_current_pub = self.create_publisher(Int16, 'power_current', 10)
         self.odom_tf_broadcaster = TransformBroadcaster(self) if self.publish_odom_tf else None
         self.poll_timer = self.create_timer(1.0 / self.poll_rate_hz, self.send_frame_callback)
 
@@ -446,20 +542,36 @@ class TurnOnTraymoverRobot(Node):
             self.throttled_warn('serial_write', f'Serial write failed: {exc}')
             return
 
-        if not self.odom_enabled:
-            return
-
         feedback = self.read_motor_feedback()
         if feedback is None:
             self.throttled_warn(
                 'missing_feedback',
-                'No valid STM32 motor feedback frame received; /odom was not updated.',
+                'No valid STM32 motor feedback frame received; status topics may be stale.',
             )
-            return
+        else:
+            self.handle_motor_feedback(feedback, now.to_msg())
 
-        self.handle_motor_feedback(feedback, now.to_msg())
+        if self.should_poll_motor_status():
+            status = self.request_motor_status()
+            if status is None:
+                self.throttled_warn(
+                    'missing_motor_status',
+                    'No valid STM32 motor status frame received; power status topics may be stale.',
+                )
+            else:
+                self.handle_motor_status(status, now.to_msg())
 
-    def read_motor_feedback(self) -> MotorFeedback | None:
+    def should_poll_motor_status(self) -> bool:
+        if self.status_poll_period is None:
+            return False
+
+        now = time.monotonic()
+        if now - self._last_status_poll_mono >= self.status_poll_period:
+            self._last_status_poll_mono = now
+            return True
+        return False
+
+    def read_frame(self, expected_msg_id: int) -> bytes | None:
         if self.serial_port is None or not self.serial_port.is_open:
             return None
 
@@ -489,36 +601,78 @@ class TurnOnTraymoverRobot(Node):
                 frame = extract_next_valid_frame(self.receive_buffer)
                 if frame is None:
                     break
-
-                try:
-                    feedback = parse_motor_feedback_frame(frame)
-                except ValueError as exc:
-                    self.throttled_warn('feedback_parse', f'Discarding STM32 frame: {exc}')
+                if frame[3] != expected_msg_id:
+                    self.throttled_warn(
+                        f'unexpected_frame_{expected_msg_id:02X}',
+                        'Discarding STM32 frame with unexpected '
+                        f'msg id 0x{frame[3]:02X} while waiting for 0x{expected_msg_id:02X}.',
+                        interval=5.0,
+                    )
                     continue
-
-                return feedback
+                return frame
 
         return None
 
+    def read_motor_feedback(self) -> MotorFeedback | None:
+        frame = self.read_frame(MSG_ID_GET_MOTOR_DATA)
+        if frame is None:
+            return None
+
+        try:
+            return parse_motor_feedback_frame(frame)
+        except ValueError as exc:
+            self.throttled_warn('feedback_parse', f'Discarding STM32 frame: {exc}')
+            return None
+
+    def request_motor_status(self) -> MotorStatus | None:
+        if self.serial_port is None or not self.serial_port.is_open:
+            return None
+
+        try:
+            self.serial_port.write(build_motor_status_frame())
+        except serial.SerialException as exc:
+            self.throttled_warn('serial_write_status', f'Serial write failed: {exc}')
+            return None
+
+        frame = self.read_frame(MSG_ID_GET_MOTOR_STATUS)
+        if frame is None:
+            return None
+
+        try:
+            return parse_motor_status_frame(frame)
+        except ValueError as exc:
+            self.throttled_warn('status_parse', f'Discarding STM32 motor status frame: {exc}')
+            return None
+
     def handle_motor_feedback(self, feedback: MotorFeedback, stamp):
+        self._latest_motor_feedback = feedback
+        self.publish_power_feedback(feedback, stamp)
+
+        if not self.odom_enabled:
+            return
+
+        now_mono = time.monotonic()
+        if self._last_feedback_mono is None:
+            dt = 1.0 / self.poll_rate_hz if self.poll_rate_hz > 0 else 0.05
+        else:
+            dt = now_mono - self._last_feedback_mono
+        # STM32 直接给出 linear / angular;比 tick 积分更可靠:绕开 encoder_sign
+        # 和 Python 端 wheel_track 偏差。tick 字段保留用于构建 odom msg。
+        vx = feedback.linear_velocity_mps
+        wz = feedback.angular_velocity_rads
+        mid_yaw = self.odom_yaw + 0.5 * wz * dt
+        self.odom_x += vx * math.cos(mid_yaw) * dt
+        self.odom_y += vx * math.sin(mid_yaw) * dt
+        self.odom_yaw += wz * dt
+
         left_ticks = self.left_encoder_sign * feedback.left_encoder_ticks
         right_ticks = self.right_encoder_sign * feedback.right_encoder_ticks
-
-        self.odom_x, self.odom_y, self.odom_yaw = integrate_diff_drive_step(
-            self.odom_x,
-            self.odom_y,
-            self.odom_yaw,
-            left_ticks,
-            right_ticks,
-            self.meters_per_tick,
-            self.wheel_track,
-        )
 
         stationary = (
             left_ticks == 0
             and right_ticks == 0
-            and abs(feedback.linear_velocity_mps) < 1e-6
-            and abs(feedback.angular_velocity_rads) < 1e-6
+            and abs(vx) < 1e-6
+            and abs(wz) < 1e-6
         )
 
         odom_msg = self.build_odom_message(feedback, left_ticks, right_ticks, stationary, stamp)
@@ -527,10 +681,71 @@ class TurnOnTraymoverRobot(Node):
         if self.publish_odom_tf:
             self.publish_odom_transform(stamp)
 
-        self._last_feedback_mono = time.monotonic()
+        self._last_feedback_mono = now_mono
         if not self._feedback_active_logged:
             self._feedback_active_logged = True
             self.get_logger().info('STM32 odom feedback active.')
+
+    def handle_motor_status(self, status: MotorStatus, stamp) -> None:
+        self._latest_motor_status = status
+
+        temperature_msg = Int16()
+        temperature_msg.data = status.power_temperature
+        self.power_temperature_pub.publish(temperature_msg)
+
+        current_msg = Int16()
+        current_msg.data = status.power_current
+        self.power_current_pub.publish(current_msg)
+
+        self.publish_battery_state(stamp)
+
+    def publish_power_feedback(self, feedback: MotorFeedback, stamp) -> None:
+        power_msg = UInt8()
+        power_msg.data = feedback.power
+        self.power_level_pub.publish(power_msg)
+
+        charge_msg = UInt8()
+        charge_msg.data = feedback.charge_status
+        self.charge_status_pub.publish(charge_msg)
+
+        self.publish_battery_state(stamp)
+
+    def publish_battery_state(self, stamp) -> None:
+        feedback = self._latest_motor_feedback
+        status = self._latest_motor_status
+        if feedback is None and status is None:
+            return
+
+        battery_msg = BatteryState()
+        battery_msg.header.stamp = stamp
+        battery_msg.header.frame_id = self.robot_frame_id
+        battery_msg.voltage = float('nan')
+        battery_msg.temperature = float('nan')
+        battery_msg.current = float('nan')
+        battery_msg.charge = float('nan')
+        battery_msg.capacity = float('nan')
+        battery_msg.design_capacity = float('nan')
+        battery_msg.percentage = float('nan')
+        battery_msg.power_supply_status = BatteryState.POWER_SUPPLY_STATUS_UNKNOWN
+        battery_msg.power_supply_health = BatteryState.POWER_SUPPLY_HEALTH_UNKNOWN
+        battery_msg.power_supply_technology = BatteryState.POWER_SUPPLY_TECHNOLOGY_UNKNOWN
+        battery_msg.present = True
+
+        if feedback is not None:
+            battery_msg.percentage = max(0.0, min(1.0, float(feedback.power) / 100.0))
+            battery_msg.power_supply_status = charge_status_to_power_supply_status(
+                feedback.charge_status
+            )
+            battery_msg.serial_number = f'0x{feedback.version:04X}'
+
+        if status is not None:
+            battery_msg.temperature = float(status.power_temperature)
+            # The current field is forwarded as the raw protocol value because
+            # the STM32 protocol does not document its physical unit.
+            battery_msg.current = float(status.power_current)
+            battery_msg.serial_number = f'0x{status.version:04X}'
+
+        self.battery_state_pub.publish(battery_msg)
 
     def build_odom_message(
         self,
@@ -554,15 +769,12 @@ class TurnOnTraymoverRobot(Node):
         odom_msg.pose.pose.orientation.z = quat[2]
         odom_msg.pose.pose.orientation.w = quat[3]
 
-        left_dist = float(left_ticks) * self.meters_per_tick
-        right_dist = float(right_ticks) * self.meters_per_tick
-        dt = 1.0 / self.poll_rate_hz if self.poll_rate_hz > 0 else 0.05
-        odom_msg.twist.twist.linear.x = (left_dist + right_dist) * 0.5 / dt
+        odom_msg.twist.twist.linear.x = feedback.linear_velocity_mps
         odom_msg.twist.twist.linear.y = 0.0
         odom_msg.twist.twist.linear.z = 0.0
         odom_msg.twist.twist.angular.x = 0.0
         odom_msg.twist.twist.angular.y = 0.0
-        odom_msg.twist.twist.angular.z = (right_dist - left_dist) / self.wheel_track / dt
+        odom_msg.twist.twist.angular.z = feedback.angular_velocity_rads
 
         if stationary:
             odom_msg.pose.covariance = list(ODOM_POSE_COVARIANCE_STOPPED)

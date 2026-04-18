@@ -15,13 +15,14 @@ turn_on_traymover_robot:
     odom_source_mode: "stm32_feedback"
 
     # 底盘机械参数
-    wheel_diameter: 0.20       # 轮径 (m)
-    wheel_track: 0.445         # 轮距 (m)
+    wheel_diameter: 0.17       # 轮径 (m) - 参考 lungu
+    wheel_track: 0.455         # 轮距 (m) - 参考 lungu
     gear_reduction: 5600       # 编码器 tick/圈
     tick_meter_ratio: 10       # 里程计比例系数
     left_encoder_sign: 1       # 编码器方向 (1 或 -1)
     right_encoder_sign: -1     # 编码器方向 (1 或 -1)
     poll_rate_hz: 20.0         # 查询/控制轮询频率
+    status_poll_rate_hz: 1.0   # 状态轮询频率 (Hz), 0 表示禁用 0x03 状态查询
 
     # 电机比例
     left_motor_scale: 1

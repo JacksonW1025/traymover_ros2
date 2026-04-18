@@ -22,6 +22,7 @@ class ImuPoseBroadcaster(Node):
         self.declare_parameter('translation_y', 0.0)
         self.declare_parameter('translation_z', 0.20)
         self.declare_parameter('publish_rate', 30.0)
+        self.declare_parameter('yaw_only', True)
 
         self.imu_topic = self.get_parameter('imu_topic').value
         self.parent_frame = self.get_parameter('parent_frame').value
@@ -30,6 +31,7 @@ class ImuPoseBroadcaster(Node):
         self.translation_y = float(self.get_parameter('translation_y').value)
         self.translation_z = float(self.get_parameter('translation_z').value)
         self.publish_rate = float(self.get_parameter('publish_rate').value)
+        self.yaw_only = bool(self.get_parameter('yaw_only').value)
 
         if self.publish_rate <= 0.0:
             self.get_logger().warn('publish_rate must be positive, defaulting to 30.0 Hz')
@@ -64,6 +66,9 @@ class ImuPoseBroadcaster(Node):
             self.warn_invalid_quaternion(quaternion)
             return
 
+        if self.yaw_only:
+            normalized = self.extract_yaw_quaternion(normalized)
+
         if not self.has_received_imu:
             self.get_logger().info('Received first valid IMU orientation')
         self.latest_quaternion = normalized
@@ -91,6 +96,16 @@ class ImuPoseBroadcaster(Node):
             f'({quaternion[0]:.4f}, {quaternion[1]:.4f}, '
             f'{quaternion[2]:.4f}, {quaternion[3]:.4f})'
         )
+
+    def extract_yaw_quaternion(self, quaternion):
+        x, y, z, w = quaternion
+
+        siny_cosp = 2.0 * (w * z + x * y)
+        cosy_cosp = 1.0 - 2.0 * (y * y + z * z)
+        yaw = math.atan2(siny_cosp, cosy_cosp)
+
+        half_yaw = yaw * 0.5
+        return (0.0, 0.0, math.sin(half_yaw), math.cos(half_yaw))
 
     def publish_transform(self):
         transform = TransformStamped()

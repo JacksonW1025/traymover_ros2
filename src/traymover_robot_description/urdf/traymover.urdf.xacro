@@ -5,10 +5,10 @@
   <xacro:property name="body_height" value="0.24"/>
   <xacro:property name="body_center_z" value="0.20"/>
 
-  <xacro:property name="wheel_radius" value="0.10"/>
+  <xacro:property name="wheel_radius" value="0.085"/>
   <xacro:property name="wheel_width" value="0.04"/>
-  <xacro:property name="wheel_y_offset" value="0.2225"/>
-  <xacro:property name="wheel_z_offset" value="-0.10"/>
+  <xacro:property name="wheel_y_offset" value="0.2275"/>
+  <xacro:property name="wheel_z_offset" value="-0.085"/>
 
   <xacro:property name="caster_radius" value="0.04"/>
   <xacro:property name="caster_front_x" value="0.32"/>
@@ -20,12 +20,12 @@
   <xacro:property name="mast_width" value="0.155"/>
   <xacro:property name="mast_height" value="1.20"/>
   <xacro:property name="mast_x" value="0.375"/>
-  <xacro:property name="mast_z" value="0.72"/>
+  <xacro:property name="mast_z" value="0.71"/>
 
   <xacro:property name="lidar_radius" value="0.06"/>
   <xacro:property name="lidar_height" value="0.11"/>
   <xacro:property name="lidar_x" value="0.375"/>
-  <xacro:property name="lidar_z" value="1.375"/>
+  <xacro:property name="lidar_z" value="1.365"/>
 
   <xacro:property name="camera_mount_length" value="0.10"/>
   <xacro:property name="camera_mount_width" value="0.08"/>
@@ -33,9 +33,9 @@
   <xacro:property name="camera_mount_x" value="0.45"/>
   <xacro:property name="camera_mount_z" value="0.745"/>
 
-  <xacro:property name="camera_length" value="0.10"/>
-  <xacro:property name="camera_width" value="0.02"/>
-  <xacro:property name="camera_height" value="0.02"/>
+  <xacro:property name="camera_depth" value="0.025"/>
+  <xacro:property name="camera_width" value="0.10"/>
+  <xacro:property name="camera_height" value="0.025"/>
   <xacro:property name="camera_z_from_mount" value="0.015"/>
   <xacro:property name="imu_marker_length" value="0.08"/>
   <xacro:property name="imu_marker_width" value="0.04"/>
@@ -59,14 +59,14 @@
 
   <link name="base_link">
     <visual>
-      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <origin xyz="0 0 -0.01" rpy="0 0 0"/>
       <geometry>
         <box size="${body_length} ${body_width} ${body_height}"/>
       </geometry>
       <material name="traymover_gray"/>
     </visual>
     <collision>
-      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <origin xyz="0 0 -0.01" rpy="0 0 0"/>
       <geometry>
         <box size="${body_length} ${body_width} ${body_height}"/>
       </geometry>
@@ -215,7 +215,7 @@
   </link>
 
   <joint name="laser_joint" type="fixed">
-    <origin xyz="0 0 ${lidar_z - mast_z}" rpy="0 0 0"/>
+    <origin xyz="0.06 0 ${lidar_z - mast_z}" rpy="0 0 0"/>
     <parent link="sensor_mast_link"/>
     <child link="laser"/>
   </joint>
@@ -246,14 +246,14 @@
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <box size="${camera_length} ${camera_width} ${camera_height}"/>
+        <box size="${camera_depth} ${camera_width} ${camera_height}"/>
       </geometry>
       <material name="traymover_black"/>
     </visual>
     <collision>
       <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <box size="${camera_length} ${camera_width} ${camera_height}"/>
+        <box size="${camera_depth} ${camera_width} ${camera_height}"/>
       </geometry>
     </collision>
   </link>

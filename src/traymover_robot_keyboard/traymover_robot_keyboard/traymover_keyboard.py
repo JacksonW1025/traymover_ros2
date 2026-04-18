@@ -99,8 +99,9 @@ speedBindings={
         'c':(1,  0.9),
           }
 #获取键值函数
-speed = 0.2 #默认移动速度 m/s
-turn  = 1   #默认转向速度 rad/s
+# 默认速度按原值的 1/5 缩放，保证上电首次按键的动作是安全的
+speed = 0.04 #默认移动速度 m/s
+turn  = 0.2  #默认转向速度 rad/s
 def get_key(settings):
     if os.name == 'nt':
         return msvcrt.getch().decode('utf-8')
@@ -129,8 +130,9 @@ def main():
     qos = QoSProfile(depth=10)
     node = rclpy.create_node('traymover_keyboard')
     pub = node.create_publisher(Twist, 'cmd_vel', qos)
-    speed = 0.2 #默认移动速度 m/s
-    turn  = 1.0   #默认转向速度 rad/s
+    # 默认速度按原值的 1/5 缩放，保证上电首次按键的动作是安全的
+    speed = 0.04 #默认移动速度 m/s
+    turn  = 0.2  #默认转向速度 rad/s
     x      = 0.0   #前进后退方向
     th     = 0.0   #转向/横向移动方向
     count  = 0.0   #键值不再范围计数
@@ -195,25 +197,25 @@ def main():
 
             #平滑控制，计算前进后退实际控制速度
             if target_speed > control_speed:
-                control_speed = min( target_speed, control_speed + 0.1 )
+                control_speed = min( target_speed, control_speed + 0.01667 )
             elif target_speed < control_speed:
-                control_speed = max( target_speed, control_speed - 0.1 )
+                control_speed = max( target_speed, control_speed - 0.01667 )
             else:
                 control_speed = target_speed
 
             #平滑控制，计算转向实际控制速度
             if target_turn > control_turn:
-                control_turn = min( target_turn, control_turn + 0.5 )
+                control_turn = min( target_turn, control_turn + 0.08333 )
             elif target_turn < control_turn:
-                control_turn = max( target_turn, control_turn - 0.5 )
+                control_turn = max( target_turn, control_turn - 0.08333 )
             else:
                 control_turn = target_turn
 
             #平滑控制，计算横向移动实际控制速度
             if target_HorizonMove > control_HorizonMove:
-                control_HorizonMove = min( target_HorizonMove, control_HorizonMove + 0.1 )
+                control_HorizonMove = min( target_HorizonMove, control_HorizonMove + 0.01667 )
             elif target_HorizonMove < control_HorizonMove:
-                control_HorizonMove = max( target_HorizonMove, control_HorizonMove - 0.1 )
+                control_HorizonMove = max( target_HorizonMove, control_HorizonMove - 0.01667 )
             else:
                 control_HorizonMove = target_HorizonMove
 

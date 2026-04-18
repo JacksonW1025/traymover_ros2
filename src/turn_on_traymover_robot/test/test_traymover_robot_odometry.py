@@ -17,6 +17,8 @@ def make_feedback_frame(
     right_encoder=0,
     speedx_mm_s=0,
     speedth_millirad_s=0,
+    power=0,
+    charge_status=0,
     msg_id=robot.MSG_ID_GET_MOTOR_DATA,
     status=robot.STATUS_SUCCESS,
 ):
@@ -25,6 +27,8 @@ def make_feedback_frame(
     frame[2] = robot.FRAME_LENGTH
     frame[3] = msg_id
     frame[4] = status
+    frame[7] = int(power) & 0xFF
+    frame[8] = int(charge_status) & 0xFF
     frame[11:13] = int(left_encoder).to_bytes(2, 'big', signed=True)
     frame[13:15] = int(right_encoder).to_bytes(2, 'big', signed=True)
     frame[27] = 1
@@ -38,9 +42,60 @@ def make_feedback_frame(
     return bytes(frame)
 
 
+def make_status_frame(
+    *,
+    power_temperature=24,
+    power_current=0,
+    driver_mode=2,
+    left_pwm=0,
+    right_pwm=0,
+    move_dir=0,
+    android_cmd=0,
+    left_code=0,
+    front_code=0,
+    right_code=0,
+    tof_switch=0,
+    left_scale=0,
+    right_scale=0,
+    motor_filter=0,
+    version=42,
+    msg_id=robot.MSG_ID_GET_MOTOR_STATUS,
+    status=robot.STATUS_SUCCESS,
+):
+    frame = bytearray(robot.FRAME_SIZE)
+    frame[0:2] = robot.FRAME_HEADER
+    frame[2] = robot.FRAME_LENGTH
+    frame[3] = msg_id
+    frame[4] = status
+    frame[5:7] = int(power_temperature).to_bytes(2, 'big', signed=True)
+    frame[7:9] = int(power_current).to_bytes(2, 'big', signed=True)
+    frame[9] = int(driver_mode) & 0xFF
+    frame[10:12] = int(left_pwm).to_bytes(2, 'big', signed=True)
+    frame[12:14] = int(right_pwm).to_bytes(2, 'big', signed=True)
+    frame[14] = int(move_dir) & 0xFF
+    frame[15] = int(android_cmd) & 0xFF
+    frame[16] = int(left_code) & 0xFF
+    frame[17] = int(front_code) & 0xFF
+    frame[18] = int(right_code) & 0xFF
+    frame[19] = int(tof_switch) & 0xFF
+    frame[20:22] = int(left_scale).to_bytes(2, 'big', signed=False)
+    frame[22:24] = int(right_scale).to_bytes(2, 'big', signed=False)
+    frame[24] = int(motor_filter) & 0xFF
+    frame[25:27] = int(version).to_bytes(2, 'big', signed=False)
+    frame[37] = robot.compute_checksum(frame)
+    frame[38:40] = robot.FRAME_TAIL
+    return bytes(frame)
+
+
 class FakeSerial:
-    def __init__(self, feedback_frame):
+    def __init__(self, feedback_frame=None, responses=None):
         self.feedback_frame = feedback_frame
+        self.responses = {}
+        for msg_id, response in (responses or {}).items():
+            if isinstance(response, (list, tuple)):
+                self.responses[msg_id] = list(response)
+            else:
+                self.responses[msg_id] = [response]
         self.read_buffer = bytearray()
         self.writes = []
         self.is_open = True
@@ -51,7 +106,18 @@ class FakeSerial:
 
     def write(self, data):
         self.writes.append(bytes(data))
-        self.read_buffer.extend(self.feedback_frame)
+        msg_id = data[3] if len(data) > 3 else None
+        response = None
+        if msg_id in self.responses and self.responses[msg_id]:
+            if len(self.responses[msg_id]) > 1:
+                response = self.responses[msg_id].pop(0)
+            else:
+                response = self.responses[msg_id][0]
+        elif self.feedback_frame is not None:
+            response = self.feedback_frame
+
+        if response is not None:
+            self.read_buffer.extend(response)
         return len(data)
 
     def read(self, size=1):
@@ -111,6 +177,28 @@ def test_parse_motor_feedback_frame_converts_units():
     assert feedback.angular_velocity_rads == pytest.approx(-0.75)
 
 
+def test_parse_motor_status_frame_converts_fields():
+    frame = make_status_frame(
+        power_temperature=31,
+        power_current=12,
+        left_pwm=180,
+        right_pwm=-90,
+        left_scale=3,
+        right_scale=4,
+        version=442,
+    )
+
+    status = robot.parse_motor_status_frame(frame)
+
+    assert status.power_temperature == 31
+    assert status.power_current == 12
+    assert status.left_pwm == 180
+    assert status.right_pwm == -90
+    assert status.left_scale == 3
+    assert status.right_scale == 4
+    assert status.version == 442
+
+
 def test_integrate_diff_drive_step_handles_forward_and_rotation():
     meters_per_tick = 0.01
     x, y, yaw = robot.integrate_diff_drive_step(
@@ -135,6 +223,7 @@ def test_node_publishes_odom_from_fake_feedback(monkeypatch):
     monkeypatch.setattr(robot.serial, 'Serial', lambda *args, **kwargs: fake_serial)
 
     node = robot.TurnOnTraymoverRobot()
+    node.status_poll_period = None
     odom_messages = []
     transforms = []
     node.odom_pub = SimpleNamespace(publish=odom_messages.append)
@@ -147,8 +236,11 @@ def test_node_publishes_odom_from_fake_feedback(monkeypatch):
     assert len(odom_messages) == 1
     assert len(transforms) == 1
 
+    # 第一次回调 _last_feedback_mono=None,dt = 1/poll_rate_hz。
+    # STM32 报告 speedx=0.2 m/s,yaw=0 → x += 0.2 * dt。
     odom_msg = odom_messages[0]
-    expected_x = 200 * robot.meters_per_tick(0.20, 5600, 10)
+    dt = 1.0 / node.poll_rate_hz
+    expected_x = 0.2 * dt
     assert odom_msg.header.frame_id == 'odom'
     assert odom_msg.child_frame_id == 'base_footprint'
     assert odom_msg.pose.pose.position.x == pytest.approx(expected_x)
@@ -161,13 +253,15 @@ def test_node_publishes_odom_from_fake_feedback(monkeypatch):
     node.destroy_node()
 
 
-def test_node_applies_encoder_sign_parameters(monkeypatch):
+def test_node_ignores_encoder_signs_for_pose(monkeypatch):
+    """符号参数现在只用于 stationary 检测,不再影响 pose —— pose 完全来自 STM32 速度。"""
     fake_serial = FakeSerial(
         make_feedback_frame(left_encoder=80, right_encoder=80, speedx_mm_s=80)
     )
     monkeypatch.setattr(robot.serial, 'Serial', lambda *args, **kwargs: fake_serial)
 
     node = robot.TurnOnTraymoverRobot()
+    node.status_poll_period = None
     node.left_encoder_sign = -1
     node.right_encoder_sign = -1
     odom_messages = []
@@ -176,6 +270,58 @@ def test_node_applies_encoder_sign_parameters(monkeypatch):
     node.send_frame_callback()
 
     assert len(odom_messages) == 1
-    assert odom_messages[0].pose.pose.position.x < 0.0
+    assert odom_messages[0].pose.pose.position.x > 0.0  # STM32 说前进,pose 就前进
+
+    node.destroy_node()
+
+
+def test_node_publishes_power_status_topics(monkeypatch):
+    fake_serial = FakeSerial(
+        responses={
+            robot.MSG_ID_GET_MOTOR_DATA: make_feedback_frame(
+                left_encoder=0,
+                right_encoder=0,
+                speedx_mm_s=0,
+                speedth_millirad_s=0,
+                power=98,
+                charge_status=3,
+            ),
+            robot.MSG_ID_GET_MOTOR_STATUS: make_status_frame(
+                power_temperature=24,
+                power_current=7,
+                version=442,
+            ),
+        }
+    )
+    monkeypatch.setattr(robot.serial, 'Serial', lambda *args, **kwargs: fake_serial)
+
+    node = robot.TurnOnTraymoverRobot()
+    node.odom_enabled = False
+    battery_messages = []
+    power_messages = []
+    charge_messages = []
+    temperature_messages = []
+    current_messages = []
+    node.battery_state_pub = SimpleNamespace(publish=battery_messages.append)
+    node.power_level_pub = SimpleNamespace(publish=power_messages.append)
+    node.charge_status_pub = SimpleNamespace(publish=charge_messages.append)
+    node.power_temperature_pub = SimpleNamespace(publish=temperature_messages.append)
+    node.power_current_pub = SimpleNamespace(publish=current_messages.append)
+
+    node.send_frame_callback()
+
+    assert len(power_messages) == 1
+    assert power_messages[0].data == 98
+    assert len(charge_messages) == 1
+    assert charge_messages[0].data == 3
+    assert len(temperature_messages) == 1
+    assert temperature_messages[0].data == 24
+    assert len(current_messages) == 1
+    assert current_messages[0].data == 7
+    assert battery_messages
+    assert battery_messages[-1].percentage == pytest.approx(0.98)
+    assert battery_messages[-1].temperature == pytest.approx(24.0)
+    assert battery_messages[-1].current == pytest.approx(7.0)
+    assert battery_messages[-1].power_supply_status == robot.BatteryState.POWER_SUPPLY_STATUS_CHARGING
 
     node.destroy_node()
