@@ -13,6 +13,9 @@ WS_SETUP="${WORKSPACE_DIR}/install/setup.bash"
 DEFAULT_MAP_DIR="${WORKSPACE_DIR}/src/traymover_robot_nav2/map"
 FASTLIO_PCD_DIR="${WORKSPACE_DIR}/src/traymover_robot_slam/FAST_LIO/PCD"
 FASTLIO_ROSBAG_DIR="${WORKSPACE_DIR}/src/traymover_robot_slam/FAST_LIO/rosbag"
+NAV_PKG_DIR="${WORKSPACE_DIR}/src/traymover_robot_nav"
+NAV_MAP_DIR="${NAV_PKG_DIR}/map"
+NAV_SCRIPTS_DIR="${NAV_PKG_DIR}/scripts"
 
 # ---- terminal spawning ------------------------------------------------------
 # Pick whichever terminal emulator is installed. gnome-terminal on Jetson Orin
@@ -69,6 +72,7 @@ KILL_PATTERNS=(
     'ros2 launch turn_on_traymover_robot'
     'ros2 launch traymover_slam_toolbox'
     'ros2 launch traymover_robot_nav2'
+    'ros2 launch traymover_robot_nav '
     'ros2 launch lslidar_driver'
     'ros2 launch fast_lio'
     'ros2 bag record'
@@ -87,6 +91,17 @@ KILL_PATTERNS=(
     'joint_state_publisher'
     'rviz2'
     'ekf_node'
+    # traymover_robot_nav components
+    'lidar_localization_node'
+    'pose_to_odom'
+    'nav2_map_server/lib'
+    'nav2_planner/lib'
+    'nav2_controller/lib'
+    'nav2_behaviors/lib'
+    'nav2_bt_navigator/lib'
+    'nav2_waypoint_follower/lib'
+    'nav2_collision_monitor/lib'
+    'nav2_lifecycle_manager/lib'
     '\[traymover\]'  # the wrapper banner, matches bash processes in spawned terminals
 )
 
@@ -323,6 +338,115 @@ action_show_battery() {
     echo "  Status  : ${charge_text}"
 }
 
+action_start_nav() {
+    # Autonomous navigation bringup. Prompts the user to:
+    #   1) pick a PCD map from FAST_LIO/PCD/ (the prior map for lidar_localization_ros2)
+    #   2) optionally regenerate the 2D occupancy PGM used by Nav2's static layer
+    #   3) choose whether to launch RViz
+    # Then spawns chassis + lidar + nav stack in separate terminals so each
+    # subsystem's log is readable.
+    if [ ! -d "${FASTLIO_PCD_DIR}" ]; then
+        echo "[traymover] FAST-LIO PCD directory missing: ${FASTLIO_PCD_DIR}"
+        echo "[traymover] Record a map first (options 6 + 7)."
+        return 1
+    fi
+
+    # Enumerate PCDs newest first.
+    local -a pcds=()
+    while IFS= read -r -d '' f; do
+        pcds+=("$f")
+    done < <(find "${FASTLIO_PCD_DIR}" -maxdepth 1 -name '*.pcd' -type f -print0 2>/dev/null \
+             | xargs -0 -I{} stat --format='%Y %n' {} 2>/dev/null \
+             | sort -rn | cut -d' ' -f2- | tr '\n' '\0')
+
+    if [ ${#pcds[@]} -eq 0 ]; then
+        echo "[traymover] No .pcd files in ${FASTLIO_PCD_DIR}. Save a map first (option 7)."
+        return 1
+    fi
+
+    echo "Available PCD maps in ${FASTLIO_PCD_DIR} (newest first):"
+    local i size
+    for i in "${!pcds[@]}"; do
+        size="$(du -h "${pcds[i]}" 2>/dev/null | awk '{print $1}')"
+        printf "  [%d] %s  (%s)\n" "$((i+1))" "$(basename "${pcds[i]}")" "${size:-?}"
+    done
+
+    local pick pcd_path
+    read -r -p "Select PCD number [default: 1 = newest]: " pick
+    pick="${pick:-1}"
+    if ! [[ "${pick}" =~ ^[0-9]+$ ]] || [ "${pick}" -lt 1 ] || [ "${pick}" -gt "${#pcds[@]}" ]; then
+        echo "[traymover] Invalid selection: ${pick}"
+        return 1
+    fi
+    pcd_path="${pcds[$((pick-1))]}"
+    echo "[traymover] Selected: ${pcd_path}"
+
+    # Optionally regenerate the 2D map from this PCD so static_layer matches.
+    local regen
+    read -r -p "Regenerate 2D nav map (PGM) from this PCD? [Y/n]: " regen
+    regen="${regen:-Y}"
+    if [[ "${regen}" =~ ^[Yy] ]]; then
+        mkdir -p "${NAV_MAP_DIR}"
+        set +u
+        # shellcheck disable=SC1090
+        source "${ROS_DISTRO_SETUP}"
+        if [ -f "${WS_SETUP}" ]; then
+            # shellcheck disable=SC1090
+            source "${WS_SETUP}"
+        fi
+        set -u
+
+        local out_prefix="${NAV_MAP_DIR}/traymover_2d"
+        echo "[traymover] Running pcd2pgm ..."
+        if ! python3 "${NAV_SCRIPTS_DIR}/pcd2pgm.py" \
+                --pcd "${pcd_path}" --out "${out_prefix}"; then
+            echo "[traymover] pcd2pgm failed. Aborting nav startup."
+            return 1
+        fi
+        # Rebuild the package so the updated map is copied into install/.
+        echo "[traymover] Rebuilding traymover_robot_nav so install/ picks up the new map..."
+        if ! (cd "${WORKSPACE_DIR}" && colcon build --packages-select traymover_robot_nav --event-handlers console_cohesion+); then
+            echo "[traymover] colcon build failed. Aborting."
+            return 1
+        fi
+    fi
+
+    local rviz_opt rviz_arg
+    read -r -p "Launch RViz? [Y/n]: " rviz_opt
+    rviz_opt="${rviz_opt:-Y}"
+    if [[ "${rviz_opt}" =~ ^[Yy] ]]; then
+        rviz_arg="launch_rviz:=true"
+    else
+        rviz_arg="launch_rviz:=false"
+    fi
+
+    echo "[traymover] Starting chassis + IMU (base_serial) ..."
+    spawn_in_terminal "traymover: chassis_serial" \
+        "ros2 launch turn_on_traymover_robot base_serial.launch.py"
+
+    echo "[traymover] Starting LiDAR (+ pointcloud_to_laserscan) ..."
+    spawn_in_terminal "traymover: lidar" \
+        "ros2 launch turn_on_traymover_robot traymover_lidar.launch.py"
+
+    # Let sensors stabilize before Nav2 bringup (lidar_localization needs /point_cloud_raw
+    # and /imu/data_raw already flowing, otherwise it'll hang at Activating).
+    sleep 6
+
+    echo "[traymover] Starting nav stack with pcd_path=${pcd_path} ..."
+    spawn_in_terminal "traymover: nav_stack" \
+        "ros2 launch traymover_robot_nav traymover_nav.launch.py ${rviz_arg} pcd_path:='${pcd_path}'"
+
+    cat <<EOF
+[traymover] Nav stack starting. Next steps once lifecycle activates (~10-20 s):
+  1) In RViz click '2D Pose Estimate' and drag on the map at the robot's current spot.
+  2) Wait for RobotModel to snap to pose and /pcl_pose to converge.
+  3) Click '2D Goal Pose' to send a navigation goal.
+  Phase 1 quick check (no goal, fake Nav2 output):
+    ros2 topic pub -r 10 /cmd_vel_nav geometry_msgs/msg/Twist "{linear: {x: 0.15}}"
+  — then walk in front of the robot; the red StopPolygon should trigger and /cmd_vel should go to zero.
+EOF
+}
+
 action_save_map() {
     mkdir -p "${DEFAULT_MAP_DIR}"
 
@@ -369,6 +493,7 @@ print_menu() {
   7) Save FAST-LIO PCD map (requires option 6 running)
   8) Record FAST-LIO rosbag (sensors + bag; 0 stops and saves)
   9) Replay FAST-LIO rosbag offline (bag + fast_lio with sim_time)
+ 10) Start navigation (pick PCD -> regen 2D map -> chassis + lidar + Nav2 + RViz)
   q) Quit
 ==============================
 EOF
@@ -394,6 +519,7 @@ main() {
             7) action_save_fastlio_map ;;
             8) action_record_fastlio_bag ;;
             9) action_replay_fastlio_bag ;;
+            10) action_start_nav ;;
             q|Q|quit|exit) echo "Bye."; exit 0 ;;
             "") ;;
             *) echo "Unknown option: ${choice}" ;;

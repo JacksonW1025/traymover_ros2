@@ -1,0 +1,41 @@
+/**:
+    ros__parameters:
+      registration_method: "NDT_OMP"
+      # Tightened for indoor NDT convergence after observing 6DOF divergence
+      # (z=2.9m, r/p=17deg). Finer voxels + stricter epsilon + more iters.
+      score_threshold: 2.0
+      ndt_resolution: 0.5
+      ndt_step_size: 0.1
+      ndt_num_threads: 4
+      ndt_max_iterations: 50
+      transform_epsilon: 0.001
+      voxel_leaf_size: 0.1
+      scan_max_range: 100.0
+      scan_min_range: 0.5
+      scan_period: 0.1
+      use_pcd_map: true
+      map_path: "/home/wheeltec/traymover_ros2/src/traymover_robot_slam/FAST_LIO/PCD/traymover_20260418_183556.pcd"
+      set_initial_pose: false
+      initial_pose_x: 0.0
+      initial_pose_y: 0.0
+      initial_pose_z: 0.0
+      initial_pose_qx: 0.0
+      initial_pose_qy: 0.0
+      initial_pose_qz: 0.0
+      initial_pose_qw: 1.0
+      use_odom: false
+      # use_imu disabled: hipnuc IMU orientation frame convention may not
+      # match camera_init (set by FAST_LIO at mapping start), causing
+      # spurious 3D distortion during de-skew. Re-enable after NDT is stable.
+      use_imu: false
+      enable_debug: false
+      # Keep lidar_localization broadcasting the raw 6DOF map -> base_link
+      # (URDF remains anchored there for RViz visualization). A separate
+      # tf_flattener node reads this TF and republishes map -> base_link_2d
+      # with z/roll/pitch clamped to 0, which is what Nav2 consumes.
+      enable_map_odom_tf: false
+      global_frame_id: map
+      odom_frame_id: odom
+      base_frame_id: base_link
+      enable_timer_publishing: false
+      pose_publish_frequency: 20.0

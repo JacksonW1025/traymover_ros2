@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>traymover_robot_nav</name>
+  <version>0.0.0</version>
+  <description>Traymover airport tray-mover navigation stack: lidar_localization_ros2 for global localization on a prebuilt FAST_LIO PCD map, Nav2 with obstacle-stop (Phase 1) and local avoidance (Phase 2).</description>
+  <maintainer email="chenqixian428106@gmail.com">traymover</maintainer>
+  <license>BSD</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <exec_depend>nav2_bringup</exec_depend>
+  <exec_depend>nav2_collision_monitor</exec_depend>
+  <exec_depend>nav2_map_server</exec_depend>
+  <exec_depend>pointcloud_to_laserscan</exec_depend>
+  <exec_depend>lidar_localization_ros2</exec_depend>
+  <exec_depend>traymover_robot_description</exec_depend>
+
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

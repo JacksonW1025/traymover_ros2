@@ -1,0 +1,39 @@
+collision_monitor:
+  ros__parameters:
+    base_frame_id: "base_link"
+    odom_frame_id: "map"
+    cmd_vel_in_topic: "cmd_vel_nav"
+    cmd_vel_out_topic: "cmd_vel"
+    transform_tolerance: 0.5
+    source_timeout: 2.0
+    stop_pub_timeout: 2.0
+
+    # Polygons in base_link frame. Robot footprint is 0.8 m x 0.55 m
+    # (x: -0.40..0.40, y: -0.275..0.275). Stop zone extends 0.5 m forward
+    # from the robot's front edge; slowdown zone extends another 0.5 m.
+    polygons: ["PolygonStop", "PolygonSlow"]
+
+    PolygonStop:
+      type: "polygon"
+      # forward rectangle: front edge (x=0.40) to x=0.90, width = robot width
+      points: [0.40, 0.275, 0.90, 0.275, 0.90, -0.275, 0.40, -0.275]
+      action_type: "stop"
+      min_points: 3
+      visualize: true
+      polygon_pub_topic: "polygon_stop"
+
+    PolygonSlow:
+      type: "polygon"
+      # further out: 0.90..1.40 m forward
+      points: [0.40, 0.40, 1.40, 0.40, 1.40, -0.40, 0.40, -0.40]
+      action_type: "slowdown"
+      min_points: 3
+      slowdown_ratio: 0.3
+      visualize: true
+      polygon_pub_topic: "polygon_slowdown"
+
+    observation_sources: ["scan"]
+    scan:
+      type: "scan"
+      topic: "/scan"
+      enabled: true
