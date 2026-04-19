@@ -3,11 +3,11 @@
 Brings up the full runtime chain:
   0. (optional) hardware bringup — base_serial + traymover_lidar
      (set bringup_hardware:=true for one-command start; default false).
-  1. lidar_localization.launch.py — robot_state_publisher +
-     lidar_localization_ros2 (NDT_OMP, loads prebuilt PCD, publishes map -> base_link).
-  2. pose_to_odom bridge — converts /pcl_pose (PoseStamped) into /odom (Odometry)
-     so Nav2 controller_server can read current twist.
-  3. nav2 navigation stack — map_server, planner_server, controller_server,
+  1. lidar_localization.launch.py — robot_state_publisher + FAST_LIO online
+     (publishes /odom = camera_init->body twist) + static TFs stitching
+     FAST_LIO frames into base_link + lidar_localization_ros2 (NDT_OMP,
+     publishes map -> odom correction against the prebuilt PCD).
+  2. nav2 navigation stack — map_server, planner_server, controller_server,
      bt_navigator, behavior_server, waypoint_follower, lifecycle_manager.
      controller + behavior cmd_vel is remapped to /cmd_vel_nav.
   4. collision_monitor.launch.py — filters /cmd_vel_nav -> /cmd_vel as the
@@ -108,16 +108,7 @@ def generate_launch_description():
         }.items(),
     )
 
-    # 2) Pose -> Odom bridge
-    pose_to_odom = Node(
-        package='traymover_robot_nav',
-        executable='pose_to_odom.py',
-        name='pose_to_odom',
-        output='screen',
-        parameters=[{'use_sim_time': use_sim_time}],
-    )
-
-    # 3) Nav2 lifecycle nodes. controller_server cmd_vel -> /cmd_vel_nav
+    # 2) Nav2 lifecycle nodes. controller_server cmd_vel -> /cmd_vel_nav
     #    so collision_monitor can filter before reaching the serial driver.
     map_server = Node(
         package='nav2_map_server',
@@ -175,7 +166,7 @@ def generate_launch_description():
         }],
     )
 
-    # 4) Obstacle-stop safety net.
+    # 3) Obstacle-stop safety net.
     # Explicitly pin params_file so the outer launch's same-named
     # LaunchConfiguration doesn't leak nav2_params.yaml into this sub-launch.
     collision_monitor = IncludeLaunchDescription(
@@ -187,7 +178,7 @@ def generate_launch_description():
         }.items(),
     )
 
-    # 5) Optional RViz
+    # 4) Optional RViz
     rviz = Node(
         package='rviz2',
         executable='rviz2',
@@ -214,7 +205,6 @@ def generate_launch_description():
         hw_base,
         hw_lidar,
         localization,
-        pose_to_odom,
         map_server,
         planner,
         controller,

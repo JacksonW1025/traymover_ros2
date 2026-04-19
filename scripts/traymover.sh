@@ -132,6 +132,18 @@ action_start_keyboard() {
         "ros2 run traymover_robot_keyboard traymover_keyboard"
 }
 
+action_start_teleop() {
+    # 纯遥控模式:只启动底盘串口 + 键盘节点,不拉 LiDAR / IMU / EKF。
+    # base_serial.launch.py 带 use_imu:=false 时只跑 wheeltec_robot(/cmd_vel 订阅、
+    # 轮式里程计、/battery_state),够手动开着玩/搬运。
+    spawn_in_terminal "traymover: chassis_serial" \
+        "ros2 launch turn_on_traymover_robot base_serial.launch.py use_imu:=false"
+    # 给串口一点时间初始化,避免键盘先起来发的第一条 cmd_vel 被丢。
+    sleep 2
+    spawn_in_terminal "traymover: keyboard" \
+        "ros2 run traymover_robot_keyboard traymover_keyboard"
+}
+
 action_start_slam() {
     # online_async launch already includes chassis bringup with lidar + EKF.
     spawn_in_terminal "traymover: slam_toolbox" \
@@ -199,12 +211,18 @@ action_start_fastlio() {
     # (pair this option with option 2 "keyboard" to teleop during mapping).
     # IMU driver is launched standalone here; we pass use_imu:=false to
     # base_serial.launch.py so it does NOT spawn a second IMU publisher.
+    #
+    # LiDAR uses traymover_lidar.launch.py (NOT lslidar_cx_launch.py directly)
+    # so the angle_disable_min/max in traymover_param.yaml — which masks the
+    # back 180° — also applies during mapping. This keeps mapping and runtime
+    # navigation consistent: FAST-LIO only sees the same front-only FOV that
+    # lidar_localization_ros2 will use later.
     spawn_in_terminal "traymover: chassis_serial" \
         "ros2 launch turn_on_traymover_robot base_serial.launch.py use_imu:=false"
     spawn_in_terminal "traymover: imu" \
         "ros2 launch turn_on_traymover_robot traymover_imu.launch.py"
     spawn_in_terminal "traymover: lidar" \
-        "ros2 launch lslidar_driver lslidar_cx_launch.py"
+        "ros2 launch turn_on_traymover_robot traymover_lidar.launch.py"
     # Give LiDAR/IMU a moment to come up so FAST-LIO's IMU init doesn't stall.
     sleep 5
     spawn_in_terminal "traymover: fast_lio" \
@@ -283,8 +301,13 @@ action_record_fastlio_bag() {
         "ros2 launch turn_on_traymover_robot base_serial.launch.py use_imu:=false"
     spawn_in_terminal "traymover: imu" \
         "ros2 launch turn_on_traymover_robot traymover_imu.launch.py"
+    # Same LiDAR launch as action_start_fastlio for consistency — the
+    # angle_disable_min/max mask from traymover_param.yaml is applied.
+    # The bagged /point_cloud_raw will already be front-180°-only, so the
+    # recorded bag is appropriate for offline re-mapping without needing
+    # post-hoc filtering.
     spawn_in_terminal "traymover: lidar" \
-        "ros2 launch lslidar_driver lslidar_cx_launch.py"
+        "ros2 launch turn_on_traymover_robot traymover_lidar.launch.py"
     # Let sensors stabilize so the bag starts with valid data.
     sleep 5
     spawn_in_terminal "traymover: rosbag" \
@@ -447,6 +470,157 @@ action_start_nav() {
 EOF
 }
 
+action_clean_pcd() {
+    # Offline dynamic-object cleanup for a FAST-LIO PCD. Wraps
+    # scripts/pcd_clean.py (SOR, optional DBSCAN person-cluster filter).
+    # Output goes back into FASTLIO_PCD_DIR with a "_clean" suffix so
+    # option 10 will see it in its newest-first listing.
+    if [ ! -d "${FASTLIO_PCD_DIR}" ]; then
+        echo "[traymover] FAST-LIO PCD directory missing: ${FASTLIO_PCD_DIR}"
+        return 1
+    fi
+
+    local -a pcds=()
+    while IFS= read -r -d '' f; do
+        pcds+=("$f")
+    done < <(find "${FASTLIO_PCD_DIR}" -maxdepth 1 -name '*.pcd' -type f -print0 2>/dev/null \
+             | xargs -0 -I{} stat --format='%Y %n' {} 2>/dev/null \
+             | sort -rn | cut -d' ' -f2- | tr '\n' '\0')
+
+    if [ ${#pcds[@]} -eq 0 ]; then
+        echo "[traymover] No .pcd files in ${FASTLIO_PCD_DIR}."
+        return 1
+    fi
+
+    echo "Available PCD maps in ${FASTLIO_PCD_DIR} (newest first):"
+    local i size
+    for i in "${!pcds[@]}"; do
+        size="$(du -h "${pcds[i]}" 2>/dev/null | awk '{print $1}')"
+        printf "  [%d] %s  (%s)\n" "$((i+1))" "$(basename "${pcds[i]}")" "${size:-?}"
+    done
+
+    local pick pcd_in
+    read -r -p "Select PCD number to clean [default: 1 = newest]: " pick
+    pick="${pick:-1}"
+    if ! [[ "${pick}" =~ ^[0-9]+$ ]] || [ "${pick}" -lt 1 ] || [ "${pick}" -gt "${#pcds[@]}" ]; then
+        echo "[traymover] Invalid selection: ${pick}"
+        return 1
+    fi
+    pcd_in="${pcds[$((pick-1))]}"
+
+    local base_name="$(basename "${pcd_in}" .pcd)_clean"
+    local default_out="${FASTLIO_PCD_DIR}/${base_name}.pcd"
+    local pcd_out
+    read -r -p "Output path [default: ${default_out}]: " pcd_out
+    pcd_out="${pcd_out:-${default_out}}"
+
+    local mode
+    read -r -p "Cleaning mode: [s]OR-only / [f]loating-columns / [d]bscan / [a]ggressive-preset [default: a]: " mode
+    mode="${mode:-a}"
+    local extra_args=""
+    case "${mode,,}" in
+        s|sor) extra_args="" ;;
+        f|floating) extra_args="--floating" ;;
+        d|dbscan) extra_args="--dbscan" ;;
+        a|aggressive) extra_args="--aggressive" ;;
+        *) echo "[traymover] Unknown mode '${mode}', defaulting to --aggressive."
+           extra_args="--aggressive" ;;
+    esac
+
+    set +u
+    # shellcheck disable=SC1090
+    source "${ROS_DISTRO_SETUP}"
+    if [ -f "${WS_SETUP}" ]; then
+        # shellcheck disable=SC1090
+        source "${WS_SETUP}"
+    fi
+    set -u
+
+    echo "[traymover] Running pcd_clean.py ${extra_args} ..."
+    if ! python3 "${NAV_SCRIPTS_DIR}/pcd_clean.py" \
+            --pcd "${pcd_in}" --out "${pcd_out}" ${extra_args}; then
+        echo "[traymover] pcd_clean.py failed."
+        return 1
+    fi
+    echo "[traymover] Cleaned PCD written to ${pcd_out}"
+    echo "[traymover] Option 10 will now list this as the newest PCD."
+}
+
+action_intersect_pcds() {
+    # Intersect multiple FAST-LIO PCDs: keep only voxels that appear in a
+    # majority of inputs. Effective at removing dynamic objects whose
+    # positions differ between mapping sessions. Requires inputs to share
+    # a coordinate frame (start each FAST-LIO run from the same physical
+    # pose, or pre-align with ICP).
+    if [ ! -d "${FASTLIO_PCD_DIR}" ]; then
+        echo "[traymover] FAST-LIO PCD directory missing: ${FASTLIO_PCD_DIR}"
+        return 1
+    fi
+
+    local -a pcds=()
+    while IFS= read -r -d '' f; do
+        pcds+=("$f")
+    done < <(find "${FASTLIO_PCD_DIR}" -maxdepth 1 -name '*.pcd' -type f -print0 2>/dev/null \
+             | xargs -0 -I{} stat --format='%Y %n' {} 2>/dev/null \
+             | sort -rn | cut -d' ' -f2- | tr '\n' '\0')
+
+    if [ ${#pcds[@]} -lt 2 ]; then
+        echo "[traymover] Need at least 2 PCDs in ${FASTLIO_PCD_DIR}; found ${#pcds[@]}."
+        return 1
+    fi
+
+    echo "Available PCD maps (newest first):"
+    local i size
+    for i in "${!pcds[@]}"; do
+        size="$(du -h "${pcds[i]}" 2>/dev/null | awk '{print $1}')"
+        printf "  [%d] %s  (%s)\n" "$((i+1))" "$(basename "${pcds[i]}")" "${size:-?}"
+    done
+
+    local picks
+    read -r -p "Select 2+ PCDs to intersect (space-separated numbers, e.g. '1 2 3'): " picks
+    local -a selected=()
+    local tok
+    for tok in ${picks}; do
+        if ! [[ "${tok}" =~ ^[0-9]+$ ]] || [ "${tok}" -lt 1 ] || [ "${tok}" -gt "${#pcds[@]}" ]; then
+            echo "[traymover] Invalid selection: ${tok}"
+            return 1
+        fi
+        selected+=("${pcds[$((tok-1))]}")
+    done
+    if [ ${#selected[@]} -lt 2 ]; then
+        echo "[traymover] Need at least 2 selections; got ${#selected[@]}."
+        return 1
+    fi
+
+    local ts default_out pcd_out
+    ts="$(date +%Y%m%d_%H%M%S)"
+    default_out="${FASTLIO_PCD_DIR}/traymover_intersected_${ts}.pcd"
+    read -r -p "Output path [default: ${default_out}]: " pcd_out
+    pcd_out="${pcd_out:-${default_out}}"
+
+    local voxel
+    read -r -p "Voxel size in meters [default: 0.1]: " voxel
+    voxel="${voxel:-0.1}"
+
+    set +u
+    # shellcheck disable=SC1090
+    source "${ROS_DISTRO_SETUP}"
+    if [ -f "${WS_SETUP}" ]; then
+        # shellcheck disable=SC1090
+        source "${WS_SETUP}"
+    fi
+    set -u
+
+    echo "[traymover] Intersecting ${#selected[@]} PCDs (voxel=${voxel} m) ..."
+    if ! python3 "${NAV_SCRIPTS_DIR}/pcd_intersect.py" \
+            --pcds "${selected[@]}" --out "${pcd_out}" --voxel "${voxel}"; then
+        echo "[traymover] pcd_intersect.py failed."
+        return 1
+    fi
+    echo "[traymover] Intersected PCD written to ${pcd_out}"
+    echo "[traymover] Option 10 will now list this as a selectable map."
+}
+
 action_save_map() {
     mkdir -p "${DEFAULT_MAP_DIR}"
 
@@ -494,6 +668,9 @@ print_menu() {
   8) Record FAST-LIO rosbag (sensors + bag; 0 stops and saves)
   9) Replay FAST-LIO rosbag offline (bag + fast_lio with sim_time)
  10) Start navigation (pick PCD -> regen 2D map -> chassis + lidar + Nav2 + RViz)
+ 11) Start teleop-only  (chassis serial + keyboard; no lidar / IMU / EKF)
+ 12) Clean FAST-LIO PCD  (SOR + optional DBSCAN; removes dynamic-object ghosts)
+ 13) Intersect multiple FAST-LIO PCDs  (majority vote across sessions)
   q) Quit
 ==============================
 EOF
@@ -520,6 +697,9 @@ main() {
             8) action_record_fastlio_bag ;;
             9) action_replay_fastlio_bag ;;
             10) action_start_nav ;;
+            11) action_start_teleop ;;
+            12) action_clean_pcd ;;
+            13) action_intersect_pcds ;;
             q|Q|quit|exit) echo "Bye."; exit 0 ;;
             "") ;;
             *) echo "Unknown option: ${choice}" ;;

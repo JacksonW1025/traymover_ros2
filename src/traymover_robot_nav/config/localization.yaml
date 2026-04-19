@@ -23,17 +23,22 @@
       initial_pose_qy: 0.0
       initial_pose_qz: 0.0
       initial_pose_qw: 1.0
-      use_odom: false
-      # use_imu disabled: hipnuc IMU orientation frame convention may not
-      # match camera_init (set by FAST_LIO at mapping start), causing
-      # spurious 3D distortion during de-skew. Re-enable after NDT is stable.
+      # FAST_LIO runs online as the fast odometry source and publishes
+      # /Odometry (remapped to /odom by the launch file). With use_odom:true
+      # the node integrates the FAST_LIO twist between NDT updates so NDT's
+      # init_guess moves with the robot — the fix for "car pose frozen while
+      # robot drives" observed when use_odom was false in open airport space.
+      use_odom: true
+      # use_imu only affects scan de-skewing inside lidar_localization.
+      # FAST_LIO already de-skews the cloud against its own IMU tracking, so
+      # re-enabling it here would double-process. Kept false.
       use_imu: false
       enable_debug: false
-      # Keep lidar_localization broadcasting the raw 6DOF map -> base_link
-      # (URDF remains anchored there for RViz visualization). A separate
-      # tf_flattener node reads this TF and republishes map -> base_link_2d
-      # with z/roll/pitch clamped to 0, which is what Nav2 consumes.
-      enable_map_odom_tf: false
+      # Publish map -> odom (not map -> base_link). FAST_LIO + the static
+      # body->base_link chain already publishes odom->base_link at ~20 Hz;
+      # NDT now only has to correct the slow FAST_LIO drift vs the prebuilt
+      # PCD, so RViz and Nav2 read robot pose via map->odom->base_link.
+      enable_map_odom_tf: true
       global_frame_id: map
       odom_frame_id: odom
       base_frame_id: base_link

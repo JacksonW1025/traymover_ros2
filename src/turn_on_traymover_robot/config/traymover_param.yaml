@@ -12,5 +12,12 @@ lscx:
   device_ip: "192.168.1.200"
   pointcloud_topic: "/point_cloud_raw"
   frame_id: "laser"
+  # 驱动输出完整 360°。NDT 定位需要全圈墙体作为几何锚点，少了一半
+  # 会在走廊/矩形房间等退化场景让 NDT 找不到唯一最优 → 车左右摇摆、
+  # 定位漂。"屏蔽后方设备"的需求在下游解决：
+  #   - 导航避障：traymover_lidar.launch.py 里 pointcloud_to_laserscan
+  #     的 angle_min/max 限制 /scan 到前 180°，Nav2 costmap 和
+  #     collision_monitor 就只看前方。
+  #   - 建图时人员污染：操作员独自建图，或后期用 pcd_clean.py 过滤鬼影。
   angle_disable_min: [0]
   angle_disable_max: [0]

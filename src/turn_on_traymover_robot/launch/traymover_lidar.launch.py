@@ -58,8 +58,13 @@ def include_lidar_launch(context, *args, **kwargs):
                 'transform_tolerance': 0.05,
                 'min_height': -0.2,
                 'max_height': 2.0,
-                'angle_min': -3.14159,
-                'angle_max': 3.14159,
+                # /scan limited to front 180 deg (-pi/2 to +pi/2 in laser
+                # frame) — Nav2 obstacle_layer and collision_monitor only
+                # see points in front of the robot. LiDAR driver still
+                # publishes the full 360 deg on /point_cloud_raw so NDT
+                # localization has full geometric constraints.
+                'angle_min': -1.5707963,
+                'angle_max': 1.5707963,
                 'angle_increment': 0.0087,
                 'scan_time': 0.1,
                 'range_min': 0.3,

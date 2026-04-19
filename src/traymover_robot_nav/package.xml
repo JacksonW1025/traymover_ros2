@@ -14,6 +14,8 @@
   <exec_depend>nav2_map_server</exec_depend>
   <exec_depend>pointcloud_to_laserscan</exec_depend>
   <exec_depend>lidar_localization_ros2</exec_depend>
+  <exec_depend>fast_lio</exec_depend>
+  <exec_depend>tf2_ros</exec_depend>
   <exec_depend>traymover_robot_description</exec_depend>
 
   <test_depend>ament_lint_auto</test_depend>
