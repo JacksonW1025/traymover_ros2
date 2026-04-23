@@ -15,6 +15,7 @@ from dataclasses import dataclass
 import rclpy
 from geometry_msgs.msg import TransformStamped, Twist
 from nav_msgs.msg import Odometry
+from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 import serial
 from sensor_msgs.msg import BatteryState
@@ -476,7 +477,7 @@ class TurnOnTraymoverRobot(Node):
         self.cmd_vel_sub = self.create_subscription(
             Twist, '/cmd_vel', self.cmd_vel_callback, 2
         )
-        self.odom_pub = self.create_publisher(Odometry, 'odom', 10)
+        self.odom_pub = self.create_publisher(Odometry, 'odom', 10) if self.odom_enabled else None
         self.battery_state_pub = self.create_publisher(BatteryState, 'battery_state', 10)
         self.power_level_pub = self.create_publisher(UInt8, 'power_level', 10)
         self.charge_status_pub = self.create_publisher(UInt8, 'charge_status', 10)
@@ -676,7 +677,8 @@ class TurnOnTraymoverRobot(Node):
         )
 
         odom_msg = self.build_odom_message(feedback, left_ticks, right_ticks, stationary, stamp)
-        self.odom_pub.publish(odom_msg)
+        if self.odom_pub is not None:
+            self.odom_pub.publish(odom_msg)
 
         if self.publish_odom_tf:
             self.publish_odom_transform(stamp)
@@ -833,7 +835,7 @@ def main(args=None):
     node = TurnOnTraymoverRobot()
     try:
         rclpy.spin(node)
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, ExternalShutdownException):
         pass
     finally:
         node.destroy_node()

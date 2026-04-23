@@ -28,6 +28,7 @@ After startup, use RViz "2D Pose Estimate" to set initial pose, then "2D Goal
 Pose" to send a navigation goal.
 """
 import os
+from pathlib import Path
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
@@ -52,7 +53,15 @@ NAV2_LIFECYCLE_NODES = [
 # Keep in sync with default_pcd in lidar_localization.launch.py and
 # map_path in config/localization.yaml.
 DEFAULT_PCD = ('/home/wheeltec/traymover_ros2/src/traymover_robot_slam/'
-               'FAST_LIO/PCD/traymover_20260418_183556.pcd')
+               'FAST_LIO/PCD/traymover.pcd')
+
+
+def find_default_pcd() -> str:
+    pcd_dir = Path('/home/wheeltec/traymover_ros2/src/traymover_robot_slam/FAST_LIO/PCD')
+    candidates = sorted(pcd_dir.glob('*.pcd'), key=lambda p: p.stat().st_mtime, reverse=True)
+    if candidates:
+        return str(candidates[0])
+    return DEFAULT_PCD
 
 
 def generate_launch_description():
@@ -63,6 +72,7 @@ def generate_launch_description():
     collision_params = os.path.join(nav_share, 'config', 'collision_monitor.yaml')
     default_map = os.path.join(nav_share, 'map', 'traymover_2d.yaml')
     default_rviz = os.path.join(nav_share, 'rviz', 'traymover_nav.rviz')
+    pointcloud_launch = os.path.join(nav_share, 'launch', 'navigation_pointcloud.launch.py')
 
     params_file = LaunchConfiguration('params_file')
     map_yaml = LaunchConfiguration('map')
@@ -90,21 +100,38 @@ def generate_launch_description():
         PythonLaunchDescriptionSource(
             os.path.join(bringup_share, 'launch', 'base_serial.launch.py')),
         condition=IfCondition(bringup_hardware),
+        launch_arguments={
+            'odom_source_mode': 'none',
+        }.items(),
     )
     hw_lidar = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             os.path.join(bringup_share, 'launch', 'traymover_lidar.launch.py')),
         condition=IfCondition(bringup_hardware),
+        launch_arguments={
+            'enable_scan_bridge': 'false',
+        }.items(),
+    )
+    pointcloud_pipeline = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(pointcloud_launch),
+        launch_arguments={
+            'use_sim_time': use_sim_time,
+            'input_cloud_topic': '/point_cloud_raw',
+            'localization_cloud_topic': '/point_cloud_localization',
+            'nav_cloud_topic': '/point_cloud_nav',
+            'scan_topic': '/scan',
+            'target_frame': 'base_link',
+        }.items(),
     )
 
-    # 1) Localization chain (RSP + lidar_localization_ros2)
-    #    /scan is expected from the hardware bringup's pointcloud_to_laserscan.
+    # 1) Navigation cloud preprocessing + Localization chain (RSP + NDT).
     localization = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             os.path.join(nav_share, 'launch', 'lidar_localization.launch.py')),
         launch_arguments={
             'use_sim_time': use_sim_time,
             'pcd_path': pcd_path,
+            'cloud_topic': '/point_cloud_localization',
         }.items(),
     )
 
@@ -200,10 +227,11 @@ def generate_launch_description():
             description='Also start RViz with the navigation profile.'),
         DeclareLaunchArgument('rviz_config', default_value=default_rviz),
         DeclareLaunchArgument(
-            'pcd_path', default_value=DEFAULT_PCD,
+            'pcd_path', default_value=find_default_pcd(),
             description='Prior PCD map loaded by lidar_localization_ros2.'),
         hw_base,
         hw_lidar,
+        pointcloud_pipeline,
         localization,
         map_server,
         planner,

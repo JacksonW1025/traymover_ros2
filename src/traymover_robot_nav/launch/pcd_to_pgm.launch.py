@@ -28,9 +28,11 @@ def generate_launch_description():
         DeclareLaunchArgument('pcd', default_value=DEFAULT_PCD),
         DeclareLaunchArgument('out', default_value=default_out),
         DeclareLaunchArgument('resolution', default_value='0.05'),
-        DeclareLaunchArgument('z_min', default_value='0.15'),
-        DeclareLaunchArgument('z_max', default_value='1.5'),
-        DeclareLaunchArgument('dilate', default_value='1'),
+        DeclareLaunchArgument('z_min', default_value='0.10'),
+        DeclareLaunchArgument('z_max', default_value='2.20'),
+        DeclareLaunchArgument('min_points', default_value='1'),
+        DeclareLaunchArgument('dilate', default_value='2'),
+        DeclareLaunchArgument('min_region_cells', default_value='2'),
     ]
 
     proc = ExecuteProcess(
@@ -41,7 +43,9 @@ def generate_launch_description():
             '--resolution', LaunchConfiguration('resolution'),
             '--z-min', LaunchConfiguration('z_min'),
             '--z-max', LaunchConfiguration('z_max'),
+            '--min-points', LaunchConfiguration('min_points'),
             '--dilate', LaunchConfiguration('dilate'),
+            '--min-region-cells', LaunchConfiguration('min_region_cells'),
         ],
         output='screen',
     )

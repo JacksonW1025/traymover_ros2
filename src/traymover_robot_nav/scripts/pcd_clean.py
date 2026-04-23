@@ -6,17 +6,23 @@ localization and 2D-grid generation stays clean.
 Pipeline (each stage independently toggleable):
   1. Statistical Outlier Removal (SOR)  — removes isolated sparse points.
      Set --sor-nb 0 to skip.
-  2. Floating-column filter  — aggressively removes xy-columns that have
+  2. Trajectory-corridor sparse-cell filter — optional. If you provide the
+     vehicle path (for example FAST-LIO's Log/pos_log.txt), this stage removes
+     sparse obstacle cells inside a buffered corridor around the driven path
+     while keeping dense walls/fixtures intact.
+  3. Floating-column filter  — aggressively removes xy-columns that have
      no ground anchor AND too few points to be a wall. Primary tool for
      deleting upper-body person ghosts (shoulder + head blobs floating
      in mid-air). Enable with --floating. Disabled by default because
      it will also drop thin hanging objects (signs, ceiling fixtures).
-  3. DBSCAN clustering + person-sized cluster removal  — optional.
+  4. DBSCAN clustering + person-sized cluster removal  — optional.
      Enable with --dbscan. Deletes clusters that look like a standing
      human (height z-band + bbox + point-count bounds).
-  4. Voxel downsample  — optional. Enable with --voxel > 0.
+  5. Voxel downsample  — optional. Enable with --voxel > 0.
 
 Presets:
+  --light       = gentle SOR only (nb=12, std=2.8). Best default now that
+                  the mapping pipeline already applies basic filtering.
   --aggressive  = SOR(nb=30, std=1.5) + --floating + --dbscan (loose
                   person thresholds). One flag for "clean this map hard".
 
@@ -24,10 +30,10 @@ Usage:
   ros2 run traymover_robot_nav pcd_clean.py \\
       --pcd input.pcd --out output.pcd --aggressive
 
-Recommended workflow: start with default (SOR only) and inspect in RViz
-(PointCloud2 display). If upper-body person ghosts remain, add --floating
-first (fast, no DBSCAN cost). If still unsatisfied, add --dbscan or use
---aggressive to enable everything at once.
+Recommended workflow: start with --light and inspect in RViz (PointCloud2
+display). If upper-body person ghosts remain, add --floating first (fast,
+no DBSCAN cost). If still unsatisfied, add --dbscan or use --aggressive to
+enable everything at once.
 """
 import argparse
 import sys
@@ -46,6 +52,27 @@ def main():
                    help='SOR neighbour count (0 disables SOR)')
     p.add_argument('--sor-std', type=float, default=2.0,
                    help='SOR std_ratio (lower = more aggressive)')
+    # Trajectory-corridor sparse-cell filter
+    p.add_argument('--trajectory-corridor', action='store_true',
+                   help='drop sparse occupied cells inside a buffered vehicle '
+                        'trajectory corridor; useful for cleaning drive-path '
+                        'speckle without touching the rest of the map')
+    p.add_argument('--trajectory-log', type=str, default='',
+                   help='trajectory text file; FAST-LIO Log/pos_log.txt is '
+                        'supported, as are simple whitespace-separated x y lines')
+    p.add_argument('--trajectory-format', choices=['auto', 'fastlio-pos-log', 'xy'],
+                   default='auto',
+                   help='trajectory file format. auto: >=7 columns -> FAST-LIO '
+                        'pos_log (x,y at cols 4,5), otherwise first two columns')
+    p.add_argument('--corridor-width', type=float, default=0.80,
+                   help='half-width of the kept vehicle corridor [m]')
+    p.add_argument('--corridor-xy-res', type=float, default=0.20,
+                   help='xy cell size for trajectory corridor cleanup [m]')
+    p.add_argument('--corridor-sample-step', type=float, default=0.10,
+                   help='trajectory interpolation step before corridor rasterization [m]')
+    p.add_argument('--corridor-min-pts', type=int, default=120,
+                   help='cells inside the corridor with fewer than this many '
+                        'points are treated as speckle and dropped')
     # Floating-column filter
     p.add_argument('--floating', action='store_true',
                    help='enable floating-column filter (remove xy-columns '
@@ -87,6 +114,9 @@ def main():
     p.add_argument('--voxel', type=float, default=0.0,
                    help='voxel downsample size [m]; 0 disables')
     # Presets
+    p.add_argument('--light', action='store_true',
+                   help='preset: gentle SOR only (nb=12, std=2.8); '
+                        'recommended default for current mapping flow')
     p.add_argument('--aggressive', action='store_true',
                    help='preset: SOR(nb=30,std=1.5) + --floating + --dbscan '
                         'with looser person thresholds. Overrides the '
@@ -94,6 +124,7 @@ def main():
                         'their default values.')
     args = p.parse_args()
 
+    apply_light_preset(args, p)
     apply_aggressive_preset(args, p)
 
     cloud = o3d.io.read_point_cloud(args.pcd)
@@ -111,15 +142,19 @@ def main():
               f'{len(cloud.points)} points '
               f'(dropped {before - len(cloud.points)})')
 
-    # --- stage 2: floating-column filter ------------------------------------
+    # --- stage 2: trajectory corridor sparse-cell filter --------------------
+    if args.trajectory_corridor:
+        cloud = trajectory_corridor_filter(cloud, args)
+
+    # --- stage 3: floating-column filter ------------------------------------
     if args.floating:
         cloud = floating_column_filter(cloud, args)
 
-    # --- stage 3: DBSCAN person filter --------------------------------------
+    # --- stage 4: DBSCAN person filter --------------------------------------
     if args.dbscan:
         cloud = dbscan_person_filter(cloud, args)
 
-    # --- stage 4: voxel downsample ------------------------------------------
+    # --- stage 5: voxel downsample ------------------------------------------
     if args.voxel > 0:
         before = len(cloud.points)
         cloud = cloud.voxel_down_sample(voxel_size=args.voxel)
@@ -130,10 +165,51 @@ def main():
     if pts_after == 0:
         raise SystemExit('all points filtered out — your thresholds are too '
                          'aggressive.')
-    if not o3d.io.write_point_cloud(args.out, cloud):
-        raise SystemExit(f'failed to write {args.out}')
+    write_pcd_xyzi_binary(args.out, np.asarray(cloud.points))
     print(f'wrote {pts_after} points to {args.out} '
           f'({100.0 * pts_after / pts_before:.1f}% of input)')
+
+
+def write_pcd_xyzi_binary(path, pts):
+    # lidar_localization_ros2 loads with pcl::PointXYZI and matches FIELDS by
+    # name. Open3D's PointCloud drops intensity on read, so we emit intensity=0
+    # here — NDT_OMP doesn't use intensity, and a missing "intensity" field in
+    # the header causes PCL to read into uninitialized memory and SIGSEGV.
+    n = len(pts)
+    arr = np.zeros((n, 4), dtype=np.float32)
+    arr[:, 0:3] = np.asarray(pts, dtype=np.float32)
+    header = (
+        '# .PCD v0.7 - Point Cloud Data file format\n'
+        'VERSION 0.7\n'
+        'FIELDS x y z intensity\n'
+        'SIZE 4 4 4 4\n'
+        'TYPE F F F F\n'
+        'COUNT 1 1 1 1\n'
+        f'WIDTH {n}\n'
+        'HEIGHT 1\n'
+        'VIEWPOINT 0 0 0 1 0 0 0\n'
+        f'POINTS {n}\n'
+        'DATA binary\n'
+    )
+    with open(path, 'wb') as f:
+        f.write(header.encode('ascii'))
+        f.write(arr.tobytes())
+
+
+def apply_light_preset(args, parser):
+    """If --light is set, keep cleaning SOR-only and make it gentler."""
+    if not args.light:
+        return
+
+    defaults = {a.dest: a.default for a in parser._actions}
+
+    def bump(name, value):
+        if getattr(args, name) == defaults[name]:
+            setattr(args, name, value)
+
+    bump('sor_nb', 12)
+    bump('sor_std', 2.8)
+    print(f'light preset applied: sor_nb={args.sor_nb}, sor_std={args.sor_std}')
 
 
 def apply_aggressive_preset(args, parser):
@@ -165,6 +241,116 @@ def apply_aggressive_preset(args, parser):
           f'person_bbox_max={args.person_bbox_max}, '
           f'person_points_max={args.person_points_max}, '
           f'isolation_min={args.isolation_min}')
+
+
+def load_trajectory_xy(path, fmt='auto'):
+    data = np.loadtxt(path, dtype=float)
+    if data.ndim == 1:
+        data = data.reshape(1, -1)
+    if data.shape[1] < 2:
+        raise ValueError(f'trajectory file needs at least 2 columns: {path}')
+
+    if fmt == 'fastlio-pos-log' or (fmt == 'auto' and data.shape[1] >= 7):
+        xy = data[:, 4:6]
+    else:
+        xy = data[:, 0:2]
+
+    keep = np.isfinite(xy).all(axis=1)
+    xy = xy[keep]
+    if len(xy) == 0:
+        raise ValueError(f'no finite trajectory samples in {path}')
+    return xy.astype(np.float64, copy=False)
+
+
+def densify_polyline(xy, step):
+    xy = np.asarray(xy, dtype=np.float64)
+    if len(xy) <= 1 or step <= 0.0:
+        return xy
+
+    samples = [xy[0]]
+    for i in range(len(xy) - 1):
+        start = xy[i]
+        end = xy[i + 1]
+        delta = end - start
+        length = float(np.linalg.norm(delta))
+        if length <= 1e-9:
+            continue
+        count = max(int(np.ceil(length / step)), 1)
+        for j in range(1, count + 1):
+            samples.append(start + delta * (j / count))
+    return np.asarray(samples, dtype=np.float64)
+
+
+def build_corridor_cells(samples_xy, cell_res, corridor_width):
+    if len(samples_xy) == 0:
+        return set()
+    radius_cells = max(int(np.ceil(corridor_width / cell_res)), 0)
+    offsets = []
+    for dx in range(-radius_cells, radius_cells + 1):
+        for dy in range(-radius_cells, radius_cells + 1):
+            if np.hypot(dx * cell_res, dy * cell_res) <= corridor_width + 1e-9:
+                offsets.append((dx, dy))
+
+    base_cells = np.floor(samples_xy / cell_res).astype(np.int64)
+    corridor_cells = set()
+    for cx, cy in base_cells:
+        for dx, dy in offsets:
+            corridor_cells.add((int(cx + dx), int(cy + dy)))
+    return corridor_cells
+
+
+def trajectory_corridor_filter(cloud, args):
+    pts = np.asarray(cloud.points)
+    n = len(pts)
+    if n == 0:
+        return cloud
+    if not args.trajectory_log:
+        raise SystemExit('--trajectory-corridor requires --trajectory-log')
+
+    traj_xy = load_trajectory_xy(args.trajectory_log, args.trajectory_format)
+    dense_xy = densify_polyline(traj_xy, args.corridor_sample_step)
+    corridor_cells = build_corridor_cells(
+        dense_xy, args.corridor_xy_res, args.corridor_width)
+    if not corridor_cells:
+        print('  trajectory corridor filter: no corridor cells generated; skipping')
+        return cloud
+
+    res = args.corridor_xy_res
+    cx = np.floor(pts[:, 0] / res).astype(np.int64)
+    cy = np.floor(pts[:, 1] / res).astype(np.int64)
+
+    order = np.lexsort((cy, cx))
+    cx_s = cx[order]
+    cy_s = cy[order]
+    if n == 1:
+        cell_starts = np.array([0, 1], dtype=np.int64)
+    else:
+        change = (cx_s[1:] != cx_s[:-1]) | (cy_s[1:] != cy_s[:-1])
+        cell_starts = np.concatenate(([0], np.where(change)[0] + 1, [n])).astype(np.int64)
+
+    keep_sorted = np.ones(n, dtype=bool)
+    drop_cells = 0
+    drop_pts = 0
+    corridor_total = 0
+    for i in range(len(cell_starts) - 1):
+        s, e = int(cell_starts[i]), int(cell_starts[i + 1])
+        key = (int(cx_s[s]), int(cy_s[s]))
+        if key not in corridor_cells:
+            continue
+        corridor_total += 1
+        count = e - s
+        if count >= args.corridor_min_pts:
+            continue
+        keep_sorted[s:e] = False
+        drop_cells += 1
+        drop_pts += count
+
+    keep = np.empty(n, dtype=bool)
+    keep[order] = keep_sorted
+    print(f'  trajectory corridor filter ({args.trajectory_log}, width={args.corridor_width}, '
+          f'xy_res={args.corridor_xy_res}, min_pts={args.corridor_min_pts}): '
+          f'dropped {drop_pts} points across {drop_cells}/{corridor_total} sparse corridor cells')
+    return subset_cloud(cloud, keep)
 
 
 def floating_column_filter(cloud, args):

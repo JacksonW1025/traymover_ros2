@@ -1,0 +1,99 @@
+localPlanner:
+  ros__parameters:
+    # pathFolder is set at launch time via Node(parameters=...) override;
+    # must point to ${PROJECT_ROOT}/install/local_planner/share/local_planner/paths
+    pathFolder: ""
+
+    # Footprint (from traymover URDF: body 0.80 x 0.55 m)
+    vehicleLength: 0.80
+    vehicleWidth: 0.55
+
+    # /odom now comes from FAST_LIO body pose (camera_init -> body), not the
+    # LiDAR origin, so CMU should not subtract the LiDAR extrinsic again.
+    sensorOffsetX: 0.0
+    sensorOffsetY: 0.0
+
+    # Differential drive, forward only for safety. Set true later if
+    # reverse is desired.
+    twoWayDrive: false
+
+    # Voxelization
+    laserVoxelSize: 0.05
+    terrainVoxelSize: 0.2
+
+    # Use /terrain_map from terrain_analysis for obstacle reasoning
+    useTerrainAnalysis: true
+    checkObstacle: true
+    checkRotObstacle: false
+
+    # Local planning window
+    adjacentRange: 3.5
+
+    # Height thresholds (relative to sensor)
+    obstacleHeightThre: 0.15
+    groundHeightThre: 0.10
+    costHeightThre: 0.1
+    costScore: 0.02
+    useCost: false
+    pointPerPathThre: 2
+    # z range for terrain clipping relative to vehicle (LiDAR) height
+    minRelZ: -2.0
+    maxRelZ: 0.5
+
+    # Speed limits (conservative first-run)
+    maxSpeed: 0.3
+
+    # Direction weighting
+    dirWeight: 0.02
+    dirThre: 90.0
+    dirToVehicle: false
+
+    # Path primitive scaling
+    pathScale: 1.0
+    minPathScale: 0.5
+    pathScaleStep: 0.25
+    pathScaleBySpeed: true
+    minPathRange: 1.0
+    pathRangeStep: 0.5
+    pathRangeBySpeed: true
+    pathCropByGoal: true
+
+    # Autonomy
+    autonomyMode: true
+    autonomySpeed: 0.3
+    joyToSpeedDelay: 2.0
+    joyToCheckObstacleDelay: 5.0
+    goalClearRange: 0.5
+    goalX: 0.0
+    goalY: 0.0
+
+pathFollower:
+  ros__parameters:
+    sensorOffsetX: 0.0
+    sensorOffsetY: 0.0
+    pubSkipNum: 1
+    twoWayDrive: false
+    lookAheadDis: 0.5
+    yawRateGain: 7.5
+    stopYawRateGain: 7.5
+    maxYawRate: 60.0
+    maxSpeed: 0.3
+    maxAccel: 1.0
+    switchTimeThre: 1.0
+    dirDiffThre: 0.1
+    stopDisThre: 0.2
+    slowDwnDisThre: 0.85
+    useInclRateToSlow: false
+    inclRateThre: 120.0
+    slowRate1: 0.25
+    slowRate2: 0.5
+    slowTime1: 2.0
+    slowTime2: 2.0
+    useInclToStop: false
+    inclThre: 45.0
+    stopTime: 5.0
+    noRotAtStop: false
+    noRotAtGoal: true
+    autonomyMode: true
+    autonomySpeed: 0.3
+    joyToSpeedDelay: 2.0

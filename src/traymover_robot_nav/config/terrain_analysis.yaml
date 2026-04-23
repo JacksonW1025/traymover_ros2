@@ -1,0 +1,41 @@
+terrainAnalysis:
+  ros__parameters:
+    # Voxelization
+    scanVoxelSize: 0.05
+    decayTime: 2.0              # s, how long old points persist
+    noDecayDis: 4.0             # m, points closer than this never decay
+    clearingDis: 8.0            # m, scrub points further than this from vehicle
+
+    # Ground segmentation
+    useSorting: false
+    quantileZ: 0.25
+    considerDrop: true          # treat downward steps as obstacles (pits)
+    limitGroundLift: false
+    maxGroundLift: 0.15
+    # minRelZ/maxRelZ are point z relative to vehicle z (which is LiDAR
+    # height ~1.485 m above the ground in FAST_LIO's world frame).
+    # Wider than default -0.5..0.25 because our vehicle.z is at LiDAR
+    # height, not ground: ground hits come in at roughly -1.5 m.
+    minRelZ: -2.0
+    maxRelZ: 0.5
+    disRatioZ: 0.2
+
+    # Dynamic obstacle clearing
+    clearDyObs: true
+    minDyObsDis: 0.3
+    minDyObsAngle: 0.0
+    minDyObsRelZ: -1.5
+    absDyObsRelZThre: 0.2
+    minDyObsVFOV: -16.0
+    maxDyObsVFOV: 16.0
+    minDyObsPointNum: 1
+
+    # No-data handling
+    noDataObstacle: false
+    noDataBlockSkipNum: 0
+    minBlockPointNum: 10
+
+    # Vehicle
+    vehicleHeight: 1.5
+    voxelPointUpdateThre: 100
+    voxelTimeUpdateThre: 2.0

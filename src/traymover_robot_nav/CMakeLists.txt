@@ -11,6 +11,22 @@ endif()
 
 find_package(ament_cmake REQUIRED)
 
+if(BUILD_TESTING)
+  find_package(ament_cmake_pytest REQUIRED)
+  ament_add_pytest_test(
+    test_pcd2pgm
+    test/test_pcd2pgm.py
+  )
+  ament_add_pytest_test(
+    test_fastlio_online_map_filter
+    test/test_fastlio_online_map_filter.py
+  )
+  ament_add_pytest_test(
+    test_pcd_clean
+    test/test_pcd_clean.py
+  )
+endif()
+
 install(
   DIRECTORY launch config map rviz
   DESTINATION share/${PROJECT_NAME}

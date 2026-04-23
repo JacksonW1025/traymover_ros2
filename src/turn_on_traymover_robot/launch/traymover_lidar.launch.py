@@ -18,6 +18,7 @@ def include_lidar_launch(context, *args, **kwargs):
     yaml_path = LaunchConfiguration('traymover_param_yaml').perform(context)
     cfg = load_yaml(Path(yaml_path))
     lidar_type = LaunchConfiguration('lidar_type').perform(context) or cfg['lidar_type']
+    enable_scan_bridge = LaunchConfiguration('enable_scan_bridge').perform(context).lower() == 'true'
     launch_actions = []
     if lidar_type == 'lscx':
         template_yaml = Path(
@@ -45,36 +46,36 @@ def include_lidar_launch(context, *args, **kwargs):
         )
         pointcloud_topic = lscx_cfg.get('pointcloud_topic', cx_cfg.get('pointcloud_topic', '/point_cloud_raw'))
         frame_id = lscx_cfg.get('frame_id', cx_cfg.get('frame_id', 'laser'))
-        scan_bridge = Node(
-            package='pointcloud_to_laserscan',
-            executable='pointcloud_to_laserscan_node',
-            name='traymover_pointcloud_to_laserscan',
-            remappings=[
-                ('cloud_in', pointcloud_topic),
-                ('scan', '/scan'),
-            ],
-            parameters=[{
-                'target_frame': frame_id,
-                'transform_tolerance': 0.05,
-                'min_height': -0.2,
-                'max_height': 2.0,
-                # /scan limited to front 180 deg (-pi/2 to +pi/2 in laser
-                # frame) — Nav2 obstacle_layer and collision_monitor only
-                # see points in front of the robot. LiDAR driver still
-                # publishes the full 360 deg on /point_cloud_raw so NDT
-                # localization has full geometric constraints.
-                'angle_min': -1.5707963,
-                'angle_max': 1.5707963,
-                'angle_increment': 0.0087,
-                'scan_time': 0.1,
-                'range_min': 0.3,
-                'range_max': cx_cfg.get('max_range', 200.0),
-                'use_inf': True,
-                'inf_epsilon': 1.0,
-            }],
-            output='screen',
-        )
-        launch_actions.extend([lidar_launch, scan_bridge])
+        launch_actions.append(lidar_launch)
+        if enable_scan_bridge:
+            scan_bridge = Node(
+                package='pointcloud_to_laserscan',
+                executable='pointcloud_to_laserscan_node',
+                name='traymover_pointcloud_to_laserscan',
+                remappings=[
+                    ('cloud_in', pointcloud_topic),
+                    ('scan', '/scan'),
+                ],
+                parameters=[{
+                    'target_frame': frame_id,
+                    'transform_tolerance': 0.05,
+                    'min_height': -0.2,
+                    'max_height': 2.0,
+                    # Standalone bringup keeps the historical front-only scan.
+                    # Navigation launches disable this bridge and start their
+                    # own base_link-aligned slicing pipeline instead.
+                    'angle_min': -1.5707963,
+                    'angle_max': 1.5707963,
+                    'angle_increment': 0.0087,
+                    'scan_time': 0.1,
+                    'range_min': 0.3,
+                    'range_max': cx_cfg.get('max_range', 200.0),
+                    'use_inf': True,
+                    'inf_epsilon': 1.0,
+                }],
+                output='screen',
+            )
+            launch_actions.append(scan_bridge)
     elif lidar_type.startswith('ls_'):
         template_yaml = Path(
             get_package_share_directory('lslidar_driver'),
@@ -116,5 +117,10 @@ def generate_launch_description():
             'lidar_type',
             default_value='',
             description='Which lidar model to launch'),
+        DeclareLaunchArgument(
+            'enable_scan_bridge',
+            default_value='true',
+            description='Start the legacy pointcloud_to_laserscan bridge.',
+        ),
         OpaqueFunction(function=include_lidar_launch),
     ])

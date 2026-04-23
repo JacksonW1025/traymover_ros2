@@ -99,9 +99,9 @@ speedBindings={
         'c':(1,  0.9),
           }
 #获取键值函数
-# 默认速度按原值的 1/5 缩放，保证上电首次按键的动作是安全的
-speed = 0.04 #默认移动速度 m/s
-turn  = 0.2  #默认转向速度 rad/s
+# 默认键盘速度
+speed = 0.2  # 默认移动速度 m/s
+turn  = 0.4  # 默认转向速度 rad/s
 def get_key(settings):
     if os.name == 'nt':
         return msvcrt.getch().decode('utf-8')
@@ -130,9 +130,8 @@ def main():
     qos = QoSProfile(depth=10)
     node = rclpy.create_node('traymover_keyboard')
     pub = node.create_publisher(Twist, 'cmd_vel', qos)
-    # 默认速度按原值的 1/5 缩放，保证上电首次按键的动作是安全的
-    speed = 0.04 #默认移动速度 m/s
-    turn  = 0.2  #默认转向速度 rad/s
+    speed = 0.2  # 默认移动速度 m/s
+    turn  = 0.4  # 默认转向速度 rad/s
     x      = 0.0   #前进后退方向
     th     = 0.0   #转向/横向移动方向
     count  = 0.0   #键值不再范围计数

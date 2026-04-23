@@ -23,11 +23,11 @@ or by traymover_nav.launch.py bringup_hardware:=true):
     /imu/data_raw      (hipnuc N300 Pro)
 """
 import os
+from pathlib import Path
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import (DeclareLaunchArgument, EmitEvent,
-                            RegisterEventHandler)
+from launch.actions import DeclareLaunchArgument, EmitEvent, RegisterEventHandler
 from launch.events import matches_action
 from launch.substitutions import Command, LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import LifecycleNode, Node
@@ -35,6 +35,14 @@ from launch_ros.event_handlers import OnStateTransition
 from launch_ros.events.lifecycle import ChangeState
 from launch_ros.parameter_descriptions import ParameterValue
 from lifecycle_msgs.msg import Transition
+
+
+def find_default_pcd() -> str:
+    pcd_dir = Path('/home/wheeltec/traymover_ros2/src/traymover_robot_slam/FAST_LIO/PCD')
+    candidates = sorted(pcd_dir.glob('*.pcd'), key=lambda p: p.stat().st_mtime, reverse=True)
+    if candidates:
+        return str(candidates[0])
+    return str(pcd_dir / 'traymover.pcd')
 
 
 def generate_launch_description():
@@ -49,10 +57,10 @@ def generate_launch_description():
     localization_params = LaunchConfiguration('localization_params')
     urdf_model = LaunchConfiguration('urdf_model')
     use_sim_time = LaunchConfiguration('use_sim_time')
+    cloud_topic = LaunchConfiguration('cloud_topic')
     # Default PCD matches what's hardcoded in config/localization.yaml.
     # Pass a different path via `pcd_path:=<abs>` to override at runtime.
-    default_pcd = ('/home/wheeltec/traymover_ros2/src/traymover_robot_slam/'
-                   'FAST_LIO/PCD/traymover_20260418_183556.pcd')
+    default_pcd = find_default_pcd()
 
     robot_description = ParameterValue(
         Command(['xacro', ' ', urdf_model]), value_type=str)
@@ -119,22 +127,25 @@ def generate_launch_description():
             {'map_path': LaunchConfiguration('pcd_path')},
         ],
         remappings=[
-            ('/cloud', '/point_cloud_raw'),
+            ('/cloud', cloud_topic),
             ('/imu', '/imu/data_raw'),
             # /odom is the FAST_LIO-provided twist; lidar_localization
             # integrates it between NDT scans. Kept explicit so breaking the
             # remap in FAST_LIO doesn't silently disable motion prediction.
             ('/odom', '/odom'),
         ],
-        output='screen',
+        # output='both' mirrors stdout/stderr to the session log as well
+        # as the terminal — needed to post-mortem NDT converge/fitness/jump
+        # warnings after a run, since the spawn-in-terminal window is often
+        # closed before we can copy its scrollback.
+        output='both',
     )
 
-    to_configure = EmitEvent(event=ChangeState(
+    configure_localization = EmitEvent(event=ChangeState(
         lifecycle_node_matcher=matches_action(lidar_loc),
         transition_id=Transition.TRANSITION_CONFIGURE,
     ))
-
-    on_inactive = RegisterEventHandler(OnStateTransition(
+    activate_localization = RegisterEventHandler(OnStateTransition(
         target_lifecycle_node=lidar_loc,
         goal_state='inactive',
         entities=[EmitEvent(event=ChangeState(
@@ -159,6 +170,9 @@ def generate_launch_description():
         DeclareLaunchArgument('localization_params', default_value=default_params),
         DeclareLaunchArgument('urdf_model', default_value=default_urdf),
         DeclareLaunchArgument(
+            'cloud_topic', default_value='/point_cloud_raw',
+            description='Point cloud topic consumed by lidar_localization_ros2.'),
+        DeclareLaunchArgument(
             'pcd_path', default_value=default_pcd,
             description='Absolute path to the PCD used as prior map.'),
         rsp,
@@ -166,6 +180,6 @@ def generate_launch_description():
         static_odom_to_cam_init,
         static_body_to_base,
         lidar_loc,
-        to_configure,
-        on_inactive,
+        configure_localization,
+        activate_localization,
     ])

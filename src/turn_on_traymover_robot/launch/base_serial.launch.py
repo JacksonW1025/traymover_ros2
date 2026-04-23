@@ -17,14 +17,18 @@ def include_base_launch(context, *args, **kwargs):
     cfg_path = LaunchConfiguration('traymover_param_yaml').perform(context)
     cfg = load_yaml(cfg_path)
     imu_mode = LaunchConfiguration('imu_mode').perform(context) or cfg['imu_mode']
+    odom_source_mode = LaunchConfiguration('odom_source_mode').perform(context)
     use_imu = LaunchConfiguration('use_imu').perform(context).lower() == 'true'
+    robot_params = [LaunchConfiguration('robot_config')]
+    if odom_source_mode:
+        robot_params.append({'odom_source_mode': odom_source_mode})
     nodes = [
         Node(
             package='turn_on_traymover_robot',
             executable='traymover_robot_node',
             name='turn_on_traymover_robot',
             output='screen',
-            parameters=[LaunchConfiguration('robot_config')],
+            parameters=robot_params,
         )
     ]
 
@@ -74,6 +78,11 @@ def generate_launch_description():
             'imu_mode',
             default_value='',
             description='Override imu_mode from traymover_param.yaml.',
+        ),
+        DeclareLaunchArgument(
+            'odom_source_mode',
+            default_value='',
+            description='Override odom_source_mode from traymover_robot.yaml.',
         ),
         DeclareLaunchArgument(
             'imu_topic',
