@@ -107,6 +107,7 @@ KILL_PATTERNS=(
     'realsense2_camera_node'
     'realsense2_camera_container'
     'fastlio_online_map_filter'
+    'depthimage_to_laserscan_node'
     'pointcloud_to_laserscan'
     'pointcloud_nav_preprocessor'
     'imu_pose_broadcaster'
@@ -645,6 +646,135 @@ action_start_nav() {
 EOF
 }
 
+action_start_nav_lidar_realsense_obstacle() {
+    # Option 16 is an additive dynamic-obstacle variant of option 10. It keeps
+    # the same PCD selection, pcd2pgm runtime map generation, chassis/LiDAR
+    # bringup, FAST-LIO + NDT localization, and Nav2 planner/controller stack.
+    # Only this option enables LiDAR /scan obstacle input, RealSense depth
+    # LaserScan input, local_costmap obstacle_layer, and collision monitor.
+    if [ ! -d "${FASTLIO_PCD_DIR}" ]; then
+        echo "[traymover] FAST-LIO PCD directory missing: ${FASTLIO_PCD_DIR}"
+        echo "[traymover] Record a map first (options 6 + 7)."
+        return 1
+    fi
+
+    local -a pcds=()
+    while IFS= read -r -d '' f; do
+        pcds+=("$f")
+    done < <(find "${FASTLIO_PCD_DIR}" -maxdepth 1 -name '*.pcd' -type f -print0 2>/dev/null \
+             | xargs -0 -I{} stat --format='%Y %n' {} 2>/dev/null \
+             | sort -rn | cut -d' ' -f2- | tr '\n' '\0')
+
+    if [ ${#pcds[@]} -eq 0 ]; then
+        echo "[traymover] No .pcd files in ${FASTLIO_PCD_DIR}. Save a map first (option 7)."
+        return 1
+    fi
+
+    echo "Available PCD maps in ${FASTLIO_PCD_DIR} (newest first):"
+    local i size
+    for i in "${!pcds[@]}"; do
+        size="$(du -h "${pcds[i]}" 2>/dev/null | awk '{print $1}')"
+        printf "  [%d] %s  (%s)\n" "$((i+1))" "$(basename "${pcds[i]}")" "${size:-?}"
+    done
+
+    local pick pcd_path
+    read -r -p "Select PCD number [default: 1 = newest]: " pick
+    pick="${pick:-1}"
+    if ! [[ "${pick}" =~ ^[0-9]+$ ]] || [ "${pick}" -lt 1 ] || [ "${pick}" -gt "${#pcds[@]}" ]; then
+        echo "[traymover] Invalid selection: ${pick}"
+        return 1
+    fi
+    pcd_path="${pcds[$((pick-1))]}"
+    echo "[traymover] Selected: ${pcd_path}"
+
+    mkdir -p "${NAV_RUNTIME_DIR}"
+    local runtime_name runtime_prefix runtime_map_yaml
+    runtime_name="$(basename "${pcd_path}" .pcd)"
+    runtime_prefix="${NAV_RUNTIME_DIR}/${runtime_name}_2d"
+    runtime_map_yaml="${runtime_prefix}.yaml"
+
+    set +u
+    mkdir -p "${ROS_LOG_DIR_DEFAULT}"
+    export ROS_LOG_DIR="${ROS_LOG_DIR_DEFAULT}"
+    # shellcheck disable=SC1090
+    source "${ROS_DISTRO_SETUP}"
+    if [ -f "${WS_SETUP}" ]; then
+        # shellcheck disable=SC1090
+        source "${WS_SETUP}"
+    fi
+    set -u
+
+    echo "[traymover] Generating runtime 2D nav map from selected PCD ..."
+    if ! python3 "${NAV_SCRIPTS_DIR}/pcd2pgm.py" \
+            --pcd "${pcd_path}" \
+            --out "${runtime_prefix}" \
+            --z-min "${NAV_PGM_Z_MIN}" \
+            --z-max "${NAV_PGM_Z_MAX}" \
+            --min-points "${NAV_PGM_MIN_POINTS}" \
+            --dilate "${NAV_PGM_DILATE}" \
+            --min-region-cells "${NAV_PGM_MIN_REGION_CELLS}"; then
+        echo "[traymover] pcd2pgm failed. Aborting obstacle nav startup."
+        return 1
+    fi
+    if [ ! -f "${runtime_map_yaml}" ]; then
+        echo "[traymover] Expected runtime map YAML missing: ${runtime_map_yaml}"
+        return 1
+    fi
+    echo "[traymover] Runtime map YAML: ${runtime_map_yaml}"
+    echo "[traymover] Runtime map params: z=[${NAV_PGM_Z_MIN}, ${NAV_PGM_Z_MAX}] m above floor, min_points=${NAV_PGM_MIN_POINTS}, dilate=${NAV_PGM_DILATE}, min_region_cells=${NAV_PGM_MIN_REGION_CELLS}"
+
+    local rviz_opt rviz_arg
+    read -r -p "Launch RViz? [Y/n]: " rviz_opt
+    rviz_opt="${rviz_opt:-Y}"
+    if [[ "${rviz_opt}" =~ ^[Yy] ]]; then
+        rviz_arg="launch_rviz:=true"
+    else
+        rviz_arg="launch_rviz:=false"
+    fi
+
+    local realsense_depth_topic="/camera/camera/depth/image_rect_raw"
+    local realsense_info_topic="/camera/camera/depth/camera_info"
+    local realsense_scan_topic="/scan_realsense"
+
+    cat <<EOF
+[traymover] Option 16 expects RealSense camera driver to be running unless
+[traymover] start_realsense_driver:=true is passed manually to the launch file.
+[traymover] RealSense depth topic default      : ${realsense_depth_topic}
+[traymover] RealSense camera_info topic default: ${realsense_info_topic}
+[traymover] RealSense scan output             : ${realsense_scan_topic}
+EOF
+
+    echo "[traymover] Starting chassis + IMU (base_serial) ..."
+    spawn_in_terminal "traymover: chassis_serial" \
+        "ros2 launch turn_on_traymover_robot base_serial.launch.py odom_source_mode:=none"
+
+    echo "[traymover] Starting LiDAR driver (option 16 navigation publishes obstacle /scan) ..."
+    spawn_in_terminal "traymover: lidar" \
+        "ros2 launch turn_on_traymover_robot traymover_lidar.launch.py enable_scan_bridge:=false"
+
+    sleep 6
+
+    echo "[traymover] Starting LiDAR + RealSense obstacle nav stack with pcd_path=${pcd_path} map=${runtime_map_yaml} ..."
+    spawn_in_terminal "traymover: obstacle_nav_stack" \
+        "ros2 launch traymover_robot_nav traymover_nav_lidar_realsense_obstacle.launch.py ${rviz_arg} \
+            pcd_path:='${pcd_path}' \
+            map:='${runtime_map_yaml}' \
+            realsense_depth_topic:='${realsense_depth_topic}' \
+            realsense_info_topic:='${realsense_info_topic}' \
+            realsense_scan_topic:='${realsense_scan_topic}'"
+
+    cat <<EOF
+[traymover] Obstacle nav stack starting. Expected speed chain:
+  Nav2 controller -> /cmd_vel_nav -> collision_monitor -> /cmd_vel -> chassis
+  Health checks:
+    ros2 topic list | grep -E "scan|cmd_vel|point_cloud|costmap|camera"
+    ros2 topic hz /scan
+    ros2 topic hz /scan_realsense
+    ros2 topic hz /cmd_vel_nav
+    ros2 topic hz /cmd_vel
+EOF
+}
+
 action_start_nav_speed_modes() {
     # Option 15 is an additive variant of option 10: same map selection,
     # runtime 2D map generation, hardware bringup, localization, Nav2 launch,
@@ -1106,6 +1236,7 @@ print_menu() {
  13) Intersect multiple FAST-LIO PCDs  (majority vote across sessions)
  14) Start 3D point-cloud navigation  (FAST_LIO + NDT + CMU local_planner + RViz; no 2D PGM)
  15) Start navigation with speed mode  (option 10 flow + selectable Nav2 speed)
+ 16) Navigation with LiDAR + RealSense Dynamic Obstacle Avoidance
   q) Quit
 ==============================
 EOF
@@ -1137,6 +1268,7 @@ main() {
             13) action_intersect_pcds ;;
             14) action_start_3d_nav ;;
             15) action_start_nav_speed_modes ;;
+            16) action_start_nav_lidar_realsense_obstacle ;;
             q|Q|quit|exit) echo "Bye."; exit 0 ;;
             "") ;;
             *) echo "Unknown option: ${choice}" ;;

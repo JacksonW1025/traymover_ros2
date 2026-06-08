@@ -87,6 +87,87 @@ def test_option10_launch_does_not_route_through_collision_monitor():
     assert "'waypoint_follower'" not in launch_text
 
 
+def test_option16_obstacle_nav_uses_option10_controller_with_local_obstacles():
+    baseline = load_unique_yaml(PKG_ROOT / 'config' / 'nav2_params.yaml')
+    params = load_unique_yaml(
+        PKG_ROOT / 'config' / 'nav2_params_lidar_realsense_obstacle.yaml'
+    )
+
+    baseline_controller = baseline['controller_server']['ros__parameters']
+    controller = params['controller_server']['ros__parameters']
+    local_costmap = params['local_costmap']['local_costmap']['ros__parameters']
+    global_costmap = params['global_costmap']['global_costmap']['ros__parameters']
+    obstacle_layer = local_costmap['obstacle_layer']
+
+    assert controller['FollowPath'] == baseline_controller['FollowPath']
+    assert controller['progress_checker'] == baseline_controller['progress_checker']
+    assert controller['controller_plugins'] == baseline_controller['controller_plugins']
+    assert local_costmap['plugins'] == ['obstacle_layer', 'inflation_layer']
+    assert global_costmap['plugins'] == ['static_layer', 'inflation_layer']
+    assert obstacle_layer['plugin'] == 'nav2_costmap_2d::ObstacleLayer'
+    assert obstacle_layer['enabled'] is True
+    assert obstacle_layer['observation_sources'] == 'lidar_scan realsense_scan'
+    assert obstacle_layer['lidar_scan']['topic'] == '/scan'
+    assert obstacle_layer['lidar_scan']['data_type'] == 'LaserScan'
+    assert obstacle_layer['realsense_scan']['topic'] == '/scan_realsense'
+    assert obstacle_layer['realsense_scan']['data_type'] == 'LaserScan'
+
+
+def test_option16_launch_routes_scans_and_cmd_vel_through_collision_monitor():
+    launch_text = (
+        PKG_ROOT / 'launch' / 'traymover_nav_lidar_realsense_obstacle.launch.py'
+    ).read_text(encoding='utf-8')
+    collision = load_unique_yaml(
+        PKG_ROOT / 'config' / 'collision_monitor_lidar_realsense.yaml'
+    )['collision_monitor']['ros__parameters']
+
+    assert 'nav2_params_lidar_realsense_obstacle.yaml' in launch_text
+    assert 'collision_monitor_lidar_realsense.yaml' in launch_text
+    assert "'publish_scan': 'true'" in launch_text
+    assert "'scan_topic': '/scan'" in launch_text
+    assert "package='depthimage_to_laserscan'" in launch_text
+    assert "('depth', realsense_depth_topic)" in launch_text
+    assert "('depth_camera_info', realsense_info_topic)" in launch_text
+    assert "('scan', realsense_scan_topic)" in launch_text
+    assert "'realsense_depth_topic'," in launch_text
+    assert "default_value='/camera/camera/depth/image_rect_raw'" in launch_text
+    assert "default_value='/camera/camera/depth/camera_info'" in launch_text
+    assert "default_value='/scan_realsense'" in launch_text
+    assert "('cmd_vel', '/cmd_vel_nav')" in launch_text
+    assert 'collision_monitor.launch.py' in launch_text
+    assert "'params_file': collision_params_file" in launch_text
+    assert "'max_map_odom_update_translation': '0.50'" in launch_text
+    assert "'max_map_odom_update_rotation': '0.25'" in launch_text
+
+    assert collision['cmd_vel_in_topic'] == 'cmd_vel_nav'
+    assert collision['cmd_vel_out_topic'] == 'cmd_vel'
+    assert collision['polygons'] == ['PolygonStop', 'PolygonSlow']
+    assert collision['observation_sources'] == ['realsense_scan', 'lidar_scan']
+    assert collision['realsense_scan']['topic'] == '/scan_realsense'
+    assert collision['lidar_scan']['topic'] == '/scan'
+
+
+def test_option16_launcher_menu_keeps_option10_baseline_separate():
+    launcher_text = (WORKSPACE_ROOT / 'scripts' / 'traymover.sh').read_text(
+        encoding='utf-8'
+    )
+
+    assert '10) action_start_nav ;;' in launcher_text
+    assert '16) action_start_nav_lidar_realsense_obstacle ;;' in launcher_text
+    assert '16) Navigation with LiDAR + RealSense Dynamic Obstacle Avoidance' in launcher_text
+    assert 'traymover_nav_lidar_realsense_obstacle.launch.py' in launcher_text
+    assert 'realsense_depth_topic:=\'${realsense_depth_topic}\'' in launcher_text
+    assert 'realsense_info_topic:=\'${realsense_info_topic}\'' in launcher_text
+    assert 'realsense_scan_topic:=\'${realsense_scan_topic}\'' in launcher_text
+    assert 'Option 16 expects RealSense camera driver to be running' in launcher_text
+
+
+def test_option16_declares_depthimage_to_laserscan_dependency():
+    package_xml = (PKG_ROOT / 'package.xml').read_text(encoding='utf-8')
+
+    assert '<exec_depend>depthimage_to_laserscan</exec_depend>' in package_xml
+
+
 def test_lidar_localization_does_not_claim_nav2_map_topic_as_pointcloud():
     localization_source = (
         SRC_ROOT / 'traymover_robot_slam' / 'lidar_localization_ros2' /
