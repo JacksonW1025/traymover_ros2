@@ -483,6 +483,17 @@ class TurnOnTraymoverRobot(Node):
         self.charge_status_pub = self.create_publisher(UInt8, 'charge_status', 10)
         self.power_temperature_pub = self.create_publisher(Int16, 'power_temperature', 10)
         self.power_current_pub = self.create_publisher(Int16, 'power_current', 10)
+        self.emergency_status_pub = self.create_publisher(UInt8, 'motor_emergency_status', 10)
+        self.init_status_pub = self.create_publisher(UInt8, 'motor_init_status', 10)
+        self.left_alarm_pub = self.create_publisher(UInt8, 'left_motor_alarm', 10)
+        self.right_alarm_pub = self.create_publisher(UInt8, 'right_motor_alarm', 10)
+        self.motor_enabled_pub = self.create_publisher(UInt8, 'motor_enabled', 10)
+        self.motor_shutdown_pub = self.create_publisher(UInt8, 'motor_shutdown', 10)
+        self.motor_driver_mode_pub = self.create_publisher(UInt8, 'motor_driver_mode', 10)
+        self.commanded_speed_x_pub = self.create_publisher(Int16, 'motor_status_speed_x', 10)
+        self.commanded_speed_th_pub = self.create_publisher(Int16, 'motor_status_speed_th', 10)
+        self.motor_move_dir_pub = self.create_publisher(UInt8, 'motor_move_dir', 10)
+        self.android_cmd_pub = self.create_publisher(UInt8, 'motor_android_cmd', 10)
         self.odom_tf_broadcaster = TransformBroadcaster(self) if self.publish_odom_tf else None
         self.poll_timer = self.create_timer(1.0 / self.poll_rate_hz, self.send_frame_callback)
 
@@ -647,6 +658,7 @@ class TurnOnTraymoverRobot(Node):
 
     def handle_motor_feedback(self, feedback: MotorFeedback, stamp):
         self._latest_motor_feedback = feedback
+        self.publish_motor_feedback_diagnostics(feedback)
         self.publish_power_feedback(feedback, stamp)
 
         if not self.odom_enabled:
@@ -690,6 +702,7 @@ class TurnOnTraymoverRobot(Node):
 
     def handle_motor_status(self, status: MotorStatus, stamp) -> None:
         self._latest_motor_status = status
+        self.publish_motor_status_diagnostics(status)
 
         temperature_msg = Int16()
         temperature_msg.data = status.power_temperature
@@ -700,6 +713,40 @@ class TurnOnTraymoverRobot(Node):
         self.power_current_pub.publish(current_msg)
 
         self.publish_battery_state(stamp)
+
+    def publish_motor_feedback_diagnostics(self, feedback: MotorFeedback) -> None:
+        diagnostics = (
+            (self.emergency_status_pub, feedback.emergency_status),
+            (self.init_status_pub, feedback.init_status),
+            (self.left_alarm_pub, feedback.left_alarm),
+            (self.right_alarm_pub, feedback.right_alarm),
+            (self.motor_enabled_pub, feedback.motor_enabled),
+            (self.motor_shutdown_pub, feedback.shutdown),
+            (self.motor_driver_mode_pub, feedback.driver_mode),
+        )
+        for publisher, value in diagnostics:
+            msg = UInt8()
+            msg.data = int(value) & 0xFF
+            publisher.publish(msg)
+
+    def publish_motor_status_diagnostics(self, status: MotorStatus) -> None:
+        signed_diagnostics = (
+            (self.commanded_speed_x_pub, status.left_pwm),
+            (self.commanded_speed_th_pub, status.right_pwm),
+        )
+        for publisher, value in signed_diagnostics:
+            msg = Int16()
+            msg.data = int(value)
+            publisher.publish(msg)
+
+        byte_diagnostics = (
+            (self.motor_move_dir_pub, status.move_dir),
+            (self.android_cmd_pub, status.android_cmd),
+        )
+        for publisher, value in byte_diagnostics:
+            msg = UInt8()
+            msg.data = int(value) & 0xFF
+            publisher.publish(msg)
 
     def publish_power_feedback(self, feedback: MotorFeedback, stamp) -> None:
         power_msg = UInt8()

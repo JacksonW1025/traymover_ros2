@@ -27,7 +27,7 @@ NAV_PGM_MIN_POINTS="1"
 NAV_PGM_DILATE="2"
 NAV_PGM_MIN_REGION_CELLS="2"
 
-REALSENSE_LAUNCH_CMD="ros2 launch realsense2_camera rs_launch.py enable_color:=true enable_depth:=false align_depth.enable:=false enable_sync:=true pointcloud.enable:=false"
+REALSENSE_LAUNCH_CMD="ros2 launch realsense2_camera rs_launch.py enable_color:=true rgb_camera.color_profile:=640x480x15 enable_depth:=false align_depth.enable:=false enable_sync:=true pointcloud.enable:=false"
 REALSENSE_ROSBAG_TOPICS=(
     '/camera/camera/color/image_raw'
     '/camera/camera/color/camera_info'
@@ -95,7 +95,6 @@ KILL_PATTERNS=(
     'ros2 launch lslidar_driver'
     'ros2 launch fast_lio'
     'ros2 launch realsense2_camera'
-    'ros2 bag record'
     'ros2 bag play'
     'ros2 run traymover_robot_keyboard'
     'traymover_keyboard'
@@ -142,9 +141,109 @@ KILL_PATTERNS=(
     '\[traymover\]'  # the wrapper banner, matches bash processes in spawned terminals
 )
 
+ROSBAG_RECORD_PATTERN='ros2 bag record'
+ROSBAG_STOP_TIMEOUT_SECONDS="${TRAYMOVER_ROSBAG_STOP_TIMEOUT_SECONDS:-300}"
+
+rosbag_record_pids() {
+    local pid comm args
+
+    ps -eo pid=,comm=,args= | while read -r pid comm args; do
+        case "${comm}" in
+            bash|sh|gnome-terminal*|xterm|awk|ps|rg|grep|pkill|pgrep)
+                continue
+                ;;
+        esac
+        case "${args}" in
+            *"${ROSBAG_RECORD_PATTERN}"*)
+                echo "${pid}"
+                ;;
+        esac
+    done
+}
+
+rosbag_recorders_running() {
+    [ -n "$(rosbag_record_pids)" ]
+}
+
+signal_rosbag_recorders() {
+    local signal="$1"
+    local -a pids=()
+
+    mapfile -t pids < <(rosbag_record_pids)
+    [ "${#pids[@]}" -gt 0 ] || return 0
+    kill "-${signal}" "${pids[@]}" 2>/dev/null || true
+}
+
+reindex_missing_rosbag_metadata() {
+    local quiet="${1:-false}"
+    local bag_dir has_db
+
+    [ -d "${FASTLIO_ROSBAG_DIR}" ] || return 0
+    [ -f "${ROS_DISTRO_SETUP}" ] || return 0
+
+    while IFS= read -r -d '' bag_dir; do
+        [ ! -f "${bag_dir}/metadata.yaml" ] || continue
+        has_db="$(find "${bag_dir}" -maxdepth 1 -type f -name '*.db3' -print -quit 2>/dev/null)"
+        [ -n "${has_db}" ] || continue
+
+        [ "$quiet" = "true" ] || echo "[traymover] Rebuilding missing rosbag metadata: ${bag_dir}"
+        (
+            set +u
+            # shellcheck disable=SC1090
+            source "${ROS_DISTRO_SETUP}"
+            set -u
+            ros2 bag reindex -s sqlite3 "${bag_dir}"
+        ) >/tmp/traymover_rosbag_reindex.log 2>&1 || {
+            echo "[traymover] WARNING: ros2 bag reindex failed for ${bag_dir}"
+            echo "[traymover]          See /tmp/traymover_rosbag_reindex.log"
+        }
+    done < <(find "${FASTLIO_ROSBAG_DIR}" -mindepth 1 -maxdepth 1 -type d -print0 2>/dev/null)
+}
+
+stop_rosbag_recorders() {
+    local quiet="${1:-false}"
+    local waited=0
+    local timeout="${ROSBAG_STOP_TIMEOUT_SECONDS}"
+
+    case "${timeout}" in
+        ''|*[!0-9]*)
+            timeout=300
+            ;;
+    esac
+
+    rosbag_recorders_running || return 0
+
+    [ "$quiet" = "true" ] || echo "[traymover] Stopping rosbag recorder and waiting for metadata..."
+    signal_rosbag_recorders INT
+
+    while rosbag_recorders_running && { [ "${timeout}" -le 0 ] || [ "${waited}" -lt "${timeout}" ]; }; do
+        sleep 1
+        waited=$((waited + 1))
+        if [ "$quiet" != "true" ] && [ $((waited % 10)) -eq 0 ]; then
+            echo "[traymover] Still waiting for rosbag to finalize... ${waited}s"
+        fi
+    done
+
+    if rosbag_recorders_running; then
+        [ "$quiet" = "true" ] || echo "[traymover] rosbag is still stopping; sending TERM and waiting briefly..."
+        signal_rosbag_recorders TERM
+        waited=0
+        while rosbag_recorders_running && [ "${waited}" -lt 30 ]; do
+            sleep 1
+            waited=$((waited + 1))
+        done
+    fi
+
+    if rosbag_recorders_running; then
+        echo "[traymover] WARNING: rosbag did not exit cleanly; forcing stop may require reindex."
+        signal_rosbag_recorders KILL
+    fi
+}
+
 kill_previous() {
     local quiet="${1:-false}"
     [ "$quiet" = "true" ] || echo "[traymover] Cleaning up previous processes..."
+    stop_rosbag_recorders "$quiet"
     for p in "${KILL_PATTERNS[@]}"; do
         pkill -f "$p" 2>/dev/null || true
     done
@@ -153,6 +252,7 @@ kill_previous() {
     for p in "${KILL_PATTERNS[@]}"; do
         pkill -9 -f "$p" 2>/dev/null || true
     done
+    reindex_missing_rosbag_metadata "$quiet"
     [ "$quiet" = "true" ] || echo "[traymover] Cleanup done."
 }
 
@@ -334,7 +434,7 @@ action_replay_fastlio_bag() {
     # Let fast_lio subscribe + init before playback starts.
     sleep 3
     spawn_in_terminal "traymover: bag_play" \
-        "ros2 bag play '${bag_path}' --clock"
+        "ros2 bag play '${bag_path}' --clock -r 0.5"
 }
 
 action_record_fastlio_bag() {

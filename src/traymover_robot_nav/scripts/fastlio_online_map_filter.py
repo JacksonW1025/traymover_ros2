@@ -368,7 +368,7 @@ if ROS_AVAILABLE:
             self.latest_pose: PoseSample | None = None
             self.last_frame_id = 'camera_init'
             self._scans_seen = 0
-            self._last_missing_pose_warn = self.get_clock().now() - Duration(seconds=10.0)
+            self._last_missing_pose_warn = None
 
             self.create_subscription(Odometry, self.odom_topic, self.on_odom, sensor_qos)
             self.create_subscription(PointCloud2, self.input_topic, self.on_cloud, sensor_qos)
@@ -405,6 +405,23 @@ if ROS_AVAILABLE:
                 rotation_body_to_world=rotation,
             )
 
+        def should_warn_missing_pose(self, now) -> bool:
+            if self._last_missing_pose_warn is None:
+                self._last_missing_pose_warn = now
+                return True
+
+            try:
+                should_warn = (
+                    now < self._last_missing_pose_warn
+                    or now - self._last_missing_pose_warn > Duration(seconds=2.0)
+                )
+            except ValueError:
+                should_warn = True
+
+            if should_warn:
+                self._last_missing_pose_warn = now
+            return should_warn
+
         def on_cloud(self, msg: PointCloud2) -> None:
             try:
                 points_xyzi = pointcloud2_to_xyzi(msg)
@@ -418,8 +435,7 @@ if ROS_AVAILABLE:
             if self.rear_filter_enabled:
                 if self.latest_pose is None:
                     now = self.get_clock().now()
-                    if now - self._last_missing_pose_warn > Duration(seconds=2.0):
-                        self._last_missing_pose_warn = now
+                    if self.should_warn_missing_pose(now):
                         self.get_logger().warn('no /odom yet; rear exclusion box disabled until a pose arrives')
                 points_xyzi = apply_body_box_exclusion(
                     points_xyzi_world=points_xyzi,

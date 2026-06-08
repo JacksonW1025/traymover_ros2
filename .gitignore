@@ -3,7 +3,7 @@ build/
 install/
 log/
 
-# Python
+# Pythoni
 __pycache__/
 *.pyc
 *.pyo

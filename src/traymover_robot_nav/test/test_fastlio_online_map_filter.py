@@ -4,6 +4,7 @@ import importlib.util
 import sys
 
 import numpy as np
+import pytest
 
 
 MODULE_PATH = Path(__file__).resolve().parents[1] / 'scripts' / 'fastlio_online_map_filter.py'
@@ -77,6 +78,21 @@ def test_body_box_exclusion_removes_points_behind_robot():
 
     assert filtered.shape == (1, 4)
     assert np.allclose(filtered[0], cloud[1])
+
+
+def test_missing_pose_warning_handles_zero_sim_time_and_clock_rewind():
+    if not map_filter.ROS_AVAILABLE:
+        pytest.skip('ROS 2 Python dependencies are unavailable')
+
+    from rclpy.time import Time
+
+    node = object.__new__(map_filter.FastlioOnlineMapFilter)
+    node._last_missing_pose_warn = None
+
+    assert node.should_warn_missing_pose(Time(seconds=0)) is True
+    assert node.should_warn_missing_pose(Time(seconds=1)) is False
+    assert node.should_warn_missing_pose(Time(seconds=3)) is True
+    assert node.should_warn_missing_pose(Time(seconds=0)) is True
 
 
 def test_write_binary_pcd_writes_header_and_payload(tmp_path):
