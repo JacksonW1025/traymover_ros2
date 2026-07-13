@@ -19,9 +19,20 @@ def include_base_launch(context, *args, **kwargs):
     imu_mode = LaunchConfiguration('imu_mode').perform(context) or cfg['imu_mode']
     odom_source_mode = LaunchConfiguration('odom_source_mode').perform(context)
     use_imu = LaunchConfiguration('use_imu').perform(context).lower() == 'true'
+    auto_estop_enabled = (
+        LaunchConfiguration('auto_estop_enabled').perform(context).lower()
+        in ('true', '1', 'yes', 'on')
+    )
+    auto_estop_timeout_sec = float(
+        LaunchConfiguration('auto_estop_timeout_sec').perform(context)
+    )
     robot_params = [LaunchConfiguration('robot_config')]
     if odom_source_mode:
         robot_params.append({'odom_source_mode': odom_source_mode})
+    robot_params.append({
+        'auto_estop_enabled': auto_estop_enabled,
+        'auto_estop_timeout_sec': auto_estop_timeout_sec,
+    })
     nodes = [
         Node(
             package='turn_on_traymover_robot',
@@ -83,6 +94,16 @@ def generate_launch_description():
             'odom_source_mode',
             default_value='',
             description='Override odom_source_mode from traymover_robot.yaml.',
+        ),
+        DeclareLaunchArgument(
+            'auto_estop_enabled',
+            default_value='false',
+            description='Enable fail-safe automatic EStop input and watchdog.',
+        ),
+        DeclareLaunchArgument(
+            'auto_estop_timeout_sec',
+            default_value='0.30',
+            description='Maximum automatic EStop heartbeat age before stopping.',
         ),
         DeclareLaunchArgument(
             'imu_topic',

@@ -1,0 +1,9 @@
+<library path="traymover_robot_safety">
+  <class name="traymover_robot_safety/EstopPanel"
+         type="traymover_robot_safety::EstopPanel"
+         base_class_type="rviz_common::Panel">
+    <description>
+      Traymover emergency stop panel with mutually exclusive EStop and Free controls.
+    </description>
+  </class>
+</library>

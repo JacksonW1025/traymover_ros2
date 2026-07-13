@@ -49,7 +49,7 @@ controller_server:
       plugin: "traymover_robot_nav::YawProgressChecker"
       required_movement_radius: 0.30
       required_movement_angle: 0.20
-      movement_time_allowance: 8.0
+      movement_time_allowance: 45.0
 
     general_goal_checker:
       stateful: True

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import sys
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -136,6 +137,13 @@ class FakeSerial:
 
     def close(self):
         self.is_open = False
+
+
+def frame_velocities(frame):
+    return (
+        int.from_bytes(frame[10:12], 'big', signed=True) / 1000.0,
+        int.from_bytes(frame[12:14], 'big', signed=True) / 1000.0,
+    )
 
 
 @pytest.fixture(scope='module', autouse=True)
@@ -323,5 +331,167 @@ def test_node_publishes_power_status_topics(monkeypatch):
     assert battery_messages[-1].temperature == pytest.approx(24.0)
     assert battery_messages[-1].current == pytest.approx(7.0)
     assert battery_messages[-1].power_supply_status == robot.BatteryState.POWER_SUPPLY_STATUS_CHARGING
+
+    node.destroy_node()
+
+
+def test_estop_forces_zero_serial_frame_and_ignores_new_cmd_vel(monkeypatch):
+    fake_serial = FakeSerial(make_feedback_frame())
+    monkeypatch.setattr(robot.serial, 'Serial', lambda *args, **kwargs: fake_serial)
+
+    node = robot.TurnOnTraymoverRobot()
+    node.status_poll_period = None
+    estop_messages = []
+    node.estop_state_pub = SimpleNamespace(publish=estop_messages.append)
+
+    cmd = robot.Twist()
+    cmd.linear.x = 0.25
+    cmd.angular.z = 0.6
+    node.cmd_vel_callback(cmd)
+
+    response = node.set_estop_callback(
+        SimpleNamespace(data=True), SimpleNamespace(success=False, message='')
+    )
+
+    ignored_cmd = robot.Twist()
+    ignored_cmd.linear.x = 0.35
+    ignored_cmd.angular.z = 0.9
+    node.cmd_vel_callback(ignored_cmd)
+    node.send_frame_callback()
+
+    assert response.success is True
+    assert response.message == 'EStop engaged'
+    assert estop_messages[-1].data is True
+    assert frame_velocities(fake_serial.writes[-1]) == (0.0, 0.0)
+
+    node.destroy_node()
+
+
+def test_estop_release_waits_for_fresh_cmd_vel(monkeypatch):
+    fake_serial = FakeSerial(make_feedback_frame())
+    monkeypatch.setattr(robot.serial, 'Serial', lambda *args, **kwargs: fake_serial)
+
+    node = robot.TurnOnTraymoverRobot()
+    node.status_poll_period = None
+    estop_messages = []
+    node.estop_state_pub = SimpleNamespace(publish=estop_messages.append)
+
+    moving_cmd = robot.Twist()
+    moving_cmd.linear.x = 0.22
+    moving_cmd.angular.z = -0.4
+    node.cmd_vel_callback(moving_cmd)
+
+    node.set_estop_callback(
+        SimpleNamespace(data=True), SimpleNamespace(success=False, message='')
+    )
+    node.cmd_vel_callback(moving_cmd)
+    node.set_estop_callback(
+        SimpleNamespace(data=False), SimpleNamespace(success=False, message='')
+    )
+
+    fake_serial.writes.clear()
+    fake_serial.read_buffer.clear()
+    node.send_frame_callback()
+    assert frame_velocities(fake_serial.writes[-1]) == (0.0, 0.0)
+
+    node.cmd_vel_callback(moving_cmd)
+    node.send_frame_callback()
+    assert frame_velocities(fake_serial.writes[-1]) == pytest.approx((0.22, -0.4))
+    assert estop_messages[-1].data is False
+
+    node.destroy_node()
+
+
+def test_manual_and_automatic_estop_sources_cannot_clear_each_other(monkeypatch):
+    fake_serial = FakeSerial(make_feedback_frame())
+    monkeypatch.setattr(robot.serial, 'Serial', lambda *args, **kwargs: fake_serial)
+
+    node = robot.TurnOnTraymoverRobot()
+    node.status_poll_period = None
+    node.auto_estop_enabled = True
+
+    auto_request = robot.Bool()
+    auto_request.data = False
+    node.auto_estop_request_callback(auto_request)
+    assert node.estop_active is False
+
+    node.set_estop_callback(
+        SimpleNamespace(data=True), SimpleNamespace(success=False, message='')
+    )
+    assert node.manual_estop_active is True
+    assert node.estop_active is True
+
+    node.auto_estop_request_callback(auto_request)
+    assert node.estop_active is True
+
+    node.set_estop_callback(
+        SimpleNamespace(data=False), SimpleNamespace(success=False, message='')
+    )
+    assert node.estop_active is False
+
+    auto_request.data = True
+    node.auto_estop_request_callback(auto_request)
+    response = node.set_estop_callback(
+        SimpleNamespace(data=False), SimpleNamespace(success=False, message='')
+    )
+    assert node.manual_estop_active is False
+    assert node.auto_estop_active is True
+    assert node.estop_active is True
+    assert response.message == 'Manual EStop released; automatic EStop remains active'
+
+    node.set_estop_callback(
+        SimpleNamespace(data=True), SimpleNamespace(success=False, message='')
+    )
+    auto_request.data = False
+    node.auto_estop_request_callback(auto_request)
+    assert node.auto_estop_active is False
+    assert node.manual_estop_active is True
+    assert node.estop_active is True
+
+    node.destroy_node()
+
+
+def test_automatic_estop_watchdog_forces_zero_frame(monkeypatch):
+    fake_serial = FakeSerial(make_feedback_frame())
+    monkeypatch.setattr(robot.serial, 'Serial', lambda *args, **kwargs: fake_serial)
+
+    node = robot.TurnOnTraymoverRobot()
+    node.status_poll_period = None
+    node.auto_estop_enabled = True
+    node.auto_estop_timeout_sec = 0.30
+
+    auto_request = robot.Bool()
+    auto_request.data = False
+    node.auto_estop_request_callback(auto_request)
+    assert node.estop_active is False
+
+    moving_cmd = robot.Twist()
+    moving_cmd.linear.x = 0.28
+    node.cmd_vel_callback(moving_cmd)
+    node.auto_estop_last_update_mono = time.monotonic() - 0.31
+
+    fake_serial.writes.clear()
+    fake_serial.read_buffer.clear()
+    node.send_frame_callback()
+
+    assert node.auto_estop_active is True
+    assert node.estop_active is True
+    assert frame_velocities(fake_serial.writes[-1]) == (0.0, 0.0)
+
+    node.destroy_node()
+
+
+def test_automatic_estop_messages_are_ignored_when_disabled(monkeypatch):
+    fake_serial = FakeSerial(make_feedback_frame())
+    monkeypatch.setattr(robot.serial, 'Serial', lambda *args, **kwargs: fake_serial)
+
+    node = robot.TurnOnTraymoverRobot()
+    auto_request = robot.Bool()
+    auto_request.data = True
+    node.auto_estop_request_callback(auto_request)
+
+    assert node.auto_estop_enabled is False
+    assert node.auto_estop_active is False
+    assert node.estop_active is False
 
     node.destroy_node()

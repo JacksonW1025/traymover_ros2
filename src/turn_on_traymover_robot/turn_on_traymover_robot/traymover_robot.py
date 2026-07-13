@@ -17,9 +17,11 @@ from geometry_msgs.msg import TransformStamped, Twist
 from nav_msgs.msg import Odometry
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
+from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 import serial
 from sensor_msgs.msg import BatteryState
-from std_msgs.msg import Int16, UInt8
+from std_msgs.msg import Bool, Int16, UInt8
+from std_srvs.srv import SetBool
 from tf2_ros import TransformBroadcaster
 from tf_transformations import quaternion_from_euler
 
@@ -28,6 +30,11 @@ FRAME_SIZE = 40
 FRAME_HEADER = b'\x7F\x7F'
 FRAME_LENGTH = 0x28
 FRAME_TAIL = b'\x0D\x0A'
+ESTOP_SERVICE_NAME = '/traymover_estop/set'
+ESTOP_STATE_TOPIC = '/traymover_estop/state'
+MANUAL_ESTOP_STATE_TOPIC = '/traymover_estop/manual_state'
+AUTO_ESTOP_STATE_TOPIC = '/traymover_estop/auto_state'
+AUTO_ESTOP_REQUEST_TOPIC = '/traymover_estop/auto_request'
 
 MSG_ID_GET_BAUD = 0x01
 MSG_ID_GET_MOTOR_DATA = 0x02
@@ -382,6 +389,8 @@ class TurnOnTraymoverRobot(Node):
         self.declare_parameter('right_encoder_sign', 1)
         self.declare_parameter('poll_rate_hz', 20.0)
         self.declare_parameter('status_poll_rate_hz', 1.0)
+        self.declare_parameter('auto_estop_enabled', False)
+        self.declare_parameter('auto_estop_timeout_sec', 0.30)
 
         self.port_name = self.get_parameter('usart_port_name').value
         self.baud_rate = self.get_parameter('serial_baud_rate').value
@@ -402,6 +411,10 @@ class TurnOnTraymoverRobot(Node):
         self.right_encoder_sign = int(self.get_parameter('right_encoder_sign').value)
         self.poll_rate_hz = float(self.get_parameter('poll_rate_hz').value)
         self.status_poll_rate_hz = float(self.get_parameter('status_poll_rate_hz').value)
+        self.auto_estop_enabled = bool(self.get_parameter('auto_estop_enabled').value)
+        self.auto_estop_timeout_sec = float(
+            self.get_parameter('auto_estop_timeout_sec').value
+        )
 
         if self.left_encoder_sign == 0:
             self.left_encoder_sign = 1
@@ -415,6 +428,11 @@ class TurnOnTraymoverRobot(Node):
                 'status_poll_rate_hz must be >= 0.0; falling back to 1.0 Hz.'
             )
             self.status_poll_rate_hz = 1.0
+        if self.auto_estop_timeout_sec <= 0.0:
+            self.get_logger().warn(
+                'auto_estop_timeout_sec must be positive; falling back to 0.30 s.'
+            )
+            self.auto_estop_timeout_sec = 0.30
 
         self.odom_enabled = self.odom_source_mode == 'stm32_feedback'
         if self.odom_source_mode not in ('none', 'stm32_feedback'):
@@ -427,6 +445,11 @@ class TurnOnTraymoverRobot(Node):
         self.vel_x = 0.0
         self.vel_th = 0.0
         self.last_cmd_vel_time = self.get_clock().now()
+        self.manual_estop_active = False
+        self.auto_estop_requested = False
+        self.auto_estop_active = self.auto_estop_enabled
+        self.auto_estop_last_update_mono = None
+        self.estop_active = self.auto_estop_active
 
         self.odom_x = 0.0
         self.odom_y = 0.0
@@ -494,9 +517,37 @@ class TurnOnTraymoverRobot(Node):
         self.commanded_speed_th_pub = self.create_publisher(Int16, 'motor_status_speed_th', 10)
         self.motor_move_dir_pub = self.create_publisher(UInt8, 'motor_move_dir', 10)
         self.android_cmd_pub = self.create_publisher(UInt8, 'motor_android_cmd', 10)
+        estop_state_qos = QoSProfile(
+            depth=1,
+            reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.TRANSIENT_LOCAL,
+        )
+        self.estop_state_pub = self.create_publisher(
+            Bool, ESTOP_STATE_TOPIC, estop_state_qos
+        )
+        self.manual_estop_state_pub = self.create_publisher(
+            Bool, MANUAL_ESTOP_STATE_TOPIC, estop_state_qos
+        )
+        self.auto_estop_state_pub = self.create_publisher(
+            Bool, AUTO_ESTOP_STATE_TOPIC, estop_state_qos
+        )
+        self.auto_estop_request_sub = self.create_subscription(
+            Bool,
+            AUTO_ESTOP_REQUEST_TOPIC,
+            self.auto_estop_request_callback,
+            QoSProfile(
+                depth=1,
+                reliability=ReliabilityPolicy.RELIABLE,
+                durability=DurabilityPolicy.VOLATILE,
+            ),
+        )
+        self.estop_service = self.create_service(
+            SetBool, ESTOP_SERVICE_NAME, self.set_estop_callback
+        )
         self.odom_tf_broadcaster = TransformBroadcaster(self) if self.publish_odom_tf else None
         self.poll_timer = self.create_timer(1.0 / self.poll_rate_hz, self.send_frame_callback)
 
+        self.publish_estop_states()
         self.log_odometry_capability()
         self.get_logger().info('Traymover robot driver initialized')
 
@@ -521,16 +572,27 @@ class TurnOnTraymoverRobot(Node):
         )
 
     def cmd_vel_callback(self, twist: Twist):
+        if self.estop_active:
+            self.vel_x = 0.0
+            self.vel_th = 0.0
+            return
+
         self.vel_x = twist.linear.x
         self.vel_th = twist.angular.z
         self.last_cmd_vel_time = self.get_clock().now()
 
     def send_frame_callback(self):
         now = self.get_clock().now()
-        dt = (now - self.last_cmd_vel_time).nanoseconds / 1e9
-        if dt > self.cmd_vel_timeout:
+        self.refresh_estop_state()
+        if self.estop_active:
             self.vel_x = 0.0
             self.vel_th = 0.0
+            self.last_cmd_vel_time = now
+        else:
+            dt = (now - self.last_cmd_vel_time).nanoseconds / 1e9
+            if dt > self.cmd_vel_timeout:
+                self.vel_x = 0.0
+                self.vel_th = 0.0
 
         frame = build_frame(
             vel_x_ms=self.vel_x,
@@ -572,6 +634,95 @@ class TurnOnTraymoverRobot(Node):
                 )
             else:
                 self.handle_motor_status(status, now.to_msg())
+
+    def publish_bool_state(self, publisher, value: bool):
+        msg = Bool()
+        msg.data = bool(value)
+        publisher.publish(msg)
+
+    def publish_estop_states(self):
+        self.publish_bool_state(self.estop_state_pub, self.estop_active)
+        self.publish_bool_state(
+            self.manual_estop_state_pub, self.manual_estop_active
+        )
+        self.publish_bool_state(self.auto_estop_state_pub, self.auto_estop_active)
+
+    def auto_estop_is_stale(self, now_mono: float | None = None) -> bool:
+        if not self.auto_estop_enabled:
+            return False
+        if self.auto_estop_last_update_mono is None:
+            return True
+        if now_mono is None:
+            now_mono = time.monotonic()
+        return (
+            now_mono - self.auto_estop_last_update_mono
+            > self.auto_estop_timeout_sec
+        )
+
+    def refresh_estop_state(self, force_publish: bool = False):
+        previous_auto = self.auto_estop_active
+        previous_estop = self.estop_active
+
+        self.auto_estop_active = self.auto_estop_enabled and (
+            self.auto_estop_requested or self.auto_estop_is_stale()
+        )
+        self.estop_active = self.manual_estop_active or self.auto_estop_active
+
+        if self.estop_active != previous_estop:
+            self.vel_x = 0.0
+            self.vel_th = 0.0
+            self.last_cmd_vel_time = self.get_clock().now()
+            if self.estop_active:
+                self.write_stop_frame_once()
+
+        if (
+            force_publish
+            or self.auto_estop_active != previous_auto
+            or self.estop_active != previous_estop
+        ):
+            self.publish_estop_states()
+
+    def auto_estop_request_callback(self, msg: Bool):
+        self.auto_estop_requested = bool(msg.data)
+        self.auto_estop_last_update_mono = time.monotonic()
+        self.refresh_estop_state(force_publish=True)
+
+    def set_estop_callback(self, request: SetBool.Request, response: SetBool.Response):
+        requested = bool(request.data)
+        self.manual_estop_active = requested
+        self.vel_x = 0.0
+        self.vel_th = 0.0
+        self.last_cmd_vel_time = self.get_clock().now()
+        self.refresh_estop_state(force_publish=True)
+        response.success = True
+        if requested:
+            response.message = 'EStop engaged'
+        elif self.estop_active:
+            response.message = 'Manual EStop released; automatic EStop remains active'
+        else:
+            response.message = 'EStop released'
+        return response
+
+    def write_stop_frame_once(self):
+        if self.serial_port is None or not self.serial_port.is_open:
+            return
+
+        stop_frame = build_frame(
+            vel_x_ms=0.0,
+            vel_th_rads=0.0,
+            wheel_diameter_m=self.wheel_diameter,
+            wheel_track_m=self.wheel_track,
+            gear_reduction=self.gear_reduction,
+            tick_meter_ratio=self.tick_meter_ratio,
+            left_motor_scale=self.left_motor_scale,
+            right_motor_scale=self.right_motor_scale,
+            alarm_led=self.alarm_led,
+            ir_threshold=self.ir_threshold,
+        )
+        try:
+            self.serial_port.write(stop_frame)
+        except serial.SerialException as exc:
+            self.throttled_warn('serial_estop_write', f'EStop serial write failed: {exc}')
 
     def should_poll_motor_status(self) -> bool:
         if self.status_poll_period is None:

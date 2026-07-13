@@ -30,6 +30,7 @@
   <exec_depend>fast_lio</exec_depend>
   <exec_depend>std_srvs</exec_depend>
   <exec_depend>tf2_ros</exec_depend>
+  <exec_depend>traymover_robot_safety</exec_depend>
   <exec_depend>traymover_robot_description</exec_depend>
   <exec_depend>terrain_analysis</exec_depend>
   <exec_depend>local_planner</exec_depend>

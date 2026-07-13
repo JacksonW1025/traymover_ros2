@@ -61,7 +61,7 @@ def test_nav2_option10_has_no_dynamic_obstacle_stop_chain():
     assert progress_checker['plugin'] == 'traymover_robot_nav::YawProgressChecker'
     assert progress_checker['required_movement_radius'] == 0.30
     assert 0.15 <= progress_checker['required_movement_angle'] <= 0.25
-    assert progress_checker['movement_time_allowance'] == 8.0
+    assert progress_checker['movement_time_allowance'] == 45.0
     assert 'obstacle_layer' not in local_costmap['plugins']
     assert 'obstacle_layer' not in global_costmap['plugins']
     assert 'behavior_server' not in params
@@ -160,6 +160,19 @@ def test_option16_launcher_menu_keeps_option10_baseline_separate():
     assert 'realsense_info_topic:=\'${realsense_info_topic}\'' in launcher_text
     assert 'realsense_scan_topic:=\'${realsense_scan_topic}\'' in launcher_text
     assert 'Option 16 expects RealSense camera driver to be running' in launcher_text
+
+
+def test_navigation_options_offer_automatic_estop_after_rviz_prompt():
+    launcher_text = (WORKSPACE_ROOT / 'scripts' / 'traymover.sh').read_text(
+        encoding='utf-8'
+    )
+
+    assert 'Start automatic EStop? [y/N]:' in launcher_text
+    assert 'AUTO_ESTOP_ENABLED="false"' in launcher_text
+    assert launcher_text.count('prompt_auto_estop') == 5  # definition + four calls
+    assert launcher_text.count('action_start_auto_estop') == 5
+    assert launcher_text.count('auto_estop_enabled:=${AUTO_ESTOP_ENABLED}') == 4
+    assert 'traymover_auto_estop.launch.py' in launcher_text
 
 
 def test_option16_declares_depthimage_to_laserscan_dependency():
@@ -398,6 +411,8 @@ def test_rviz_shows_map_rainbow_and_ndt_alignment_overlay():
         encoding='utf-8'
     )
 
+    assert 'Class: traymover_robot_safety/EstopPanel' in rviz_text
+    assert 'Name: Traymover EStop' in rviz_text
     assert 'Name: MapPCD' in rviz_text
     assert 'Value: /initial_map' in rviz_text
     assert 'Color Transformer: AxisColor' in rviz_text
@@ -413,6 +428,8 @@ def test_option14_rviz_exposes_3d_navigation_state():
         encoding='utf-8'
     )
 
+    assert 'Class: traymover_robot_safety/EstopPanel' in rviz_text
+    assert 'Name: Traymover EStop' in rviz_text
     for expected in (
         'Fixed Frame: map',
         'Name: MapPCD',

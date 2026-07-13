@@ -11,6 +11,8 @@ Panels:
         - /LocalPath1
       Splitter Ratio: 0.5
     Tree Height: 620
+  - Class: traymover_robot_safety/EstopPanel
+    Name: Traymover EStop
   - Class: rviz_common/Selection
     Name: Selection
   - Class: rviz_common/Tool Properties

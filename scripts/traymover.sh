@@ -32,6 +32,7 @@ REALSENSE_ROSBAG_TOPICS=(
     '/camera/camera/color/image_raw'
     '/camera/camera/color/camera_info'
 )
+AUTO_ESTOP_ENABLED="false"
 
 # ---- terminal spawning ------------------------------------------------------
 # Pick whichever terminal emulator is installed. gnome-terminal on Jetson Orin
@@ -95,9 +96,13 @@ KILL_PATTERNS=(
     'ros2 launch lslidar_driver'
     'ros2 launch fast_lio'
     'ros2 launch realsense2_camera'
+    'ros2 launch traymover_robot_safety'
     'ros2 bag play'
     'ros2 run traymover_robot_keyboard'
+    'ros2 run traymover_robot_safety'
     'traymover_keyboard'
+    'traymover_estop_keyboard'
+    'traymover_auto_estop'
     'traymover_robot.py'
     'traymover_ekf_filter_node'
     'async_slam_toolbox_node'
@@ -268,6 +273,28 @@ action_start_chassis() {
 action_start_keyboard() {
     spawn_in_terminal "traymover: keyboard" \
         "ros2 run traymover_robot_keyboard traymover_keyboard"
+}
+
+action_start_estop_keyboard() {
+    spawn_in_terminal "traymover: estop keyboard" \
+        "ros2 run traymover_robot_safety traymover_estop_keyboard"
+}
+
+prompt_auto_estop() {
+    local auto_estop_opt
+    read -r -p "Start automatic EStop? [y/N]: " auto_estop_opt
+    auto_estop_opt="${auto_estop_opt:-N}"
+    if [[ "${auto_estop_opt}" =~ ^[Yy] ]]; then
+        AUTO_ESTOP_ENABLED="true"
+    else
+        AUTO_ESTOP_ENABLED="false"
+    fi
+}
+
+action_start_auto_estop() {
+    [ "${AUTO_ESTOP_ENABLED}" = "true" ] || return 0
+    spawn_in_terminal "traymover: automatic estop" \
+        "ros2 launch traymover_robot_safety traymover_auto_estop.launch.py"
 }
 
 action_start_teleop() {
@@ -616,10 +643,13 @@ action_start_nav() {
     else
         rviz_arg="launch_rviz:=false"
     fi
+    prompt_auto_estop
 
     echo "[traymover] Starting chassis + IMU (base_serial) ..."
     spawn_in_terminal "traymover: chassis_serial" \
-        "ros2 launch turn_on_traymover_robot base_serial.launch.py odom_source_mode:=none"
+        "ros2 launch turn_on_traymover_robot base_serial.launch.py odom_source_mode:=none auto_estop_enabled:=${AUTO_ESTOP_ENABLED}"
+    action_start_estop_keyboard
+    action_start_auto_estop
 
     echo "[traymover] Starting LiDAR driver (Nav2 is not using scan-based avoidance) ..."
     spawn_in_terminal "traymover: lidar" \
@@ -731,6 +761,7 @@ action_start_nav_lidar_realsense_obstacle() {
     else
         rviz_arg="launch_rviz:=false"
     fi
+    prompt_auto_estop
 
     local realsense_depth_topic="/camera/camera/depth/image_rect_raw"
     local realsense_info_topic="/camera/camera/depth/camera_info"
@@ -746,7 +777,9 @@ EOF
 
     echo "[traymover] Starting chassis + IMU (base_serial) ..."
     spawn_in_terminal "traymover: chassis_serial" \
-        "ros2 launch turn_on_traymover_robot base_serial.launch.py odom_source_mode:=none"
+        "ros2 launch turn_on_traymover_robot base_serial.launch.py odom_source_mode:=none auto_estop_enabled:=${AUTO_ESTOP_ENABLED}"
+    action_start_estop_keyboard
+    action_start_auto_estop
 
     echo "[traymover] Starting LiDAR driver (option 16 navigation publishes obstacle /scan) ..."
     spawn_in_terminal "traymover: lidar" \
@@ -896,10 +929,13 @@ EOF
     else
         rviz_arg="launch_rviz:=false"
     fi
+    prompt_auto_estop
 
     echo "[traymover] Starting chassis + IMU (base_serial) ..."
     spawn_in_terminal "traymover: chassis_serial" \
-        "ros2 launch turn_on_traymover_robot base_serial.launch.py odom_source_mode:=none"
+        "ros2 launch turn_on_traymover_robot base_serial.launch.py odom_source_mode:=none auto_estop_enabled:=${AUTO_ESTOP_ENABLED}"
+    action_start_estop_keyboard
+    action_start_auto_estop
 
     echo "[traymover] Starting LiDAR driver (Nav2 is not using scan-based avoidance) ..."
     spawn_in_terminal "traymover: lidar" \
@@ -978,10 +1014,13 @@ action_start_3d_nav() {
     else
         rviz_arg="launch_rviz:=false"
     fi
+    prompt_auto_estop
 
     echo "[traymover] Starting chassis + IMU (base_serial) ..."
     spawn_in_terminal "traymover: chassis_serial" \
-        "ros2 launch turn_on_traymover_robot base_serial.launch.py odom_source_mode:=none"
+        "ros2 launch turn_on_traymover_robot base_serial.launch.py odom_source_mode:=none auto_estop_enabled:=${AUTO_ESTOP_ENABLED}"
+    action_start_estop_keyboard
+    action_start_auto_estop
 
     echo "[traymover] Starting LiDAR driver (navigation owns /scan) ..."
     spawn_in_terminal "traymover: lidar" \
