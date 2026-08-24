@@ -409,3 +409,53 @@ ros2 run rviz2 rviz2 -d src/traymover_robot_nav2/rviz/traymover_nav2.rviz
 - 机器人会动，但定位飘或者路径很怪
 
 你只要把现象贴给我，我就继续帮你拆。当前这份文档已经按“我做基础检查，你做现场操作”的分工整理好了。
+
+## 选项 17：动态障碍物停车与绕行仿真
+
+选项 17 不启动真实底盘、串口、FAST-LIO、RealSense 或真实 LiDAR，只启动 Gazebo Sim、静态地图、Nav2 和仿真安全链路。先在工作区编译两个仿真包，然后执行：
+
+```bash
+cd /home/car/traymover_ros2
+source /opt/ros/jazzy/setup.bash
+colcon build --symlink-install \
+  --packages-select traymover_robot_description traymover_robot_sim \
+  --cmake-args -DPython3_EXECUTABLE=/usr/bin/python3
+source install/setup.bash
+bash scripts/traymover.sh
+```
+
+菜单选择 `17`，在 `Enable 8 s detour? [Y/n]` 输入 `Y`（默认），在 `Launch RViz? [Y/n]` 输入 `Y`（默认）。箱体在默认 12 秒后生成；导航目标由 `auto_send_goal` 自动发送到 `(7.0, 0.0, 0.0)`。
+
+也可以绕过菜单直接复现实验。三个路径分别为：
+
+```bash
+# 启用绕行：停车约 8 秒后转发 /scan_global，规划器绕过箱体
+ros2 launch traymover_robot_sim traymover_detour_sim.launch.py \
+  enable_detour:=true spawn_dynamic_obstacle:=true \
+  obstacle_spawn_delay:=12.0 obstacle_lifetime_sec:=0.0 \
+  auto_send_goal:=true launch_rviz:=true
+
+# 仅停车：箱体触发 /cmd_vel 停止，/scan_global 不启用，路径不应改变
+ros2 launch traymover_robot_sim traymover_detour_sim.launch.py \
+  enable_detour:=false spawn_dynamic_obstacle:=true \
+  obstacle_spawn_delay:=12.0 obstacle_lifetime_sec:=0.0 \
+  auto_send_goal:=true launch_rviz:=true
+
+# 提前清除：8 秒出现、4 秒后删除；应在 STOP_WAITING 完成前回到 NORMAL
+ros2 launch traymover_robot_sim traymover_detour_sim.launch.py \
+  enable_detour:=true spawn_dynamic_obstacle:=true \
+  obstacle_spawn_delay:=8.0 obstacle_lifetime_sec:=4.0 \
+  auto_send_goal:=true launch_rviz:=true
+```
+
+用以下命令检查验收话题（每条命令在仿真终端运行约 10 秒）：
+
+```bash
+ros2 topic list | grep -E '^/(scan|scan_global|cmd_vel_nav|cmd_vel|plan|map|odom|traymover_detour/state)$'
+for topic in /scan /scan_global /cmd_vel_nav /cmd_vel /plan /map /odom /traymover_detour/state; do
+  ros2 topic hz "$topic" --window 5
+done
+ros2 topic echo /traymover_detour/state --qos-durability volatile --qos-reliability best_effort
+```
+
+启用绕行时应观察：箱体出现后 `/cmd_vel` 为零而 `/cmd_vel_nav` 仍有运动意图，状态约 8 秒保持 `STOP_WAITING`，随后出现 `/scan_global`，`/plan` 绕过箱体且机器人抵达固定目标。禁用绕行时保持停车、无 `/scan_global` 且路径不变。提前清除时箱体在保持计时结束前删除，状态回到 `NORMAL`，并且 `/scan_global` 从未发布。
