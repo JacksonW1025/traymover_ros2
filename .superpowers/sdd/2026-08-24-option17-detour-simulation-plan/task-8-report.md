@@ -63,3 +63,34 @@ gazebo_ros: MISSING (Package not found )
 ## Runtime concern
 
 The enabled-detour, stop-only, and early-clear acceptance launches could not start because launch-file import fails before any node is created (`nav2_common` is absent). Consequently, `/scan`, `/scan_global`, `/cmd_vel_nav`, `/cmd_vel`, `/plan`, `/map`, `/odom`, and `/traymover_detour/state` could not be observed on this host. Do not install unrelated packages or alter hardware code as a workaround; rerun the three documented paths once the Jazzy Nav2 dependency set is provisioned.
+
+## Fix round 1
+
+- Updated `scripts/traymover.sh` to preserve an explicit `ROS_DISTRO_SETUP` override, otherwise select `/opt/ros/humble/setup.bash` first and `/opt/ros/jazzy/setup.bash` second. The startup diagnostic is now generic when neither exists; Humble remains the first choice for options 1–16.
+- Added a focused option-17 launcher static test and made every documented topic health probe time-bounded with `timeout 10s`. The guide now records that `/scan_global` is expected to be absent for stop-only and early-clear paths, and `/traymover_detour/state` is published only when `enable_detour=true`.
+
+Fix-round checks:
+
+```text
+/usr/bin/python3 -m pytest -q src/traymover_robot_sim/test/test_option17_menu.py
+..                                                                       [100%]
+2 passed in 0.01s
+
+bash -n scripts/traymover.sh
+exit=0
+```
+
+Full fix-round verification after the targeted rebuild:
+
+```text
+/usr/bin/python3 -m pytest -q src/traymover_robot_sim/test
+.......................                                                  [100%]
+23 passed in 0.38s
+
+xacro src/traymover_robot_description/urdf/traymover_sim.urdf.xacro >/tmp/traymover_sim.urdf
+
+colcon build --symlink-install --packages-select traymover_robot_description traymover_robot_sim --cmake-args -DPython3_EXECUTABLE=/usr/bin/python3
+Summary: 2 packages finished [1.40s]
+```
+
+The post-build `--show-args` retry remains blocked with the same `ModuleNotFoundError: No module named 'nav2_common'` before launch arguments can be evaluated.

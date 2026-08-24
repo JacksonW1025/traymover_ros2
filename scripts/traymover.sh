@@ -7,7 +7,18 @@ set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WORKSPACE_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
-ROS_DISTRO_SETUP="/opt/ros/humble/setup.bash"
+# Keep an explicit setup override for deployments that source a custom ROS
+# installation; otherwise prefer the repository's original Humble environment
+# and fall back to the Jazzy environment used by the simulation host.
+ROS_DISTRO_SETUP="${ROS_DISTRO_SETUP:-}"
+if [[ -z "${ROS_DISTRO_SETUP}" ]]; then
+    for setup_candidate in /opt/ros/humble/setup.bash /opt/ros/jazzy/setup.bash; do
+        if [[ -f "${setup_candidate}" ]]; then
+            ROS_DISTRO_SETUP="${setup_candidate}"
+            break
+        fi
+    done
+fi
 WS_SETUP="${WORKSPACE_DIR}/install/setup.bash"
 ROS_LOG_DIR_DEFAULT="/tmp/roslog"
 
@@ -1306,8 +1317,8 @@ EOF
 }
 
 main() {
-    if [ ! -f "${ROS_DISTRO_SETUP}" ]; then
-        echo "ERROR: ROS 2 Humble not found at ${ROS_DISTRO_SETUP}" >&2
+    if [[ -z "${ROS_DISTRO_SETUP}" || ! -f "${ROS_DISTRO_SETUP}" ]]; then
+        echo "ERROR: No ROS 2 setup file found. Set ROS_DISTRO_SETUP or install /opt/ros/humble/setup.bash or /opt/ros/jazzy/setup.bash." >&2
         exit 1
     fi
 
