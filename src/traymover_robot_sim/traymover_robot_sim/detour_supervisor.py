@@ -83,7 +83,7 @@ class DetourGate:
             raise ValueError("observation timestamps must not decrease")
         self._last_timestamp = now
 
-        blocking = observation.front_obstacle and (
+        safety_blocking = observation.front_obstacle and (
             (
                 observation.nav_speed >= self.nav_intent_threshold
                 and observation.output_speed <= self.output_stop_threshold
@@ -92,26 +92,29 @@ class DetourGate:
         )
 
         if self._state is GateState.NORMAL:
-            if blocking:
+            if safety_blocking:
                 self._state = GateState.STOP_WAITING
                 self._blocked_since_sec = now
             return self._decision()
 
         if self._state is GateState.STOP_WAITING:
-            if not blocking:
+            if not safety_blocking:
                 self._reset_normal()
             elif now - self._blocked_since_sec >= self.hold_time_sec:
                 self._state = GateState.DETOUR_ACTIVE
             return self._decision()
 
         if self._state is GateState.DETOUR_ACTIVE:
-            if not blocking:
+            # Once the detour is active, keep publishing the global scan while
+            # the obstacle remains, even as Nav2 turns and the safety output
+            # resumes motion. Only the obstacle itself ends the detour.
+            if not observation.front_obstacle:
                 self._state = GateState.CLEARING
                 self._clear_started_sec = now
             return self._decision()
 
         # CLEARING: a renewed block immediately resumes the detour.
-        if blocking:
+        if observation.front_obstacle:
             self._state = GateState.DETOUR_ACTIVE
             self._clear_started_sec = None
         elif now - self._clear_started_sec >= self.clear_publish_sec:

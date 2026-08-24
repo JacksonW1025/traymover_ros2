@@ -458,4 +458,4 @@ done
 timeout 10s ros2 topic echo /traymover_detour/state --qos-durability volatile --qos-reliability best_effort || true
 ```
 
-启用绕行时应观察：箱体出现后 `/cmd_vel` 为零而 `/cmd_vel_nav` 仍有运动意图，状态约 8 秒保持 `STOP_WAITING`，随后出现 `/scan_global`，`/plan` 绕过箱体且机器人抵达固定目标。禁用绕行时保持停车、无 `/scan_global`；由于 `detour_supervisor` 被禁用，`/traymover_detour/state` 也应不存在，路径不变。提前清除时 supervisor 仍启用，状态在箱体删除后回到 `NORMAL`，并且 `/scan_global` 从未发布。
+启用绕行时应观察：箱体出现后 `/cmd_vel` 为零而 `/cmd_vel_nav` 仍有运动意图，状态约 8 秒保持 `STOP_WAITING`，随后出现 `/scan_global`，`/plan` 绕过箱体且机器人抵达固定目标。禁用绕行时保持停车、无 `/scan_global`；supervisor 仍发布 `/traymover_detour/state=NORMAL`，路径不变。提前清除时 supervisor 仍启用，状态在箱体删除后回到 `NORMAL`，并且 `/scan_global` 从未发布。

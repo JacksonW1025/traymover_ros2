@@ -22,3 +22,12 @@ def test_tree_replans_periodically():
     assert 'RateController hz="1.0"' in text
     assert "ComputePathToPose" in text
     assert "FollowPath" in text
+
+
+def test_detour_supervisor_runs_in_disabled_mode_and_reports_normal():
+    text = Path(
+        "src/traymover_robot_sim/launch/traymover_detour_sim.launch.py"
+    ).read_text()
+    assert 'name="detour_supervisor"' in text
+    assert '"enable_detour": enable_detour' in text
+    assert 'condition=IfCondition(enable_detour)' not in text

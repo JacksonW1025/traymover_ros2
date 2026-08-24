@@ -44,6 +44,19 @@ def test_clear_after_detour_uses_a_clear_window():
     assert not normal.forward_global_scan
 
 
+def test_detour_stays_active_while_maneuvering_with_obstacle_present():
+    gate = DetourGate(hold_time_sec=8.0)
+    gate.update(sample(0.0, nav=0.3, output=0.0, obstacle=True))
+    gate.update(sample(8.0, nav=0.3, output=0.0, obstacle=True))
+
+    # Nav2 has begun turning around the box, so the output is no longer
+    # stopped. The obstacle itself remains the condition for detour sensing.
+    decision = gate.update(sample(9.0, nav=0.3, output=0.3, obstacle=True))
+
+    assert decision.state is GateState.DETOUR_ACTIVE
+    assert decision.forward_global_scan
+
+
 def test_estop_alone_without_obstacle_does_not_trigger_detour():
     gate = DetourGate()
     decision = gate.update(sample(1.0, estop=True, obstacle=False))

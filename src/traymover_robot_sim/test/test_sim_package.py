@@ -5,6 +5,7 @@ def test_sim_package_declares_runtime_asset_directories():
     root = Path(__file__).parents[1]
     package_xml = (root / "package.xml").read_text()
     assert "<name>traymover_robot_sim</name>" in package_xml
+    assert "<exec_depend>traymover_robot_description</exec_depend>" in package_xml
     for directory in ("launch", "config", "worlds", "models", "maps", "behavior_trees", "rviz"):
         assert (root / directory).is_dir(), directory
 

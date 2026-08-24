@@ -11,6 +11,10 @@ WORKSPACE_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 # installation; otherwise prefer the repository's original Humble environment
 # and fall back to the Jazzy environment used by the simulation host.
 ROS_DISTRO_SETUP="${ROS_DISTRO_SETUP:-}"
+ROS_DISTRO_SETUP_EXPLICIT="false"
+if [[ -n "${ROS_DISTRO_SETUP}" ]]; then
+    ROS_DISTRO_SETUP_EXPLICIT="true"
+fi
 if [[ -z "${ROS_DISTRO_SETUP}" ]]; then
     for setup_candidate in /opt/ros/humble/setup.bash /opt/ros/jazzy/setup.bash; do
         if [[ -f "${setup_candidate}" ]]; then
@@ -820,7 +824,7 @@ EOF
 }
 
 action_start_nav_detour_sim() {
-    local detour_opt rviz_opt enable_detour launch_rviz
+    local detour_opt rviz_opt enable_detour launch_rviz previous_ros_setup
 
     read -r -p "Enable 8 s detour? [Y/n] " detour_opt
     detour_opt="${detour_opt:-Y}"
@@ -838,8 +842,16 @@ action_start_nav_detour_sim() {
         launch_rviz="false"
     fi
 
+    # Gazebo Sim/Nav2 for option 17 is deployed with Jazzy. Keep an explicit
+    # ROS_DISTRO_SETUP override intact and only prefer Jazzy for the spawned
+    # simulation terminal when the launcher selected a default setup.
+    previous_ros_setup="${ROS_DISTRO_SETUP}"
+    if [[ "${ROS_DISTRO_SETUP_EXPLICIT}" != "true" && -f /opt/ros/jazzy/setup.bash ]]; then
+        ROS_DISTRO_SETUP="/opt/ros/jazzy/setup.bash"
+    fi
     spawn_in_terminal "traymover: detour_sim" \
         "ros2 launch traymover_robot_sim traymover_detour_sim.launch.py enable_detour:=${enable_detour} launch_rviz:=${launch_rviz}"
+    ROS_DISTRO_SETUP="${previous_ros_setup}"
 }
 
 action_start_nav_speed_modes() {

@@ -179,7 +179,6 @@ def generate_launch_description():
         executable="detour_supervisor",
         name="detour_supervisor",
         output="screen",
-        condition=IfCondition(enable_detour),
         parameters=[{"use_sim_time": use_sim_time, "enable_detour": enable_detour}],
     )
 

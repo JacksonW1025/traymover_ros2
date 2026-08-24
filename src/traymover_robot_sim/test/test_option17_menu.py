@@ -20,3 +20,13 @@ def test_launcher_selects_ros_setup_with_override_and_distro_fallbacks():
     assert "/opt/ros/humble/setup.bash" in text
     assert "/opt/ros/jazzy/setup.bash" in text
     assert "No ROS 2 setup file found" in text
+
+
+def test_option17_prefers_jazzy_without_overriding_explicit_setup():
+    text = Path("scripts/traymover.sh").read_text()
+    option_start = text.index("action_start_nav_detour_sim()")
+    option_end = text.index("action_start_nav_speed_modes()", option_start)
+    block = text[option_start:option_end]
+    assert "ROS_DISTRO_SETUP_EXPLICIT" in text
+    assert "/opt/ros/jazzy/setup.bash" in block
+    assert "ROS_DISTRO_SETUP=\"${previous_ros_setup}\"" in block
