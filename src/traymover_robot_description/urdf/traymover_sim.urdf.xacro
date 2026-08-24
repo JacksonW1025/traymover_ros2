@@ -1,0 +1,79 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="traymover_sim">
+  <!-- This model deliberately remains separate from the hardware URDF. -->
+  <xacro:property name="body_length" value="0.80"/>
+  <xacro:property name="body_width" value="0.55"/>
+  <xacro:property name="body_height" value="0.24"/>
+  <xacro:property name="wheel_radius" value="0.085"/>
+  <xacro:property name="wheel_width" value="0.04"/>
+  <xacro:property name="wheel_separation" value="0.455"/>
+
+  <material name="traymover_gray"><color rgba="0.28 0.31 0.34 1"/></material>
+  <material name="traymover_black"><color rgba="0.08 0.08 0.08 1"/></material>
+  <material name="traymover_blue"><color rgba="0.15 0.35 0.85 1"/></material>
+
+  <link name="base_link">
+    <inertial><mass value="20.0"/><origin xyz="0 0 0.2"/>
+      <inertia ixx="1.0" ixy="0" ixz="0" iyy="1.0" iyz="0" izz="1.0"/>
+    </inertial>
+    <visual><origin xyz="0 0 0.2"/><geometry><box size="${body_length} ${body_width} ${body_height}"/></geometry><material name="traymover_gray"/></visual>
+    <collision><origin xyz="0 0 0.2"/><geometry><box size="${body_length} ${body_width} ${body_height}"/></geometry></collision>
+  </link>
+
+  <xacro:macro name="drive_wheel" params="name y axis">
+    <link name="${name}_link">
+      <inertial><mass value="1.0"/><inertia ixx="0.01" ixy="0" ixz="0" iyy="0.01" iyz="0" izz="0.01"/></inertial>
+      <visual><origin rpy="1.5708 0 0"/><geometry><cylinder radius="${wheel_radius}" length="${wheel_width}"/></geometry><material name="traymover_black"/></visual>
+      <collision><origin rpy="1.5708 0 0"/><geometry><cylinder radius="${wheel_radius}" length="${wheel_width}"/></geometry></collision>
+    </link>
+    <joint name="${name}_joint" type="continuous">
+      <parent link="base_link"/><child link="${name}_link"/>
+      <origin xyz="0 ${y} ${wheel_radius}"/><axis xyz="0 ${axis} 0"/>
+    </joint>
+  </xacro:macro>
+
+  <xacro:drive_wheel name="left_wheel" y="${wheel_separation / 2.0}" axis="1"/>
+  <xacro:drive_wheel name="right_wheel" y="-${wheel_separation / 2.0}" axis="-1"/>
+
+  <link name="laser">
+    <inertial><mass value="0.1"/><inertia ixx="0.0001" ixy="0" ixz="0" iyy="0.0001" iyz="0" izz="0.0001"/></inertial>
+    <visual><geometry><cylinder radius="0.06" length="0.05"/></geometry><material name="traymover_blue"/></visual>
+    <collision><geometry><cylinder radius="0.06" length="0.05"/></geometry></collision>
+  </link>
+  <joint name="laser_joint" type="fixed">
+    <parent link="base_link"/><child link="laser"/><origin xyz="0.25 0 0.45"/>
+  </joint>
+
+  <gazebo reference="base_link">
+    <plugin filename="gz-sim-diff-drive-system" name="gz::sim::systems::DiffDrive">
+      <left_joint>left_wheel_joint</left_joint>
+      <right_joint>right_wheel_joint</right_joint>
+      <wheel_separation>0.455</wheel_separation>
+      <wheel_radius>0.085</wheel_radius>
+      <topic>/cmd_vel</topic>
+      <odom_topic>/odom</odom_topic>
+      <frame_id>odom</frame_id>
+      <child_frame_id>base_link</child_frame_id>
+      <odom_publish_frequency>30</odom_publish_frequency>
+    </plugin>
+  </gazebo>
+
+  <gazebo reference="laser">
+    <sensor name="laser_sensor" type="gpu_lidar">
+      <pose>0 0 0 0 0 0</pose>
+      <update_rate>10</update_rate>
+      <topic>/scan</topic>
+      <frame_id>laser</frame_id>
+      <always_on>true</always_on>
+      <visualize>true</visualize>
+      <ray>
+        <scan><horizontal>
+          <samples>1081</samples><resolution>1</resolution>
+          <min_angle>-2.35619449</min_angle><max_angle>2.35619449</max_angle>
+        </horizontal></scan>
+        <range><min>0.2</min><max>8.0</max><resolution>0.01</resolution></range>
+      </ray>
+      <plugin filename="gz-sim-lidar-system" name="gz::sim::systems::Lidar"/>
+    </sensor>
+  </gazebo>
+</robot>

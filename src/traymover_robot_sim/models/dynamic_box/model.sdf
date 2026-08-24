@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<sdf version="1.9">
+  <model name="dynamic_box">
+    <pose>4.0 0.0 0.45 0 0 0</pose>
+    <link name="link">
+      <inertial><mass>8.0</mass><inertia><ixx>1.08</ixx><iyy>1.08</iyy><izz>1.08</izz><ixy>0</ixy><ixz>0</ixz><iyz>0</iyz></inertia></inertial>
+      <collision name="collision"><geometry><box><size>0.9 0.9 0.9</size></box></geometry></collision>
+      <visual name="visual"><geometry><box><size>0.9 0.9 0.9</size></box></geometry><material><ambient>0.85 0.15 0.08 1</ambient><diffuse>0.85 0.15 0.08 1</diffuse></material></visual>
+    </link>
+  </model>
+</sdf>
