@@ -149,4 +149,3 @@ Gazebo Sim
 - Gazebo Sim 插件和 `ros_gz_bridge` 的具体消息桥接名称需要在本机做最小运行验证。
 - 当前硬件 EStop 的串口反馈不在选项17仿真范围内；仿真安全停车由 collision monitor 和 supervisor 的等价状态完成。
 - 全局障碍层只在持续停车后接收扫描，适合演示“等待后绕行”，不是通用动态障碍物跟踪算法。
-

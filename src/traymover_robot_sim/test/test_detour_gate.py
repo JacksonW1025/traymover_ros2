@@ -74,3 +74,19 @@ def test_decreasing_timestamp_is_rejected():
     gate.update(sample(2.0))
     with pytest.raises(ValueError, match="timestamps must not decrease"):
         gate.update(sample(1.0))
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    (
+        {"hold_time_sec": 0.0},
+        {"hold_time_sec": -1.0},
+        {"clear_publish_sec": 0.0},
+        {"clear_publish_sec": -1.0},
+        {"nav_intent_threshold": -0.01},
+        {"output_stop_threshold": -0.01},
+    ),
+)
+def test_constructor_rejects_invalid_timing_and_thresholds(kwargs):
+    with pytest.raises(ValueError):
+        DetourGate(**kwargs)

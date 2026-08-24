@@ -25,11 +25,15 @@ URDF or the option 1–17 interfaces.
 - Added the direct simulation-description dependency and made option 17 prefer
   Jazzy for its spawned terminal without overriding an explicit
   `ROS_DISTRO_SETUP`.
+- Validated `DetourGate` timing parameters as finite and strictly positive and
+  navigation/output thresholds as finite and nonnegative; invalid constructor
+  values now fail fast with `ValueError`.
+- Removed the extra trailing blank line from the simulation design spec.
 
 ## Tests and evidence
 
 - `PYTHONPATH=src/traymover_robot_sim:/opt/ros/jazzy/lib/python3.12/site-packages /usr/bin/python3 -m pytest -q src/traymover_robot_sim/test`
-  — **26 passed**.
+  — **32 passed** after the constructor validation regression cases.
 - `bash -n scripts/traymover.sh` and `git diff --check` — passed.
 - `colcon build --symlink-install --packages-select traymover_robot_description traymover_robot_sim --cmake-args -DPython3_EXECUTABLE=/usr/bin/python3`
   — both packages finished.

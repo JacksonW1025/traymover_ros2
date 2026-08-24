@@ -68,6 +68,16 @@ class DetourGate:
         output_stop_threshold: float = 0.01,
         clear_publish_sec: float = 1.5,
     ) -> None:
+        if not isfinite(hold_time_sec) or hold_time_sec <= 0.0:
+            raise ValueError("hold_time_sec must be finite and positive")
+        if not isfinite(clear_publish_sec) or clear_publish_sec <= 0.0:
+            raise ValueError("clear_publish_sec must be finite and positive")
+        if not isfinite(nav_intent_threshold) or nav_intent_threshold < 0.0:
+            raise ValueError("nav_intent_threshold must be finite and nonnegative")
+        if not isfinite(output_stop_threshold) or output_stop_threshold < 0.0:
+            raise ValueError(
+                "output_stop_threshold must be finite and nonnegative"
+            )
         self.hold_time_sec = hold_time_sec
         self.nav_intent_threshold = nav_intent_threshold
         self.output_stop_threshold = output_stop_threshold
