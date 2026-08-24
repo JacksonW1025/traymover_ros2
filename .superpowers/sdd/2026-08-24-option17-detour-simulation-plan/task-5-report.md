@@ -76,3 +76,22 @@ Tests:
 * `/usr/bin/python3 -m py_compile src/traymover_robot_sim/launch/traymover_detour_sim.launch.py src/traymover_robot_sim/traymover_robot_sim/*.py`
   -> passed with no output.
 * Static sender shutdown assertions -> passed.
+
+## Review fix round 4
+
+Status: DONE
+
+Guarded the sender's final `rclpy.shutdown()` in `main()` with
+`rclpy.ok()`.  Result, transport-error, and rejected-goal callbacks can now
+stop the context, while normal shutdown still closes an active context without
+raising a second-shutdown `RuntimeError`.
+
+Tests:
+
+* `/usr/bin/python3 -m pytest -q src/traymover_robot_sim/test/test_nav_config.py`
+  -> `3 passed in 0.00s`.
+* Sender static interface/lifecycle assertions -> `sender static checks passed`.
+* `/usr/bin/python3 -m py_compile src/traymover_robot_sim/launch/traymover_detour_sim.launch.py src/traymover_robot_sim/traymover_robot_sim/*.py`
+  -> passed with no output.
+
+Concern: the full Gazebo/Nav2 runtime remains unexecuted in this focused check.

@@ -104,7 +104,11 @@ def main(args: Optional[list[str]] = None) -> None:
         rclpy.spin(node)
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        # Result/rejection callbacks may already have stopped the context.
+        # Keep normal shutdown idempotent so the one-shot sender does not
+        # raise when spin returns after a callback-driven shutdown.
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == "__main__":
