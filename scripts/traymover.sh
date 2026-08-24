@@ -808,6 +808,29 @@ EOF
 EOF
 }
 
+action_start_nav_detour_sim() {
+    local detour_opt rviz_opt enable_detour launch_rviz
+
+    read -r -p "Enable 8 s detour? [Y/n] " detour_opt
+    detour_opt="${detour_opt:-Y}"
+    if [[ "${detour_opt}" =~ ^[Yy] ]]; then
+        enable_detour="true"
+    else
+        enable_detour="false"
+    fi
+
+    read -r -p "Launch RViz? [Y/n] " rviz_opt
+    rviz_opt="${rviz_opt:-Y}"
+    if [[ "${rviz_opt}" =~ ^[Yy] ]]; then
+        launch_rviz="true"
+    else
+        launch_rviz="false"
+    fi
+
+    spawn_in_terminal "traymover: detour_sim" \
+        "ros2 launch traymover_robot_sim traymover_detour_sim.launch.py enable_detour:=${enable_detour} launch_rviz:=${launch_rviz}"
+}
+
 action_start_nav_speed_modes() {
     # Option 15 is an additive variant of option 10: same map selection,
     # runtime 2D map generation, hardware bringup, localization, Nav2 launch,
@@ -1276,6 +1299,7 @@ print_menu() {
  14) Start 3D point-cloud navigation  (FAST_LIO + NDT + CMU local_planner + RViz; no 2D PGM)
  15) Start navigation with speed mode  (option 10 flow + selectable Nav2 speed)
  16) Navigation with LiDAR + RealSense Dynamic Obstacle Avoidance
+ 17) Simulation: Dynamic obstacle stop and detour
   q) Quit
 ==============================
 EOF
@@ -1308,6 +1332,7 @@ main() {
             14) action_start_3d_nav ;;
             15) action_start_nav_speed_modes ;;
             16) action_start_nav_lidar_realsense_obstacle ;;
+            17) action_start_nav_detour_sim ;;
             q|Q|quit|exit) echo "Bye."; exit 0 ;;
             "") ;;
             *) echo "Unknown option: ${choice}" ;;
