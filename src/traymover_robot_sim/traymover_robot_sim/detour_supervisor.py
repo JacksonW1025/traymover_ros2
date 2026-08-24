@@ -58,6 +58,28 @@ class GateDecision:
     forward_global_scan: bool
 
 
+def select_output_command(
+    decision: GateDecision,
+    nav_cmd: Twist,
+    safety_cmd: Twist,
+    estop_active: bool,
+) -> Twist:
+    """Select the simulated drivetrain command for the current gate state.
+
+    Before the sustained-stop threshold, the collision monitor owns the
+    output and can enforce the normal safety stop. Once detour is active, the
+    planner must be allowed to rotate and drive around the obstacle; otherwise
+    a front stop polygon also suppresses the turning command and the robot is
+    deadlocked. A hardware-style e-stop remains an unconditional zero command.
+    """
+
+    if estop_active:
+        return Twist()
+    if decision.forward_global_scan:
+        return nav_cmd
+    return safety_cmd
+
+
 class DetourGate:
     """Gate global-scan forwarding after a sustained local stop condition."""
 
@@ -179,7 +201,7 @@ class DetourSupervisor(Node):
         )
         self._latest_scan: Optional[LaserScan] = None
         self._latest_nav_cmd = Twist()
-        self._latest_output_cmd = Twist()
+        self._latest_safety_cmd = Twist()
         self._estop_active = False
 
         self.scan_subscription = self.create_subscription(
@@ -188,9 +210,10 @@ class DetourSupervisor(Node):
         self.nav_subscription = self.create_subscription(
             Twist, '/cmd_vel_nav', self.nav_cmd_callback, 10
         )
-        self.output_subscription = self.create_subscription(
-            Twist, '/cmd_vel', self.output_cmd_callback, 10
+        self.safety_subscription = self.create_subscription(
+            Twist, '/cmd_vel_safety', self.safety_cmd_callback, 10
         )
+        self.command_publisher = self.create_publisher(Twist, '/cmd_vel', 10)
         self.estop_subscription = self.create_subscription(
             Bool, '/traymover_estop/state', self.estop_callback, 10
         )
@@ -212,8 +235,8 @@ class DetourSupervisor(Node):
     def nav_cmd_callback(self, msg: Twist) -> None:
         self._latest_nav_cmd = msg
 
-    def output_cmd_callback(self, msg: Twist) -> None:
-        self._latest_output_cmd = msg
+    def safety_cmd_callback(self, msg: Twist) -> None:
+        self._latest_safety_cmd = msg
 
     def estop_callback(self, msg: Bool) -> None:
         self._estop_active = bool(msg.data)
@@ -229,7 +252,7 @@ class DetourSupervisor(Node):
             observation = SafetyObservation(
                 now_sec=now_sec,
                 nav_speed=command_speed(self._latest_nav_cmd),
-                output_speed=command_speed(self._latest_output_cmd),
+                output_speed=command_speed(self._latest_safety_cmd),
                 front_obstacle=front_obstacle,
                 estop_active=self._estop_active,
             )
@@ -241,6 +264,14 @@ class DetourSupervisor(Node):
         active_msg = Bool()
         active_msg.data = bool(decision.forward_global_scan)
         self.active_publisher.publish(active_msg)
+        self.command_publisher.publish(
+            select_output_command(
+                decision,
+                self._latest_nav_cmd,
+                self._latest_safety_cmd,
+                self._estop_active,
+            )
+        )
         if decision.forward_global_scan and self._latest_scan is not None:
             self.scan_global_publisher.publish(self._latest_scan)
 

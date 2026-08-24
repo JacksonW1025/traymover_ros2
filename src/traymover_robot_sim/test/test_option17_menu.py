@@ -10,6 +10,11 @@ def test_option17_is_simulation_only_and_has_detour_prompt():
     option_end = text.index("action_start_nav_speed_modes()", option_start)
     block = text[option_start:option_end]
     assert "traymover_robot_sim traymover_detour_sim.launch.py" in block
+    assert "Select destination" in block
+    assert "goal_x:=${goal_x}" in block
+    assert "goal_y:=${goal_y}" in block
+    assert "goal_yaw:=${goal_yaw}" in block
+    assert "East center" in block
     assert "base_serial.launch.py" not in block
     assert "traymover_lidar.launch.py" not in block
 

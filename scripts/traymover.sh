@@ -824,7 +824,42 @@ EOF
 }
 
 action_start_nav_detour_sim() {
-    local detour_opt rviz_opt enable_detour launch_rviz previous_ros_setup
+    local detour_opt rviz_opt destination_choice destination_label
+    local enable_detour launch_rviz previous_ros_setup goal_x goal_y goal_yaw
+
+    cat <<EOF
+[traymover] Simulation destinations (map frame):
+  1) East center / detour showcase  (7.0,  0.0)
+  2) North bay                    (7.0,  1.8)
+  3) South bay                    (7.0, -1.8)
+EOF
+    read -r -p "Select destination [1]: " destination_choice
+    destination_choice="${destination_choice:-1}"
+    case "${destination_choice}" in
+        1)
+            destination_label="East center / detour showcase"
+            goal_x="7.0"
+            goal_y="0.0"
+            goal_yaw="0.0"
+            ;;
+        2)
+            destination_label="North bay"
+            goal_x="7.0"
+            goal_y="1.8"
+            goal_yaw="0.0"
+            ;;
+        3)
+            destination_label="South bay"
+            goal_x="7.0"
+            goal_y="-1.8"
+            goal_yaw="0.0"
+            ;;
+        *)
+            echo "[traymover] Invalid destination '${destination_choice}'. Choose 1, 2, or 3."
+            return 1
+            ;;
+    esac
+    echo "[traymover] Destination: ${destination_label} (${goal_x}, ${goal_y})"
 
     read -r -p "Enable 8 s detour? [Y/n] " detour_opt
     detour_opt="${detour_opt:-Y}"
@@ -850,7 +885,7 @@ action_start_nav_detour_sim() {
         ROS_DISTRO_SETUP="/opt/ros/jazzy/setup.bash"
     fi
     spawn_in_terminal "traymover: detour_sim" \
-        "ros2 launch traymover_robot_sim traymover_detour_sim.launch.py enable_detour:=${enable_detour} launch_rviz:=${launch_rviz}"
+        "ros2 launch traymover_robot_sim traymover_detour_sim.launch.py enable_detour:=${enable_detour} launch_rviz:=${launch_rviz} goal_x:=${goal_x} goal_y:=${goal_y} goal_yaw:=${goal_yaw}"
     ROS_DISTRO_SETUP="${previous_ros_setup}"
 }
 

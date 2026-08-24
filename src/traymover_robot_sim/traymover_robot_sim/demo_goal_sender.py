@@ -85,8 +85,14 @@ class DemoGoalSender(Node):
     def _goal_response_callback(self, future) -> None:
         self._goal_handle = future.result()
         if not self._goal_handle or not self._goal_handle.accepted:
-            self.get_logger().error("NavigateToPose goal was rejected")
-            if rclpy.ok():
+            self.get_logger().warning("NavigateToPose goal was rejected; retrying")
+            # The action server is advertised while bt_navigator is still
+            # inactive during lifecycle bringup.  Keep retrying until the
+            # managed Nav2 stack accepts the goal instead of ending the demo
+            # before the first route is generated.
+            if self.auto_send_goal and rclpy.ok():
+                self._timer = self.create_timer(1.0, self._send_goal)
+            elif rclpy.ok():
                 rclpy.shutdown()
             return
         self.get_logger().info("NavigateToPose goal accepted")
@@ -99,7 +105,7 @@ class DemoGoalSender(Node):
         except Exception as exc:  # noqa: BLE001 - action futures may report transport errors
             self.get_logger().error("NavigateToPose failed: %s", exc)
         else:
-            self.get_logger().info("NavigateToPose completed with result code %s", result)
+            self.get_logger().info(f"NavigateToPose completed with result code {result}")
         finally:
             # This executable sends one goal and should not keep the launch
             # alive after Nav2 reports success, rejection, or transport error.

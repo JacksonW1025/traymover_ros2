@@ -9,7 +9,7 @@ from launch.actions import (
     ExecuteProcess,
     TimerAction,
 )
-from launch.conditions import IfCondition
+from launch.conditions import IfCondition, UnlessCondition
 from launch.substitutions import Command, LaunchConfiguration, PythonExpression
 from launch_ros.actions import Node
 from launch_ros.descriptions import ParameterFile
@@ -22,6 +22,7 @@ NAV2_LIFECYCLE_NODES = [
     "planner_server",
     "controller_server",
     "bt_navigator",
+    "collision_monitor",
 ]
 
 
@@ -50,6 +51,7 @@ def generate_launch_description():
     obstacle_lifetime_sec = LaunchConfiguration("obstacle_lifetime_sec")
     auto_send_goal = LaunchConfiguration("auto_send_goal")
     launch_rviz = LaunchConfiguration("launch_rviz")
+    headless_gazebo = LaunchConfiguration("headless_gazebo")
     map_yaml = LaunchConfiguration("map")
     world = LaunchConfiguration("world")
     goal_x = LaunchConfiguration("goal_x")
@@ -71,12 +73,21 @@ def generate_launch_description():
         allow_substs=True,
     )
 
-    gazebo = Node(
-        package="ros_gz_sim",
-        executable="gz_sim",
+    # Jazzy's ros_gz_sim package exposes the server wrapper as ``gzserver``;
+    # the portable Gazebo Sim entry point is the installed ``gz sim`` command.
+    # Use it directly so this launch works with the current Jazzy packaging and
+    # still opens the normal Gazebo GUI for the video demonstration.
+    gazebo_gui = ExecuteProcess(
+        cmd=["gz", "sim", "-r", world],
         name="gz_sim",
         output="screen",
-        arguments=["-r", world],
+        condition=UnlessCondition(headless_gazebo),
+    )
+    gazebo_server = ExecuteProcess(
+        cmd=["gz", "sim", "-s", "-r", world],
+        name="gz_sim_server",
+        output="screen",
+        condition=IfCondition(headless_gazebo),
     )
     state_publisher = Node(
         package="robot_state_publisher",
@@ -257,9 +268,11 @@ def generate_launch_description():
             DeclareLaunchArgument("goal_y", default_value="0.0"),
             DeclareLaunchArgument("goal_yaw", default_value="0.0"),
             DeclareLaunchArgument("launch_rviz", default_value="true"),
+            DeclareLaunchArgument("headless_gazebo", default_value="false"),
             DeclareLaunchArgument("map", default_value=default_map),
             DeclareLaunchArgument("world", default_value=default_world),
-            gazebo,
+            gazebo_gui,
+            gazebo_server,
             state_publisher,
             spawn_robot,
             bridge,

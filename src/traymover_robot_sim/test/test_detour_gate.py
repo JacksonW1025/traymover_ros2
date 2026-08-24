@@ -1,7 +1,13 @@
 import pytest
+from geometry_msgs.msg import Twist
 
 from traymover_robot_sim.detour_supervisor import (
-    DetourGate, GateState, SafetyObservation,
+    DetourGate,
+    GateDecision,
+    GateState,
+    SafetyObservation,
+    command_speed,
+    select_output_command,
 )
 
 
@@ -55,6 +61,21 @@ def test_detour_stays_active_while_maneuvering_with_obstacle_present():
 
     assert decision.state is GateState.DETOUR_ACTIVE
     assert decision.forward_global_scan
+
+
+def test_detour_mux_releases_nav_command_after_hold_but_estop_stays_zero():
+    nav = Twist()
+    nav.linear.x = 0.2
+    nav.angular.z = 0.4
+    safety = Twist()
+    detour = GateDecision(GateState.DETOUR_ACTIVE, True)
+    normal = GateDecision(GateState.NORMAL, False)
+
+    assert select_output_command(detour, nav, safety, estop_active=False) is nav
+    assert select_output_command(normal, nav, safety, estop_active=False) is safety
+    assert command_speed(
+        select_output_command(detour, nav, safety, estop_active=True)
+    ) == 0.0
 
 
 def test_estop_alone_without_obstacle_does_not_trigger_detour():
