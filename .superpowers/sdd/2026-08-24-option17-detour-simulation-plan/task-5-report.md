@@ -61,3 +61,18 @@ Tests:
   -> passed with no output.
 * Static demo-goal sender interface/shutdown assertions -> `demo goal sender
   checks passed`.
+
+## Review fix round 3
+
+Status: DONE
+
+The rejected-goal callback now also shuts down the ROS context, preventing the
+one-shot sender from spinning indefinitely when Nav2 rejects its goal.
+
+Tests:
+
+* `/usr/bin/python3 -m pytest -q src/traymover_robot_sim/test/test_nav_config.py`
+  -> `3 passed in 0.00s`.
+* `/usr/bin/python3 -m py_compile src/traymover_robot_sim/launch/traymover_detour_sim.launch.py src/traymover_robot_sim/traymover_robot_sim/*.py`
+  -> passed with no output.
+* Static sender shutdown assertions -> passed.

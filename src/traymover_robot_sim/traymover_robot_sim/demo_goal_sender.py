@@ -76,6 +76,8 @@ class DemoGoalSender(Node):
         self._goal_handle = future.result()
         if not self._goal_handle or not self._goal_handle.accepted:
             self.get_logger().error("NavigateToPose goal was rejected")
+            if rclpy.ok():
+                rclpy.shutdown()
             return
         self.get_logger().info("NavigateToPose goal accepted")
         result_future = self._goal_handle.get_result_async()
