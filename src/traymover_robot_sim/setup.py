@@ -20,9 +20,16 @@ data_files = [
     ('share/' + package_name, ['package.xml']),
 ]
 for directory in asset_directories:
-    files = glob.glob(os.path.join(directory, '*'))
-    if files:
-        data_files.append((os.path.join('share', package_name, directory), files))
+    # Preserve nested asset paths (for example models/dynamic_box/model.sdf)
+    # in the installed share directory used by the launch file.
+    files = [
+        path
+        for path in glob.glob(os.path.join(directory, '**'), recursive=True)
+        if os.path.isfile(path)
+    ]
+    for path in files:
+        destination = os.path.join('share', package_name, os.path.dirname(path))
+        data_files.append((destination, [path]))
 
 setup(
     name=package_name,
