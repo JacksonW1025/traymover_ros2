@@ -43,3 +43,21 @@ Tests:
 * Package XML/setup metadata assertions -> `package metadata checks passed`.
 
 Concern: the full Gazebo/Nav2 runtime remains unexecuted in this focused check.
+
+## Review fix round 2
+
+Status: DONE
+
+Updated `demo_goal_sender` to shut down its ROS context after the
+`NavigateToPose` result callback, including transport-error results, so the
+one-shot executable exits after completion while retaining rejected-goal and
+future-error logging.
+
+Tests:
+
+* `/usr/bin/python3 -m pytest -q src/traymover_robot_sim/test/test_nav_config.py`
+  -> `3 passed in 0.00s`.
+* `/usr/bin/python3 -m py_compile src/traymover_robot_sim/launch/traymover_detour_sim.launch.py src/traymover_robot_sim/traymover_robot_sim/*.py`
+  -> passed with no output.
+* Static demo-goal sender interface/shutdown assertions -> `demo goal sender
+  checks passed`.

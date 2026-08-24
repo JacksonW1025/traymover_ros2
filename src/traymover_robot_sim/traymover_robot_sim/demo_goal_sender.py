@@ -82,8 +82,17 @@ class DemoGoalSender(Node):
         result_future.add_done_callback(self._result_callback)
 
     def _result_callback(self, future) -> None:
-        result = future.result().result
-        self.get_logger().info("NavigateToPose completed with result code %s", result)
+        try:
+            result = future.result().result
+        except Exception as exc:  # noqa: BLE001 - action futures may report transport errors
+            self.get_logger().error("NavigateToPose failed: %s", exc)
+        else:
+            self.get_logger().info("NavigateToPose completed with result code %s", result)
+        finally:
+            # This executable sends one goal and should not keep the launch
+            # alive after Nav2 reports success, rejection, or transport error.
+            if rclpy.ok():
+                rclpy.shutdown()
 
 
 def main(args: Optional[list[str]] = None) -> None:
