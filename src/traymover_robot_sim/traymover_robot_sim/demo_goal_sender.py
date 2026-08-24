@@ -5,7 +5,6 @@ from typing import Optional
 
 import rclpy
 from geometry_msgs.msg import PoseStamped
-from nav2_msgs.action import NavigateToPose
 from rclpy.action import ActionClient
 from rclpy.node import Node
 
@@ -37,31 +36,42 @@ class DemoGoalSender(Node):
     """Wait for Nav2 and send one goal after a configurable startup delay."""
 
     def __init__(self) -> None:
+        # Keep the pose helper importable for lightweight unit tests even on
+        # systems where the optional Nav2 runtime is not installed.
+        from nav2_msgs.action import NavigateToPose
+
         super().__init__("demo_goal_sender")
+        self._action_type = NavigateToPose
         self.declare_parameter("goal_x", 7.0)
         self.declare_parameter("goal_y", 0.0)
         self.declare_parameter("goal_yaw", 0.0)
         self.declare_parameter("frame_id", "map")
         self.declare_parameter("send_delay_sec", 2.0)
+        self.declare_parameter("auto_send_goal", True)
 
         self.goal_x = float(self.get_parameter("goal_x").value)
         self.goal_y = float(self.get_parameter("goal_y").value)
         self.goal_yaw = float(self.get_parameter("goal_yaw").value)
         self.frame_id = str(self.get_parameter("frame_id").value)
         self.send_delay_sec = max(0.0, float(self.get_parameter("send_delay_sec").value))
+        self.auto_send_goal = bool(self.get_parameter("auto_send_goal").value)
 
-        self._client = ActionClient(self, NavigateToPose, "navigate_to_pose")
-        self._timer = self.create_timer(self.send_delay_sec or 0.001, self._send_goal)
+        self._client = ActionClient(self, self._action_type, "navigate_to_pose")
+        self._timer = None
+        if self.auto_send_goal:
+            self._timer = self.create_timer(self.send_delay_sec or 0.001, self._send_goal)
         self._goal_handle = None
 
     def _send_goal(self) -> None:
+        if self._timer is None:
+            return
         self._timer.cancel()
         if not self._client.wait_for_server(timeout_sec=1.0):
             self.get_logger().warning("navigate_to_pose action server is not ready; retrying")
             self._timer = self.create_timer(1.0, self._send_goal)
             return
 
-        goal = NavigateToPose.Goal()
+        goal = self._action_type.Goal()
         goal.pose = make_goal_pose(
             self.goal_x,
             self.goal_y,
