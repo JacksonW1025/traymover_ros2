@@ -69,8 +69,9 @@ spawn_in_terminal() {
     local term
     term="$(pick_terminal)"
 
-    # Wrap the command so the shell sources ROS first and keeps the window open
-    # on exit (so the user can read any error before the window closes).
+    # Wrap the command so the shell sources ROS first. Keep a failed command's
+    # terminal open for diagnostics, but let signal-terminated commands close
+    # immediately when option 0 stops a running subsystem.
     local wrapped
     wrapped="echo '[traymover] ${title}'; \
 mkdir -p '${ROS_LOG_DIR_DEFAULT}'; \
@@ -78,7 +79,9 @@ export ROS_LOG_DIR='${ROS_LOG_DIR_DEFAULT}'; \
 source '${ROS_DISTRO_SETUP}'; \
 if [ -f '${WS_SETUP}' ]; then source '${WS_SETUP}'; else echo '[traymover] WARNING: ${WS_SETUP} not found — did you colcon build?'; fi; \
 ${cmd}; \
-echo; echo '[traymover] ${title} exited. Press Enter to close.'; read"
+status=$?; \
+if [ \"\${status}\" -lt 128 ]; then echo; echo \"[traymover] ${title} exited (status \${status}). Press Enter to close.\"; read; fi; \
+exit \"\${status}\""
 
     case "${term}" in
         gnome-terminal)
@@ -108,6 +111,16 @@ KILL_PATTERNS=(
     'ros2 launch traymover_robot_nav2'
     'ros2 launch traymover_robot_nav '
     'ros2 launch traymover_robot_nav traymover_3d_nav'
+    # Option 17: Gazebo/Nav2 detour demonstration.
+    'ros2 launch traymover_robot_sim'
+    'traymover_detour.sdf'
+    'gz sim server'
+    'gz sim gui'
+    'traymover: detour_sim'
+    'sim_odom_tf'
+    'detour_supervisor'
+    'demo_goal_sender'
+    'ros_gz_bridge'
     'ros2 launch lslidar_driver'
     'ros2 launch fast_lio'
     'ros2 launch realsense2_camera'
@@ -827,6 +840,11 @@ action_start_nav_detour_sim() {
     local detour_opt rviz_opt destination_choice destination_label
     local enable_detour launch_rviz previous_ros_setup goal_x goal_y goal_yaw
 
+    # Gazebo Sim can leave its server re-parented after the terminal wrapper
+    # exits. Clean the complete previous demo before asking for a new goal so
+    # every option-17 run starts at the world/robot spawn pose.
+    kill_previous true
+
     cat <<EOF
 [traymover] Simulation destinations (map frame):
   1) East center / detour showcase  (7.0,  0.0)
@@ -885,7 +903,7 @@ EOF
         ROS_DISTRO_SETUP="/opt/ros/jazzy/setup.bash"
     fi
     spawn_in_terminal "traymover: detour_sim" \
-        "ros2 launch traymover_robot_sim traymover_detour_sim.launch.py enable_detour:=${enable_detour} launch_rviz:=${launch_rviz} goal_x:=${goal_x} goal_y:=${goal_y} goal_yaw:=${goal_yaw}"
+        "ros2 launch traymover_robot_sim traymover_detour_sim.launch.py enable_detour:=${enable_detour} enable_detour_waypoint:=${enable_detour} launch_rviz:=${launch_rviz} goal_x:=${goal_x} goal_y:=${goal_y} goal_yaw:=${goal_yaw}"
     ROS_DISTRO_SETUP="${previous_ros_setup}"
 }
 

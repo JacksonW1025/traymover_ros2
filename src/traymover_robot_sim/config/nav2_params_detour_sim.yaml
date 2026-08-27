@@ -19,7 +19,7 @@ amcl:
     lambda_short: 0.1
     laser_likelihood_max_dist: 2.0
     laser_max_range: 8.0
-    laser_min_range: 0.2
+    laser_min_range: 0.05
     laser_model_type: likelihood_field
     max_beams: 60
     max_particles: 2000
@@ -92,26 +92,34 @@ controller_server:
       stateful: true
       plugin: nav2_controller::SimpleGoalChecker
       xy_goal_tolerance: 0.20
-      yaw_goal_tolerance: 0.30
+      # Intermediate detour poses are route anchors, not final docking poses.
+      # A wide demo-only heading tolerance prevents RPP (with rotate-to-
+      # heading disabled) from orbiting an anchor after its XY is reached.
+      yaw_goal_tolerance: 1.00
     controller_plugins: [FollowPath]
     FollowPath:
       plugin: nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController
-      desired_linear_vel: 0.14
-      min_approach_linear_velocity: 0.06
+      # The video demo uses twice the original 0.10 m/s cruise speed. Keep
+      # angular speed unchanged so the detour corner remains easy to see.
+      desired_linear_vel: 0.20
+      min_approach_linear_velocity: 0.08
       approach_velocity_scaling_dist: 0.6
       use_velocity_scaled_lookahead_dist: true
+      # Keep a long carrot and track continuously through the detour corner.
+      # The short-carrot variant produced excessive curvature and an almost
+      # complete in-place turn as the entry leg met the side leg.
       lookahead_dist: 1.40
       min_lookahead_dist: 1.10
       max_lookahead_dist: 2.60
       lookahead_time: 2.80
-      use_rotate_to_heading: true
+      use_rotate_to_heading: false
       rotate_to_heading_min_angle: 0.35
       rotate_to_heading_angular_vel: 0.45
       max_angular_accel: 0.8
       allow_reversing: false
       use_regulated_linear_velocity_scaling: true
       regulated_linear_scaling_min_radius: 3.20
-      regulated_linear_scaling_min_speed: 0.035
+      regulated_linear_scaling_min_speed: 0.07
       use_cost_regulated_linear_velocity_scaling: false
       use_collision_detection: false
       transform_tolerance: 0.6
@@ -149,8 +157,8 @@ local_costmap:
           clearing: true
           obstacle_max_range: 8.0
           raytrace_max_range: 8.0
-          obstacle_min_range: 0.2
-          raytrace_min_range: 0.2
+          obstacle_min_range: 0.05
+          raytrace_min_range: 0.05
       inflation_layer:
         plugin: nav2_costmap_2d::InflationLayer
         cost_scaling_factor: 3.0
@@ -184,10 +192,13 @@ global_costmap:
           clearing: true
           obstacle_max_range: 8.0
           raytrace_max_range: 8.0
-          obstacle_min_range: 0.2
-          raytrace_min_range: 0.2
+          obstacle_min_range: 0.05
+          raytrace_min_range: 0.05
       inflation_layer:
         plugin: nav2_costmap_2d::InflationLayer
+        # The explicit detour anchors already keep the robot clear of the
+        # temporary box. Keep the global inflation at the original demo value
+        # so the close y=+/-1.20 m side corridor remains a straight corridor.
         cost_scaling_factor: 3.0
         inflation_radius: 0.35
       always_send_full_costmap: true

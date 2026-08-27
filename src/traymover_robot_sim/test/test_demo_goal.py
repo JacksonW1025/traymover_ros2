@@ -1,11 +1,16 @@
-from math import isclose
+from math import isclose, pi
 from pathlib import Path
 import sys
 
 
 sys.path.insert(0, str(Path(__file__).parents[1]))
 
-from traymover_robot_sim.demo_goal_sender import make_goal_pose
+from traymover_robot_sim.demo_goal_sender import (
+    choose_detour_exit_waypoint,
+    choose_detour_waypoint,
+    choose_detour_waypoint_yaw,
+    make_goal_pose,
+)
 
 
 def test_make_goal_pose_uses_map_frame_and_yaw_quaternion():
@@ -27,6 +32,29 @@ def test_make_goal_pose_builds_planar_yaw_quaternion():
     assert isclose(pose.pose.orientation.w, 2**-0.5, rel_tol=1e-9)
 
 
+def test_detour_waypoint_chooses_side_from_destination():
+    assert choose_detour_waypoint(7.0, 0.0) == (3.1, -1.2)
+    assert choose_detour_waypoint(7.0, -1.8) == (3.1, 1.2)
+
+
+def test_detour_waypoint_heading_matches_the_approach_side():
+    assert choose_detour_waypoint_yaw(0.0) == -pi / 2.0
+    assert choose_detour_waypoint_yaw(-1.8) == pi / 2.0
+
+
+def test_detour_exit_waypoint_is_past_the_showcase_box():
+    assert choose_detour_exit_waypoint(7.0, 0.0) == (5.6, -1.2)
+    assert choose_detour_exit_waypoint(7.0, -1.8) == (5.6, 1.2)
+
+
+def test_detour_side_clearance_is_reduced_without_entering_box_footprint():
+    entry_x, entry_y = choose_detour_waypoint(7.0, 0.0)
+    exit_x, exit_y = choose_detour_exit_waypoint(7.0, 0.0)
+    assert 2.5 < entry_x < 3.55
+    assert exit_x > 5.4
+    assert entry_y == exit_y == -1.2
+
+
 def test_sender_retains_action_type_for_timer_goal_construction():
     source = (Path(__file__).parents[1] / "traymover_robot_sim" / "demo_goal_sender.py").read_text()
     assert "self._action_type = NavigateToPose" in source
@@ -41,4 +69,4 @@ def test_sender_retries_a_goal_rejected_before_nav2_is_active():
 
 def test_sender_formats_result_for_jazzy_rclpy_logger():
     source = (Path(__file__).parents[1] / "traymover_robot_sim" / "demo_goal_sender.py").read_text()
-    assert 'self.get_logger().info(f"NavigateToPose completed with result code {result}")' in source
+    assert 'f"NavigateToPose ({completed_stage}) completed with result code {result}"' in source

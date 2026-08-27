@@ -46,6 +46,7 @@ def generate_launch_description():
 
     use_sim_time = LaunchConfiguration("use_sim_time")
     enable_detour = LaunchConfiguration("enable_detour")
+    enable_detour_waypoint = LaunchConfiguration("enable_detour_waypoint")
     spawn_dynamic_obstacle = LaunchConfiguration("spawn_dynamic_obstacle")
     obstacle_spawn_delay = LaunchConfiguration("obstacle_spawn_delay")
     obstacle_lifetime_sec = LaunchConfiguration("obstacle_lifetime_sec")
@@ -243,6 +244,7 @@ def generate_launch_description():
                 "goal_x": goal_x,
                 "goal_y": goal_y,
                 "goal_yaw": goal_yaw,
+                "enable_detour_waypoint": enable_detour_waypoint,
             }
         ],
     )
@@ -260,6 +262,7 @@ def generate_launch_description():
         [
             DeclareLaunchArgument("use_sim_time", default_value="true"),
             DeclareLaunchArgument("enable_detour", default_value="true"),
+            DeclareLaunchArgument("enable_detour_waypoint", default_value="false"),
             DeclareLaunchArgument("spawn_dynamic_obstacle", default_value="true"),
             DeclareLaunchArgument("obstacle_spawn_delay", default_value="12.0"),
             DeclareLaunchArgument("obstacle_lifetime_sec", default_value="0.0"),

@@ -18,6 +18,31 @@ def command_speed(twist: Twist) -> float:
     return hypot(twist.linear.x, twist.linear.y) + abs(twist.angular.z)
 
 
+def limit_detour_angular_speed(twist: Twist, max_abs_angular_speed: float) -> Twist:
+    """Copy a command while bounding yaw rate for the prototype detour.
+
+    RPP does not expose a maximum angular velocity parameter. A short, sharp
+    path corner can therefore produce a large yaw-rate command even after its
+    linear speed has been regulated. The detour mux applies this bound only
+    while the sender holds the detour route, leaving the normal navigation and
+    safety command paths unchanged.
+    """
+
+    if not isfinite(max_abs_angular_speed) or max_abs_angular_speed <= 0.0:
+        raise ValueError("max_abs_angular_speed must be finite and positive")
+    limited = Twist()
+    limited.linear.x = twist.linear.x
+    limited.linear.y = twist.linear.y
+    limited.linear.z = twist.linear.z
+    limited.angular.x = twist.angular.x
+    limited.angular.y = twist.angular.y
+    limited.angular.z = max(
+        -max_abs_angular_speed,
+        min(max_abs_angular_speed, twist.angular.z),
+    )
+    return limited
+
+
 def has_front_obstacle(
     scan: LaserScan, stop_distance: float, front_half_angle: float
 ) -> bool:
@@ -34,6 +59,13 @@ def has_front_obstacle(
         if distance <= stop_distance:
             return True
     return False
+
+
+def set_global_scan_frame(scan: LaserScan, frame_id: str) -> LaserScan:
+    """Set the frame used by the global replan observation and return it."""
+
+    scan.header.frame_id = frame_id
+    return scan
 
 
 @dataclass(frozen=True)
@@ -63,6 +95,8 @@ def select_output_command(
     nav_cmd: Twist,
     safety_cmd: Twist,
     estop_active: bool,
+    front_obstacle: bool = False,
+    route_hold: bool = False,
 ) -> Twist:
     """Select the simulated drivetrain command for the current gate state.
 
@@ -75,7 +109,18 @@ def select_output_command(
 
     if estop_active:
         return Twist()
-    if decision.forward_global_scan:
+    if (
+        front_obstacle
+        and decision.state in (GateState.NORMAL, GateState.STOP_WAITING)
+        and not route_hold
+    ):
+        # Do not depend on a collision-monitor polygon's exact boundary for
+        # the first stop. The raw lidar gate can stop the prototype as soon
+        # as the obstacle enters its configured detection sector. Once the
+        # sender has taken route_hold, however, this same obstacle is the one
+        # being circumnavigated; stopping again would deadlock the detour.
+        return Twist()
+    if decision.forward_global_scan or route_hold:
         return nav_cmd
     return safety_cmd
 
@@ -115,11 +160,12 @@ class DetourGate:
             raise ValueError("observation timestamps must not decrease")
         self._last_timestamp = now
 
+        # The simulation gate is driven by the raw front-sector observation.
+        # CollisionMonitor may be slowing (rather than fully stopping) while
+        # the box enters the near field, but it is still a blocking obstacle
+        # for the eight-second detour timer.
         safety_blocking = observation.front_obstacle and (
-            (
-                observation.nav_speed >= self.nav_intent_threshold
-                and observation.output_speed <= self.output_stop_threshold
-            )
+            observation.nav_speed >= self.nav_intent_threshold
             or observation.estop_active
         )
 
@@ -175,15 +221,29 @@ class DetourSupervisor(Node):
         self.declare_parameter('enable_detour', True)
         self.declare_parameter('hold_time_sec', 8.0)
         self.declare_parameter('stop_distance', 0.8)
-        self.declare_parameter('front_half_angle', 0.25)
+        self.declare_parameter('front_half_angle', 1.2)
         self.declare_parameter('clear_publish_sec', 1.5)
         self.declare_parameter('nav_intent_threshold', 0.05)
         self.declare_parameter('output_stop_threshold', 0.01)
+        self.declare_parameter('detour_max_angular_speed', 0.8)
         self.declare_parameter('tick_hz', 20.0)
+        self.declare_parameter('global_scan_frame', 'base_link')
 
         self.enable_detour = bool(self.get_parameter('enable_detour').value)
         self.stop_distance = float(self.get_parameter('stop_distance').value)
         self.front_half_angle = float(self.get_parameter('front_half_angle').value)
+        self.global_scan_frame = str(self.get_parameter('global_scan_frame').value)
+        self.detour_max_angular_speed = float(
+            self.get_parameter('detour_max_angular_speed').value
+        )
+        if (
+            not isfinite(self.detour_max_angular_speed)
+            or self.detour_max_angular_speed <= 0.0
+        ):
+            self.get_logger().warning(
+                'detour_max_angular_speed must be positive; using 0.8 rad/s'
+            )
+            self.detour_max_angular_speed = 0.8
         self.tick_hz = float(self.get_parameter('tick_hz').value)
         if self.tick_hz <= 0.0:
             self.get_logger().warning('tick_hz must be positive; using 20 Hz')
@@ -203,6 +263,7 @@ class DetourSupervisor(Node):
         self._latest_nav_cmd = Twist()
         self._latest_safety_cmd = Twist()
         self._estop_active = False
+        self._route_hold = False
 
         self.scan_subscription = self.create_subscription(
             LaserScan, '/scan', self.scan_callback, 10
@@ -216,6 +277,9 @@ class DetourSupervisor(Node):
         self.command_publisher = self.create_publisher(Twist, '/cmd_vel', 10)
         self.estop_subscription = self.create_subscription(
             Bool, '/traymover_estop/state', self.estop_callback, 10
+        )
+        self.route_hold_subscription = self.create_subscription(
+            Bool, '/traymover_detour/route_hold', self.route_hold_callback, 10
         )
 
         self.scan_global_publisher = self.create_publisher(
@@ -241,6 +305,9 @@ class DetourSupervisor(Node):
     def estop_callback(self, msg: Bool) -> None:
         self._estop_active = bool(msg.data)
 
+    def route_hold_callback(self, msg: Bool) -> None:
+        self._route_hold = bool(msg.data)
+
     def tick(self) -> None:
         now_sec = self.get_clock().now().nanoseconds * 1e-9
         if not self.enable_detour:
@@ -258,22 +325,33 @@ class DetourSupervisor(Node):
             )
             decision = self._gate.update(observation)
 
+        forward_nav = decision.forward_global_scan or self._route_hold
         state_msg = String()
         state_msg.data = decision.state.name
         self.state_publisher.publish(state_msg)
         active_msg = Bool()
-        active_msg.data = bool(decision.forward_global_scan)
+        active_msg.data = bool(forward_nav)
         self.active_publisher.publish(active_msg)
-        self.command_publisher.publish(
-            select_output_command(
-                decision,
-                self._latest_nav_cmd,
-                self._latest_safety_cmd,
-                self._estop_active,
-            )
+        output_command = select_output_command(
+            decision,
+            self._latest_nav_cmd,
+            self._latest_safety_cmd,
+            self._estop_active,
+            front_obstacle,
+            self._route_hold,
         )
-        if decision.forward_global_scan and self._latest_scan is not None:
-            self.scan_global_publisher.publish(self._latest_scan)
+        if self._route_hold:
+            output_command = limit_detour_angular_speed(
+                output_command, self.detour_max_angular_speed
+            )
+        self.command_publisher.publish(output_command)
+        if forward_nav and self._latest_scan is not None:
+            # Keep the frame configurable for simulator backends that do not
+            # provide a timestamped static laser transform. The default laser
+            # frame preserves the sensor origin and measured ranges.
+            self.scan_global_publisher.publish(
+                set_global_scan_frame(self._latest_scan, self.global_scan_frame)
+            )
 
 
 def main(args=None) -> None:

@@ -51,7 +51,7 @@ Visualization Manager:
       Enabled: true
   Enabled: true
   Global Options:
-    Background Color: 48; 48; 48
+    Background Color: 230; 235; 245
     Fixed Frame: map
     Frame Rate: 30
   Name: root
@@ -65,13 +65,21 @@ Visualization Manager:
     - Class: rviz_default_plugins/SetGoal
   Views:
     Current:
-      Class: rviz_default_plugins/Orbit
-      Distance: 10
-      Focal Point: 4; 0; 0
-      Pitch: 1.0
-      Yaw: 3.14
+      Angle: 0
+      Class: rviz_default_plugins/TopDownOrtho
+      Enable Stereo Rendering:
+        Stereo Eye Separation: 0.06
+        Stereo Focal Distance: 1
+        Swap Stereo Eyes: false
+        Value: false
+      Invert Z Axis: false
+      Name: Current View
+      Near Clip Distance: 0.01
+      Scale: 10
       Target Frame: <Fixed Frame>
-      Value: Orbit (rviz)
+      Value: TopDownOrtho (rviz_default_plugins)
+      X: 4
+      Y: 0
 Window Geometry:
   Height: 900
   Width: 1400

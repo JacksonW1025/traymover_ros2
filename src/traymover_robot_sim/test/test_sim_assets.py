@@ -3,10 +3,11 @@ import xml.etree.ElementTree as ET
 
 
 ROOT = Path(__file__).parents[1]
+WORKSPACE_ROOT = Path(__file__).parents[3]
 
 
 def test_sim_model_has_required_frames_and_plugins():
-    model_path = Path("src/traymover_robot_description/urdf/traymover_sim.urdf.xacro")
+    model_path = WORKSPACE_ROOT / "src/traymover_robot_description/urdf/traymover_sim.urdf.xacro"
     root = ET.parse(model_path).getroot()
     links = {node.attrib.get("name") for node in root.findall("link")}
     assert {"base_link", "laser"} <= links
@@ -35,11 +36,67 @@ def test_demo_map_has_expected_metadata():
 def test_world_and_dynamic_box_use_required_geometry():
     world_text = (ROOT / "worlds/traymover_detour.sdf").read_text()
     box_text = (ROOT / "models/dynamic_box/model.sdf").read_text()
-    assert "static_block_north" in world_text
-    assert "static_block_south" in world_text
+    # The boundary walls are the fixed scene geometry; keep the runtime box
+    # as the sole navigational obstacle so its detour has ample clearance.
+    assert "<model name=\"wall_north\">" in world_text
+    assert "static_block_north" not in world_text
+    assert "static_block_south" not in world_text
     assert "dynamic_box" not in world_text
     assert "<size>0.9 0.9 0.9</size>" in box_text
     assert "<pose>4.0 0.0 0.45" in box_text
+
+
+def test_world_has_bright_materials_lighting_and_top_down_camera():
+    world_text = (ROOT / "worlds/traymover_detour.sdf").read_text()
+    root = ET.fromstring(world_text)
+    world = root.find("world")
+    assert world is not None
+
+    scene = world.find("scene")
+    assert scene is not None
+    assert scene.findtext("ambient") == "0.65 0.65 0.65 1"
+    assert scene.findtext("background") == "0.88 0.92 0.98 1"
+
+    sun = world.find("light[@name='sun']")
+    assert sun is not None
+    assert sun.attrib.get("type") == "directional"
+    assert sun.findtext("diffuse") == "1 1 1 1"
+
+    gui = world.find("gui")
+    assert gui is not None
+    scene_view = gui.find("plugin[@filename='GzScene3D']")
+    assert scene_view is not None
+    assert scene_view.findtext("camera_pose") == "4 0 9 0 1.5708 0"
+
+    materials = {
+        model.attrib["name"]: model.find("link/visual/material/diffuse")
+        for model in world.findall("model")
+        if model.find("link/visual/material/diffuse") is not None
+    }
+    assert {"floor", "wall_west", "wall_east", "wall_north", "wall_south"} <= materials.keys()
+    assert len({material.text for material in materials.values()}) >= 4
+
+
+def test_runtime_dynamic_box_is_spawned_but_not_pushable():
+    box_text = (ROOT / "models/dynamic_box/model.sdf").read_text()
+    root = ET.fromstring(box_text)
+    model = root.find("model")
+    assert model is not None
+    # The obstacle appears at runtime through ros_gz_sim/create, but it must
+    # remain fixed so the demo measures path detouring rather than pushing.
+    assert model.findtext("static") == "true"
+
+
+def test_dynamic_box_and_sim_robot_use_high_contrast_colors():
+    box_text = (ROOT / "models/dynamic_box/model.sdf").read_text()
+    box_root = ET.fromstring(box_text)
+    box_diffuse = box_root.findtext("model/link/visual/material/diffuse")
+    assert box_diffuse == "0.95 0.12 0.04 1"
+
+    robot_text = WORKSPACE_ROOT / "src/traymover_robot_description/urdf/traymover_sim.urdf.xacro"
+    robot = robot_text.read_text()
+    assert 'name="traymover_blue"><color rgba="0.03 0.55 0.95 1"' in robot
+    assert 'name="traymover_yellow"><color rgba="1.0 0.72 0.0 1"' in robot
 
 
 def test_bridge_lists_clock_scan_odom_and_cmd_vel_with_correct_directions():

@@ -7,6 +7,7 @@ from traymover_robot_sim.detour_supervisor import (
     GateState,
     SafetyObservation,
     command_speed,
+    limit_detour_angular_speed,
     select_output_command,
 )
 
@@ -28,6 +29,12 @@ def test_blocking_for_eight_seconds_enables_global_scan():
     decision = gate.update(sample(18.0, nav=0.3, output=0.0, obstacle=True))
     assert decision.state is GateState.DETOUR_ACTIVE
     assert decision.forward_global_scan
+
+
+def test_front_obstacle_starts_timer_while_collision_monitor_is_slowing():
+    gate = DetourGate(hold_time_sec=8.0)
+    decision = gate.update(sample(10.0, nav=0.3, output=0.07, obstacle=True))
+    assert decision.state is GateState.STOP_WAITING
 
 
 def test_obstacle_clear_before_timeout_resets_without_detour():
@@ -76,6 +83,58 @@ def test_detour_mux_releases_nav_command_after_hold_but_estop_stays_zero():
     assert command_speed(
         select_output_command(detour, nav, safety, estop_active=True)
     ) == 0.0
+
+
+def test_raw_front_obstacle_forces_stop_before_collision_monitor_boundary():
+    nav = Twist()
+    nav.linear.x = 0.2
+    safety = Twist()
+    normal = GateDecision(GateState.NORMAL, False)
+    assert command_speed(
+        select_output_command(normal, nav, safety, estop_active=False, front_obstacle=True)
+    ) == 0.0
+
+
+def test_route_hold_forwards_nav_after_lidar_gate_has_cleared():
+    nav = Twist()
+    nav.linear.x = 0.2
+    safety = Twist()
+    normal = GateDecision(GateState.NORMAL, False)
+    assert select_output_command(
+        normal, nav, safety, estop_active=False, route_hold=True
+    ) is nav
+
+
+def test_route_hold_forwards_nav_even_if_obstacle_reenters_front_sector():
+    nav = Twist()
+    nav.linear.x = 0.12
+    nav.angular.z = -0.35
+    safety = Twist()
+    normal = GateDecision(GateState.NORMAL, False)
+
+    # During an active detour the obstacle can remain in the front sector
+    # while the robot is turning around it. Do not re-apply the initial stop
+    # gate, or the robot will deadlock and restart the eight-second timer.
+    assert select_output_command(
+        normal,
+        nav,
+        safety,
+        estop_active=False,
+        front_obstacle=True,
+        route_hold=True,
+    ) is nav
+
+
+def test_detour_angular_limit_clips_turning_spike_without_changing_linear_speed():
+    nav = Twist()
+    nav.linear.x = 0.12
+    nav.angular.z = -1.7
+
+    limited = limit_detour_angular_speed(nav, 0.8)
+
+    assert limited is not nav
+    assert limited.linear.x == 0.12
+    assert limited.angular.z == -0.8
 
 
 def test_estop_alone_without_obstacle_does_not_trigger_detour():
