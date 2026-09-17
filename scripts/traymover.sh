@@ -352,6 +352,14 @@ action_start_auto_estop() {
         "ros2 launch traymover_robot_safety traymover_auto_estop.launch.py"
 }
 
+action_test_auto_estop() {
+    echo "[traymover] Starting stationary automatic EStop test ..."
+    echo "[traymover] No chassis, navigation, RViz, or velocity-control nodes will be started."
+    echo "[traymover] Watch for 'Automatic EStop state: ESTOP/FREE' in the test terminal."
+    spawn_in_terminal "traymover: automatic estop static test" \
+        "ros2 launch traymover_robot_safety traymover_auto_estop.launch.py"
+}
+
 action_start_teleop() {
     # 纯遥控模式:只启动底盘串口 + 键盘节点,不拉 LiDAR / IMU / EKF。
     # base_serial.launch.py 带 use_imu:=false 时只跑 wheeltec_robot(/cmd_vel 订阅、
@@ -1384,6 +1392,7 @@ print_menu() {
  14) Start 3D point-cloud navigation  (FAST_LIO + NDT + CMU local_planner + RViz; no 2D PGM)
  15) Start navigation with speed mode  (option 10 flow + selectable Nav2 speed)
  16) Navigation with LiDAR + RealSense Dynamic Obstacle Avoidance
+ 17) Test automatic EStop while stationary  (RealSense + ESTOP/FREE status only)
   q) Quit
 ==============================
 EOF
@@ -1416,6 +1425,7 @@ main() {
             14) action_start_3d_nav ;;
             15) action_start_nav_speed_modes ;;
             16) action_start_nav_lidar_realsense_obstacle ;;
+            17) action_test_auto_estop ;;
             q|Q|quit|exit) echo "Bye."; exit 0 ;;
             "") ;;
             *) echo "Unknown option: ${choice}" ;;

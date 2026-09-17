@@ -63,7 +63,7 @@ TEST(DepthEstopEvaluatorTest, ReferenceLikeFrameBecomesFreeAfterEightFrames)
   EXPECT_FALSE(result.estop_requested);
 }
 
-TEST(DepthEstopEvaluatorTest, CloseObstacleTriggersOnFirstFrame)
+TEST(DepthEstopEvaluatorTest, BroadCloseObstacleRequiresTwoFrames)
 {
   DepthEstopEvaluator evaluator(DepthEstopConfig{});
   auto image = makeDepthImage();
@@ -72,10 +72,16 @@ TEST(DepthEstopEvaluatorTest, CloseObstacleTriggersOnFirstFrame)
   }
   ASSERT_FALSE(evaluator.estopRequested());
 
-  fillRectangle(image, 300U, 320U, 220U, 246U, 600U);
+  fillRectangle(image, 280U, 340U, 200U, 260U, 600U);
+  const auto first_result = evaluator.process(image);
+  EXPECT_TRUE(first_result.near_obstacle);
+  EXPECT_FALSE(first_result.estop_requested);
+  EXPECT_EQ(first_result.consecutive_obstacle_frames, 1U);
+
   const auto result = evaluator.process(image);
   EXPECT_TRUE(result.near_obstacle);
   EXPECT_TRUE(result.estop_requested);
+  EXPECT_EQ(result.reason, traymover_robot_safety::DepthEstopReason::kNearObstacle);
 }
 
 TEST(DepthEstopEvaluatorTest, SparseNearNoiseDoesNotTrigger)
@@ -92,7 +98,59 @@ TEST(DepthEstopEvaluatorTest, SparseNearNoiseDoesNotTrigger)
   EXPECT_FALSE(evaluator.process(image).estop_requested);
 }
 
-TEST(DepthEstopEvaluatorTest, InsufficientValidDepthForcesEstop)
+TEST(DepthEstopEvaluatorTest, SingleNearTileDoesNotTrigger)
+{
+  DepthEstopEvaluator evaluator(DepthEstopConfig{});
+  auto image = makeDepthImage();
+  for (int frame = 0; frame < 8; ++frame) {
+    evaluator.process(image);
+  }
+
+  fillRectangle(image, 300U, 320U, 200U, 226U, 500U);
+  for (int frame = 0; frame < 4; ++frame) {
+    const auto result = evaluator.process(image);
+    EXPECT_EQ(result.near_tile_count, 1U);
+    EXPECT_FALSE(result.near_obstacle);
+    EXPECT_FALSE(result.estop_requested);
+  }
+}
+
+TEST(DepthEstopEvaluatorTest, NonAdjacentNearTilesDoNotTrigger)
+{
+  DepthEstopEvaluator evaluator(DepthEstopConfig{});
+  auto image = makeDepthImage();
+  for (int frame = 0; frame < 8; ++frame) {
+    evaluator.process(image);
+  }
+
+  fillRectangle(image, 200U, 220U, 148U, 174U, 500U);
+  fillRectangle(image, 400U, 420U, 330U, 356U, 500U);
+  for (int frame = 0; frame < 4; ++frame) {
+    const auto result = evaluator.process(image);
+    EXPECT_EQ(result.near_tile_count, 2U);
+    EXPECT_GT(result.near_pixel_fraction, 0.005);
+    EXPECT_FALSE(result.near_obstacle);
+    EXPECT_FALSE(result.estop_requested);
+  }
+}
+
+TEST(DepthEstopEvaluatorTest, SingleBroadObstacleFrameDoesNotTrigger)
+{
+  DepthEstopEvaluator evaluator(DepthEstopConfig{});
+  auto image = makeDepthImage();
+  for (int frame = 0; frame < 8; ++frame) {
+    evaluator.process(image);
+  }
+
+  fillRectangle(image, 280U, 340U, 200U, 260U, 600U);
+  EXPECT_FALSE(evaluator.process(image).estop_requested);
+
+  image = makeDepthImage();
+  EXPECT_FALSE(evaluator.process(image).estop_requested);
+  EXPECT_EQ(evaluator.process(image).consecutive_obstacle_frames, 0U);
+}
+
+TEST(DepthEstopEvaluatorTest, ModerateInvalidDepthRequiresTwoFrames)
 {
   DepthEstopEvaluator evaluator(DepthEstopConfig{});
   auto image = makeDepthImage();
@@ -101,9 +159,31 @@ TEST(DepthEstopEvaluatorTest, InsufficientValidDepthForcesEstop)
   }
 
   fillRectangle(image, 160U, 480U, 96U, 300U, 0U);
+  const auto first_result = evaluator.process(image);
+  EXPECT_LT(first_result.valid_fraction, 0.50);
+  EXPECT_GT(first_result.valid_fraction, 0.20);
+  EXPECT_FALSE(first_result.estop_requested);
+  EXPECT_EQ(first_result.consecutive_low_valid_frames, 1U);
+
   const auto result = evaluator.process(image);
   EXPECT_LT(result.valid_fraction, 0.50);
   EXPECT_TRUE(result.estop_requested);
+  EXPECT_EQ(result.reason, traymover_robot_safety::DepthEstopReason::kLowValidDepth);
+}
+
+TEST(DepthEstopEvaluatorTest, SevereInvalidDepthTriggersImmediately)
+{
+  DepthEstopEvaluator evaluator(DepthEstopConfig{});
+  auto image = makeDepthImage();
+  for (int frame = 0; frame < 8; ++frame) {
+    evaluator.process(image);
+  }
+
+  fillRectangle(image, 160U, 480U, 96U, 360U, 0U);
+  const auto result = evaluator.process(image);
+  EXPECT_LT(result.valid_fraction, 0.20);
+  EXPECT_TRUE(result.estop_requested);
+  EXPECT_EQ(result.reason, traymover_robot_safety::DepthEstopReason::kLowValidDepth);
 }
 
 TEST(DepthEstopEvaluatorTest, ReleaseUsesDistanceHysteresisAndEightClearFrames)

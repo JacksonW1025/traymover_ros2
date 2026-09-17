@@ -31,10 +31,16 @@ def test_auto_estop_launch_uses_fail_safe_depth_defaults():
 
     assert "'depth_module.depth_profile': '640x480x15'" in launch_text
     assert "'enable_color': 'false'" in launch_text
-    assert "DeclareLaunchArgument('depth_timeout_sec', default_value='0.50')" in launch_text
+    assert "DeclareLaunchArgument('depth_timeout_sec', default_value='0.80')" in launch_text
     assert "DeclareLaunchArgument('stop_distance_m', default_value='0.8')" in launch_text
     assert "DeclareLaunchArgument('release_distance_m', default_value='1.0')" in launch_text
     assert "DeclareLaunchArgument('min_valid_fraction', default_value='0.50')" in launch_text
+    assert "DeclareLaunchArgument('severe_invalid_fraction', default_value='0.20')" in launch_text
+    assert "DeclareLaunchArgument('near_tile_fraction', default_value='0.20')" in launch_text
+    assert "DeclareLaunchArgument('min_near_tile_count', default_value='2')" in launch_text
+    assert "DeclareLaunchArgument('min_near_pixel_fraction', default_value='0.005')" in launch_text
+    assert "DeclareLaunchArgument('obstacle_frame_count', default_value='2')" in launch_text
+    assert "DeclareLaunchArgument('low_valid_frame_count', default_value='2')" in launch_text
     assert "DeclareLaunchArgument('clear_frame_count', default_value='8')" in launch_text
 
 

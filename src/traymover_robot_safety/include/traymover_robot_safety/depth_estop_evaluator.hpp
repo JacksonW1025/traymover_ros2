@@ -8,6 +8,14 @@
 namespace traymover_robot_safety
 {
 
+enum class DepthEstopReason
+{
+  kNone,
+  kInvalidFrame,
+  kLowValidDepth,
+  kNearObstacle,
+};
+
 struct DepthEstopConfig
 {
   double depth_scale_m{0.001};
@@ -18,9 +26,14 @@ struct DepthEstopConfig
   double roi_y_min{0.20};
   double roi_y_max{0.85};
   double min_valid_fraction{0.50};
+  double severe_invalid_fraction{0.20};
   std::size_t grid_columns{16};
   std::size_t grid_rows{12};
-  double near_tile_fraction{0.10};
+  double near_tile_fraction{0.20};
+  std::size_t min_near_tile_count{2};
+  double min_near_pixel_fraction{0.005};
+  std::size_t obstacle_frame_count{2};
+  std::size_t low_valid_frame_count{2};
   std::size_t clear_frame_count{8};
 };
 
@@ -29,8 +42,14 @@ struct DepthEstopResult
   bool estop_requested{true};
   bool frame_valid{false};
   bool near_obstacle{false};
+  bool low_valid_depth{false};
   double valid_fraction{0.0};
+  double near_pixel_fraction{0.0};
+  std::size_t near_tile_count{0};
+  std::size_t consecutive_obstacle_frames{0};
+  std::size_t consecutive_low_valid_frames{0};
   std::size_t consecutive_clear_frames{0};
+  DepthEstopReason reason{DepthEstopReason::kNone};
 };
 
 class DepthEstopEvaluator
@@ -47,6 +66,8 @@ private:
 
   DepthEstopConfig config_;
   bool estop_requested_{true};
+  std::size_t consecutive_obstacle_frames_{0};
+  std::size_t consecutive_low_valid_frames_{0};
   std::size_t consecutive_clear_frames_{0};
 };
 

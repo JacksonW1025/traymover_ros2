@@ -1,5 +1,6 @@
 #include <chrono>
 #include <cstddef>
+#include <limits>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -14,6 +15,21 @@ namespace traymover_robot_safety
 namespace
 {
 constexpr char kAutoEstopRequestTopic[] = "/traymover_estop/auto_request";
+
+const char * reasonName(DepthEstopReason reason)
+{
+  switch (reason) {
+    case DepthEstopReason::kInvalidFrame:
+      return "INVALID_FRAME";
+    case DepthEstopReason::kLowValidDepth:
+      return "LOW_VALID_DEPTH";
+    case DepthEstopReason::kNearObstacle:
+      return "NEAR_OBSTACLE";
+    case DepthEstopReason::kNone:
+    default:
+      return "NONE";
+  }
+}
 }
 
 class AutoEstopNode : public rclcpp::Node
@@ -24,7 +40,7 @@ public:
   {
     const std::string depth_topic = declare_parameter<std::string>(
       "depth_topic", "/camera/camera/depth/image_rect_raw");
-    depth_timeout_sec_ = declare_parameter<double>("depth_timeout_sec", 0.50);
+    depth_timeout_sec_ = declare_parameter<double>("depth_timeout_sec", 0.80);
     heartbeat_rate_hz_ = declare_parameter<double>("heartbeat_rate_hz", 10.0);
 
     DepthEstopConfig config;
@@ -36,19 +52,30 @@ public:
     config.roi_y_min = declare_parameter<double>("roi_y_min", 0.20);
     config.roi_y_max = declare_parameter<double>("roi_y_max", 0.85);
     config.min_valid_fraction = declare_parameter<double>("min_valid_fraction", 0.50);
-    min_valid_fraction_ = config.min_valid_fraction;
+    config.severe_invalid_fraction =
+      declare_parameter<double>("severe_invalid_fraction", 0.20);
     const int grid_columns = declare_parameter<int>("grid_columns", 16);
     const int grid_rows = declare_parameter<int>("grid_rows", 12);
-    config.near_tile_fraction = declare_parameter<double>("near_tile_fraction", 0.10);
+    config.near_tile_fraction = declare_parameter<double>("near_tile_fraction", 0.20);
+    const int min_near_tile_count = declare_parameter<int>("min_near_tile_count", 2);
+    config.min_near_pixel_fraction =
+      declare_parameter<double>("min_near_pixel_fraction", 0.005);
+    const int obstacle_frame_count = declare_parameter<int>("obstacle_frame_count", 2);
+    const int low_valid_frame_count = declare_parameter<int>("low_valid_frame_count", 2);
     const int clear_frame_count = declare_parameter<int>("clear_frame_count", 8);
 
     if (depth_timeout_sec_ <= 0.0 || heartbeat_rate_hz_ <= 0.0 ||
-      grid_columns <= 0 || grid_rows <= 0 || clear_frame_count <= 0)
+      grid_columns <= 0 || grid_rows <= 0 || min_near_tile_count <= 0 ||
+      obstacle_frame_count <= 0 || low_valid_frame_count <= 0 ||
+      clear_frame_count <= 0)
     {
       throw std::invalid_argument("timeouts, rates, grid sizes, and frame counts must be positive");
     }
     config.grid_columns = static_cast<std::size_t>(grid_columns);
     config.grid_rows = static_cast<std::size_t>(grid_rows);
+    config.min_near_tile_count = static_cast<std::size_t>(min_near_tile_count);
+    config.obstacle_frame_count = static_cast<std::size_t>(obstacle_frame_count);
+    config.low_valid_frame_count = static_cast<std::size_t>(low_valid_frame_count);
     config.clear_frame_count = static_cast<std::size_t>(clear_frame_count);
     evaluator_ = std::make_unique<DepthEstopEvaluator>(config);
 
@@ -66,12 +93,14 @@ public:
       std::chrono::duration_cast<std::chrono::nanoseconds>(heartbeat_period),
       [this]() {publishHeartbeat();});
 
-    publishRequest(true);
+    publishRequest(true, "STARTUP");
     RCLCPP_INFO(
       get_logger(),
-      "Automatic EStop started: topic=%s stop=%.2f m release=%.2f m timeout=%.2f s",
+      "Automatic EStop started: topic=%s stop=%.2f m release=%.2f m timeout=%.2f s "
+      "near_area=%.2f%% tiles=%zu frames=%zu",
       depth_topic.c_str(), config.stop_distance_m, config.release_distance_m,
-      depth_timeout_sec_);
+      depth_timeout_sec_, config.min_near_pixel_fraction * 100.0,
+      config.min_near_tile_count, config.obstacle_frame_count);
   }
 
 private:
@@ -84,37 +113,55 @@ private:
       RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 2000,
         "Invalid depth frame; automatic EStop remains active");
-    } else if (result.valid_fraction < min_valid_fraction_) {
+    } else if (result.low_valid_depth) {
       RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 2000,
-        "Depth ROI valid fraction %.1f%% is below the safety minimum",
-        result.valid_fraction * 100.0);
+        "Depth ROI valid fraction %.1f%% is below the safety minimum "
+        "(confirmation %zu)",
+        result.valid_fraction * 100.0, result.consecutive_low_valid_frames);
     }
-    publishRequest(result.estop_requested);
+    publishRequest(result.estop_requested, reasonName(result.reason), &result);
   }
 
   void publishHeartbeat()
   {
     const auto now = std::chrono::steady_clock::now();
-    const bool stale = !have_depth_frame_ ||
-      std::chrono::duration<double>(now - last_depth_time_).count() > depth_timeout_sec_;
+    const double depth_age_sec = have_depth_frame_ ?
+      std::chrono::duration<double>(now - last_depth_time_).count() :
+      std::numeric_limits<double>::infinity();
+    const bool stale = depth_age_sec > depth_timeout_sec_;
     if (stale) {
       evaluator_->forceEstop();
       RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 2000,
-        "Depth image timeout; automatic EStop is active");
+        "Depth image timeout: age=%.3f s limit=%.3f s; automatic EStop is active",
+        depth_age_sec, depth_timeout_sec_);
     }
-    publishRequest(evaluator_->estopRequested());
+    publishRequest(
+      evaluator_->estopRequested(), stale ? "DEPTH_TIMEOUT" : "HEARTBEAT");
   }
 
-  void publishRequest(bool requested)
+  void publishRequest(
+    bool requested, const char * reason,
+    const DepthEstopResult * result = nullptr)
   {
     std_msgs::msg::Bool message;
     message.data = requested;
     request_pub_->publish(message);
     if (!have_published_state_ || requested != last_published_state_) {
-      RCLCPP_INFO(
-        get_logger(), "Automatic EStop state: %s", requested ? "ESTOP" : "FREE");
+      if (requested && result != nullptr) {
+        RCLCPP_INFO(
+          get_logger(),
+          "Automatic EStop state: ESTOP cause=%s valid=%.1f%% near=%.2f%% "
+          "near_tiles=%zu obstacle_frames=%zu",
+          reason, result->valid_fraction * 100.0,
+          result->near_pixel_fraction * 100.0, result->near_tile_count,
+          result->consecutive_obstacle_frames);
+      } else {
+        RCLCPP_INFO(
+          get_logger(), "Automatic EStop state: %s cause=%s",
+          requested ? "ESTOP" : "FREE", reason);
+      }
       have_published_state_ = true;
       last_published_state_ = requested;
     }
@@ -125,9 +172,8 @@ private:
   rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr depth_sub_;
   rclcpp::TimerBase::SharedPtr heartbeat_timer_;
   std::chrono::steady_clock::time_point last_depth_time_{};
-  double depth_timeout_sec_{0.50};
+  double depth_timeout_sec_{0.80};
   double heartbeat_rate_hz_{10.0};
-  double min_valid_fraction_{0.50};
   bool have_depth_frame_{false};
   bool have_published_state_{false};
   bool last_published_state_{true};

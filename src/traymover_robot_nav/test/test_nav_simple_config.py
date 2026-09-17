@@ -516,3 +516,25 @@ def test_initialpose_is_only_ndt_guess_until_valid_alignment():
     assert source.index('NDT map→odom jump') < source.index(
         'ndt_aligned_scan_pub_->publish(aligned_scan_msg);'
     )
+
+
+def test_option17_runs_only_the_stationary_auto_estop_launch():
+    launcher_text = (WORKSPACE_ROOT / 'scripts' / 'traymover.sh').read_text(
+        encoding='utf-8'
+    )
+    function_body = launcher_text.split(
+        'action_test_auto_estop() {', maxsplit=1
+    )[1].split('\n}', maxsplit=1)[0]
+
+    assert (
+        '17) Test automatic EStop while stationary'
+        in launcher_text
+    )
+    assert '17) action_test_auto_estop ;;' in launcher_text
+    assert (
+        'ros2 launch traymover_robot_safety '
+        'traymover_auto_estop.launch.py'
+    ) in function_body
+    assert 'base_serial.launch.py' not in function_body
+    assert 'traymover_robot_nav' not in function_body
+    assert 'cmd_vel' not in function_body
