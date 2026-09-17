@@ -1,0 +1,76 @@
+{
+  "generated_at_utc": "2026-06-11T13:12:19.174715+00:00",
+  "workspace_root": "/home/wheeltec/traymover_ros2",
+  "pcd_inputs": [
+    "src/traymover_robot_slam/FAST_LIO/PCD/coffee.pcd",
+    "src/traymover_robot_slam/FAST_LIO/PCD/sofa.pcd",
+    "src/traymover_robot_slam/FAST_LIO/PCD/t.pcd",
+    "src/traymover_robot_slam/FAST_LIO/PCD/traymover_20260526_103001.pcd",
+    "src/traymover_robot_slam/FAST_LIO/PCD/traymover_20260527_111059.pcd",
+    "src/traymover_robot_slam/FAST_LIO/PCD/x2.pcd",
+    "src/traymover_robot_slam/ndt_omp_ros2/data/251370668.pcd",
+    "src/traymover_robot_slam/ndt_omp_ros2/data/251371071.pcd"
+  ],
+  "max_points_per_pcd": null,
+  "constants": {
+    "scan_min_range_m": 0.5,
+    "scan_max_range_m": 120.0,
+    "far_point_boost_min_range_m": 15.0,
+    "far_point_boost_factor": 2,
+    "voxel_leaf_size_m": 0.15,
+    "rear_box": {
+      "x_min": -1.25,
+      "x_max": -0.35,
+      "abs_y_max": 0.9,
+      "z_min": -0.5,
+      "z_max": 2.0
+    }
+  },
+  "profiles": [
+    {
+      "name": "baseline_current",
+      "score_threshold": 1.0,
+      "max_pose_jump_translation": 0.35,
+      "max_pose_jump_rotation": 0.45,
+      "max_map_odom_update_translation": 0.5,
+      "max_map_odom_update_rotation": 0.25,
+      "map_odom_smoothing": 0.3
+    },
+    {
+      "name": "strict_score_0_5",
+      "score_threshold": 0.5,
+      "max_pose_jump_translation": 0.35,
+      "max_pose_jump_rotation": 0.45,
+      "max_map_odom_update_translation": 0.5,
+      "max_map_odom_update_rotation": 0.25,
+      "map_odom_smoothing": 0.3
+    },
+    {
+      "name": "old_yaw_gate_0_25",
+      "score_threshold": 1.0,
+      "max_pose_jump_translation": 0.35,
+      "max_pose_jump_rotation": 0.25,
+      "max_map_odom_update_translation": 0.5,
+      "max_map_odom_update_rotation": 0.25,
+      "map_odom_smoothing": 0.3
+    },
+    {
+      "name": "strict_3d_map_odom_gate",
+      "score_threshold": 1.0,
+      "max_pose_jump_translation": 0.35,
+      "max_pose_jump_rotation": 0.45,
+      "max_map_odom_update_translation": 0.3,
+      "max_map_odom_update_rotation": 0.12,
+      "map_odom_smoothing": 0.3
+    },
+    {
+      "name": "map_odom_gate_disabled",
+      "score_threshold": 1.0,
+      "max_pose_jump_translation": 0.35,
+      "max_pose_jump_rotation": 0.45,
+      "max_map_odom_update_translation": -1.0,
+      "max_map_odom_update_rotation": -1.0,
+      "map_odom_smoothing": 0.3
+    }
+  ]
+}
