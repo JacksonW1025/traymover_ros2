@@ -42,6 +42,10 @@ if(BUILD_TESTING)
     test/test_fastlio_online_map_filter.py
   )
   ament_add_pytest_test(
+    test_pointcloud_angular_filter
+    test/test_pointcloud_angular_filter.py
+  )
+  ament_add_pytest_test(
     test_pcd_clean
     test/test_pcd_clean.py
   )

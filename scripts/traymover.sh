@@ -18,6 +18,7 @@ FASTLIO_POS_LOG="${WORKSPACE_DIR}/src/traymover_robot_slam/FAST_LIO/Log/pos_log.
 FASTLIO_FILTER_STAGING="${FASTLIO_PCD_DIR}/traymover_filtered.pcd"
 RECORD_RVIZ_CONFIG="${SCRIPT_DIR}/rviz/traymover_record_rgb_pointcloud.rviz"
 NAV_PKG_DIR="${WORKSPACE_DIR}/src/traymover_robot_nav"
+NAV_CONFIG_DIR="${NAV_PKG_DIR}/config"
 NAV_MAP_DIR="${NAV_PKG_DIR}/map"
 NAV_SCRIPTS_DIR="${NAV_PKG_DIR}/scripts"
 NAV_RUNTIME_DIR="/tmp/traymover_nav_runtime"
@@ -26,6 +27,12 @@ NAV_PGM_Z_MAX="2.20"
 NAV_PGM_MIN_POINTS="1"
 NAV_PGM_DILATE="2"
 NAV_PGM_MIN_REGION_CELLS="2"
+NAV_OBSTACLE_PGM_RESOLUTION="0.10"
+NAV_OBSTACLE_PGM_Z_MIN="0.50"
+NAV_OBSTACLE_PGM_Z_MAX="7.00"
+NAV_OBSTACLE_PGM_MIN_POINTS="1"
+NAV_OBSTACLE_PGM_DILATE="2"
+NAV_OBSTACLE_PGM_MIN_REGION_CELLS="1"
 
 REALSENSE_LAUNCH_CMD="ros2 launch realsense2_camera rs_launch.py enable_color:=true rgb_camera.color_profile:=640x480x15 enable_depth:=false align_depth.enable:=false enable_sync:=true pointcloud.enable:=false"
 REALSENSE_ROSBAG_TOPICS=(
@@ -204,6 +211,54 @@ reindex_missing_rosbag_metadata() {
             echo "[traymover]          See /tmp/traymover_rosbag_reindex.log"
         }
     done < <(find "${FASTLIO_ROSBAG_DIR}" -mindepth 1 -maxdepth 1 -type d -print0 2>/dev/null)
+}
+
+rosbag_duration_ns() {
+    local metadata="${1}/metadata.yaml"
+    [ -f "${metadata}" ] || {
+        echo 0
+        return
+    }
+    awk '
+        $1 == "duration:" { in_duration = 1; next }
+        in_duration && $1 == "nanoseconds:" { print $2; exit }
+    ' "${metadata}"
+}
+
+format_duration_ns() {
+    local ns="${1:-0}"
+    case "${ns}" in
+        ''|*[!0-9]*)
+            ns=0
+            ;;
+    esac
+
+    local seconds minutes hours
+    seconds=$((ns / 1000000000))
+    hours=$((seconds / 3600))
+    minutes=$(((seconds % 3600) / 60))
+    seconds=$((seconds % 60))
+
+    if [ "${hours}" -gt 0 ]; then
+        printf "%dh%02dm%02ds" "${hours}" "${minutes}" "${seconds}"
+    elif [ "${minutes}" -gt 0 ]; then
+        printf "%dm%02ds" "${minutes}" "${seconds}"
+    else
+        printf "%ds" "${seconds}"
+    fi
+}
+
+rosbag_topic_count() {
+    local metadata="${1}/metadata.yaml"
+    local topic="${2}"
+    [ -f "${metadata}" ] || {
+        echo 0
+        return
+    }
+    awk -v topic="${topic}" '
+        $1 == "name:" && $2 == topic { found = 1; next }
+        found && $1 == "message_count:" { print $2; exit }
+    ' "${metadata}"
 }
 
 stop_rosbag_recorders() {
@@ -426,28 +481,79 @@ action_replay_fastlio_bag() {
     fi
 
     echo "Available bags (newest first):"
-    local i
+    local i default_pick duration_ns duration_s duration_text cloud_count imu_count bag_size
+    default_pick=""
     for i in "${!bags[@]}"; do
-        printf "  [%d] %s\n" "$((i+1))" "$(basename "${bags[i]}")"
+        duration_ns="$(rosbag_duration_ns "${bags[i]}")"
+        case "${duration_ns}" in
+            ''|*[!0-9]*)
+                duration_ns=0
+                ;;
+        esac
+        duration_s=$((duration_ns / 1000000000))
+        duration_text="$(format_duration_ns "${duration_ns}")"
+        cloud_count="$(rosbag_topic_count "${bags[i]}" "/point_cloud_raw")"
+        imu_count="$(rosbag_topic_count "${bags[i]}" "/imu/data_raw")"
+        bag_size="$(du -sh "${bags[i]}" 2>/dev/null | awk '{print $1}')"
+        bag_size="${bag_size:-?}"
+
+        if [ -z "${default_pick}" ] &&
+           [ "${duration_s}" -ge 60 ] &&
+           [ "${cloud_count:-0}" -gt 0 ] &&
+           [ "${imu_count:-0}" -gt 0 ]; then
+            default_pick="$((i+1))"
+        fi
+
+        printf "  [%d] %-32s duration=%-8s size=%-8s point_cloud_raw=%-7s imu=%s\n" \
+            "$((i+1))" "$(basename "${bags[i]}")" "${duration_text}" "${bag_size}" \
+            "${cloud_count:-0}" "${imu_count:-0}"
     done
+    default_pick="${default_pick:-1}"
 
     local pick bag_path
-    read -r -p "Select bag number [default: 1 = newest]: " pick
-    pick="${pick:-1}"
+    read -r -p "Select bag number [default: ${default_pick} = first >=60s LiDAR+IMU bag]: " pick
+    pick="${pick:-${default_pick}}"
     if ! [[ "${pick}" =~ ^[0-9]+$ ]] || [ "${pick}" -lt 1 ] || [ "${pick}" -gt "${#bags[@]}" ]; then
         echo "[traymover] Invalid selection: ${pick}"
         return 1
     fi
     bag_path="${bags[$((pick-1))]}"
 
+    duration_ns="$(rosbag_duration_ns "${bag_path}")"
+    case "${duration_ns}" in
+        ''|*[!0-9]*)
+            duration_ns=0
+            ;;
+    esac
+    duration_s=$((duration_ns / 1000000000))
+    if [ "${duration_s}" -lt 30 ]; then
+        echo "[traymover] WARNING: selected bag duration is only $(format_duration_ns "${duration_ns}"); bag play may finish quickly."
+    fi
+
     echo "[traymover] Replaying bag: ${bag_path}"
     echo "[traymover]   FAST-LIO will run with use_sim_time:=true."
+    echo "[traymover]   /point_cloud_raw is filtered to front 180 deg before FAST-LIO."
     echo "[traymover]   Select option 7 to save the filtered PCD afterwards."
     echo "[traymover]   Select option 0 to stop replay + fast_lio."
 
-    # Start FAST-LIO first so it's ready to receive scans once the bag plays.
+    # The bag already contains /point_cloud_raw, so driver angle_disable cannot
+    # affect replay. Republish a front 180 deg raw cloud while preserving all
+    # per-point fields (time/ring/intensity) that FAST-LIO needs.
+    spawn_in_terminal "traymover: pointcloud_front180_filter (sim_time)" \
+        "python3 '${NAV_SCRIPTS_DIR}/pointcloud_angular_filter.py' --ros-args \
+            -p input_topic:=/point_cloud_raw \
+            -p output_topic:=/point_cloud_raw_front \
+            -p angle_min_rad:=-1.57079632679 \
+            -p angle_max_rad:=1.57079632679 \
+            -p use_sim_time:=true"
+    sleep 1
+    # Start FAST-LIO so it is ready to receive filtered scans once the bag plays.
     spawn_in_terminal "traymover: fast_lio (sim_time)" \
-        "ros2 launch fast_lio mapping.launch.py config_file:=traymover.yaml rviz:=true use_sim_time:=true"
+        "ros2 launch fast_lio mapping.launch.py \
+            config_path:='${NAV_CONFIG_DIR}' \
+            config_file:=fastlio_traymover_front180.yaml \
+            rviz:=true \
+            use_sim_time:=true"
     sleep 2
     spawn_in_terminal "traymover: fastlio_map_filter (sim_time)" \
         "python3 '${NAV_SCRIPTS_DIR}/fastlio_online_map_filter.py' --ros-args \
@@ -738,11 +844,13 @@ action_start_nav_lidar_realsense_obstacle() {
     if ! python3 "${NAV_SCRIPTS_DIR}/pcd2pgm.py" \
             --pcd "${pcd_path}" \
             --out "${runtime_prefix}" \
-            --z-min "${NAV_PGM_Z_MIN}" \
-            --z-max "${NAV_PGM_Z_MAX}" \
-            --min-points "${NAV_PGM_MIN_POINTS}" \
-            --dilate "${NAV_PGM_DILATE}" \
-            --min-region-cells "${NAV_PGM_MIN_REGION_CELLS}"; then
+            --z-reference absolute \
+            --z-min "${NAV_OBSTACLE_PGM_Z_MIN}" \
+            --z-max "${NAV_OBSTACLE_PGM_Z_MAX}" \
+            --resolution "${NAV_OBSTACLE_PGM_RESOLUTION}" \
+            --min-points "${NAV_OBSTACLE_PGM_MIN_POINTS}" \
+            --dilate "${NAV_OBSTACLE_PGM_DILATE}" \
+            --min-region-cells "${NAV_OBSTACLE_PGM_MIN_REGION_CELLS}"; then
         echo "[traymover] pcd2pgm failed. Aborting obstacle nav startup."
         return 1
     fi
@@ -751,7 +859,7 @@ action_start_nav_lidar_realsense_obstacle() {
         return 1
     fi
     echo "[traymover] Runtime map YAML: ${runtime_map_yaml}"
-    echo "[traymover] Runtime map params: z=[${NAV_PGM_Z_MIN}, ${NAV_PGM_Z_MAX}] m above floor, min_points=${NAV_PGM_MIN_POINTS}, dilate=${NAV_PGM_DILATE}, min_region_cells=${NAV_PGM_MIN_REGION_CELLS}"
+    echo "[traymover] Runtime map params: absolute_z=[${NAV_OBSTACLE_PGM_Z_MIN}, ${NAV_OBSTACLE_PGM_Z_MAX}] m, resolution=${NAV_OBSTACLE_PGM_RESOLUTION}, min_points=${NAV_OBSTACLE_PGM_MIN_POINTS}, dilate=${NAV_OBSTACLE_PGM_DILATE}, min_region_cells=${NAV_OBSTACLE_PGM_MIN_REGION_CELLS}"
 
     local rviz_opt rviz_arg
     read -r -p "Launch RViz? [Y/n]: " rviz_opt

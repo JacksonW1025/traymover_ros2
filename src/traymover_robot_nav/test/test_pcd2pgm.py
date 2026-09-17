@@ -57,3 +57,8 @@ def test_estimate_floor_z_ignores_deep_outliers():
 
     assert method == 'histogram-mode'
     assert abs(floor_z - 0.12) < 0.03
+
+
+def test_resolve_z_bounds_supports_absolute_and_floor_relative_modes():
+    assert pcd2pgm.resolve_z_bounds('absolute', 0.5, 7.0) == (0.5, 7.0)
+    assert pcd2pgm.resolve_z_bounds('floor', 0.1, 2.2, 0.5) == (0.6, 2.7)

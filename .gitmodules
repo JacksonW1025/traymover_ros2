@@ -1,0 +1,17 @@
+[submodule "src/autonomous_exploration_development_environment"]
+	path = src/autonomous_exploration_development_environment
+	url = https://github.com/HongbiaoZ/autonomous_exploration_development_environment.git
+[submodule "src/livox_ros_driver2"]
+	path = src/livox_ros_driver2
+	url = https://github.com/Livox-SDK/livox_ros_driver2.git
+[submodule "src/traymover_robot_slam/FAST_LIO"]
+	path = src/traymover_robot_slam/FAST_LIO
+	url = https://github.com/JacksonW1025/traymover_ros2.git
+	branch = deps/fastlio-traymover-20260917
+[submodule "src/traymover_robot_slam/lidar_localization_ros2"]
+	path = src/traymover_robot_slam/lidar_localization_ros2
+	url = https://github.com/JacksonW1025/traymover_ros2.git
+	branch = deps/lidar-localization-20260917
+[submodule "src/traymover_robot_slam/ndt_omp_ros2"]
+	path = src/traymover_robot_slam/ndt_omp_ros2
+	url = https://github.com/rsasaki0109/ndt_omp_ros2.git

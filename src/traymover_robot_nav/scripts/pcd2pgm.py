@@ -5,6 +5,7 @@ consumable by nav2_map_server.
 Usage:
     pcd2pgm.py --pcd <in.pcd> --out <out_prefix> \
                [--resolution 0.05] [--z-min 0.10] [--z-max 2.20] \
+               [--z-reference floor|absolute] \
                [--floor-quantile 0.02] [--min-points 1] [--dilate 2] \
                [--min-region-cells 2]
 
@@ -109,6 +110,18 @@ def estimate_floor_z(z_values, fallback_quantile, low_quantile=0.005,
     return float(np.median(band)), 'histogram-mode'
 
 
+def resolve_z_bounds(z_reference, z_min, z_max, floor_z=None):
+    if z_min >= z_max:
+        raise ValueError('z-min must be lower than z-max')
+    if z_reference == 'absolute':
+        return float(z_min), float(z_max)
+    if z_reference == 'floor':
+        if floor_z is None:
+            raise ValueError('floor-relative Z bounds require an estimated floor')
+        return float(floor_z + z_min), float(floor_z + z_max)
+    raise ValueError(f'unsupported Z reference: {z_reference}')
+
+
 def occupancy_from_points(slab_xy, resolution, padding, min_points):
     x_min, y_min = slab_xy.min(axis=0) - padding
     x_max, y_max = slab_xy.max(axis=0) + padding
@@ -131,10 +144,13 @@ def main():
     p.add_argument('--pcd', required=True, help='input .pcd file')
     p.add_argument('--out', required=True, help='output prefix (no extension)')
     p.add_argument('--resolution', type=float, default=0.05, help='meters per pixel')
+    p.add_argument('--z-reference', choices=('floor', 'absolute'), default='floor',
+                   help='interpret --z-min/--z-max relative to the estimated floor '
+                        'or as absolute PCD map-frame heights')
     p.add_argument('--z-min', type=float, default=0.10,
-                   help='lower slice height above estimated floor [m]')
+                   help='lower Z slice bound [m], interpreted by --z-reference')
     p.add_argument('--z-max', type=float, default=2.20,
-                   help='upper slice height above estimated floor [m]')
+                   help='upper Z slice bound [m], interpreted by --z-reference')
     p.add_argument('--floor-quantile', type=float, default=0.02,
                    help='fallback quantile used if robust floor estimation fails')
     p.add_argument('--floor-low-quantile', type=float, default=0.005,
@@ -159,25 +175,34 @@ def main():
         raise SystemExit(f'no points in {args.pcd}')
     print(f'loaded {len(pts)} points; z range [{pts[:, 2].min():.2f}, {pts[:, 2].max():.2f}]')
 
-    floor_z, floor_method = estimate_floor_z(
-        pts[:, 2],
-        fallback_quantile=args.floor_quantile,
-        low_quantile=args.floor_low_quantile,
-        high_quantile=args.floor_high_quantile,
-        bin_size=args.floor_bin_size,
-    )
-    slab_z_min = floor_z + args.z_min
-    slab_z_max = floor_z + args.z_max
-    print(
-        f'estimated floor z={floor_z:.2f} using {floor_method} '
-        f'(fallback_quantile={args.floor_quantile:.3f}, '
-        f'band=[{args.floor_low_quantile:.3f}, {args.floor_high_quantile:.3f}], '
-        f'bin={args.floor_bin_size:.2f} m)'
-    )
+    floor_z = None
+    if args.z_reference == 'floor':
+        floor_z, floor_method = estimate_floor_z(
+            pts[:, 2],
+            fallback_quantile=args.floor_quantile,
+            low_quantile=args.floor_low_quantile,
+            high_quantile=args.floor_high_quantile,
+            bin_size=args.floor_bin_size,
+        )
+        print(
+            f'estimated floor z={floor_z:.2f} using {floor_method} '
+            f'(fallback_quantile={args.floor_quantile:.3f}, '
+            f'band=[{args.floor_low_quantile:.3f}, {args.floor_high_quantile:.3f}], '
+            f'bin={args.floor_bin_size:.2f} m)'
+        )
+
+    try:
+        slab_z_min, slab_z_max = resolve_z_bounds(
+            args.z_reference, args.z_min, args.z_max, floor_z)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
 
     mask = (pts[:, 2] >= slab_z_min) & (pts[:, 2] <= slab_z_max)
     slab = pts[mask][:, :2]
-    print(f'kept {len(slab)} points in floor-relative slab [{slab_z_min:.2f}, {slab_z_max:.2f}]')
+    print(
+        f'kept {len(slab)} points in {args.z_reference} Z slab '
+        f'[{slab_z_min:.2f}, {slab_z_max:.2f}]'
+    )
     if slab.size == 0:
         raise SystemExit('no points survived z filter; adjust --z-min/--z-max')
 

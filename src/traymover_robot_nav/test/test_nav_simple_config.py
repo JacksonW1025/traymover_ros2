@@ -162,6 +162,23 @@ def test_option16_launcher_menu_keeps_option10_baseline_separate():
     assert 'Option 16 expects RealSense camera driver to be running' in launcher_text
 
 
+def test_option16_uses_validated_absolute_pcd_projection_rule():
+    launcher_text = (WORKSPACE_ROOT / 'scripts' / 'traymover.sh').read_text(
+        encoding='utf-8'
+    )
+    function_body = launcher_text.split(
+        'action_start_nav_lidar_realsense_obstacle() {', maxsplit=1
+    )[1].split('\n}', maxsplit=1)[0]
+
+    assert 'NAV_OBSTACLE_PGM_RESOLUTION="0.10"' in launcher_text
+    assert 'NAV_OBSTACLE_PGM_Z_MIN="0.50"' in launcher_text
+    assert 'NAV_OBSTACLE_PGM_Z_MAX="7.00"' in launcher_text
+    assert 'NAV_OBSTACLE_PGM_MIN_REGION_CELLS="1"' in launcher_text
+    assert '--z-reference absolute' in function_body
+    assert '--resolution "${NAV_OBSTACLE_PGM_RESOLUTION}"' in function_body
+    assert '--min-region-cells "${NAV_OBSTACLE_PGM_MIN_REGION_CELLS}"' in function_body
+
+
 def test_navigation_options_offer_automatic_estop_after_rviz_prompt():
     launcher_text = (WORKSPACE_ROOT / 'scripts' / 'traymover.sh').read_text(
         encoding='utf-8'
@@ -173,6 +190,7 @@ def test_navigation_options_offer_automatic_estop_after_rviz_prompt():
     assert launcher_text.count('action_start_auto_estop') == 5
     assert launcher_text.count('auto_estop_enabled:=${AUTO_ESTOP_ENABLED}') == 4
     assert 'traymover_auto_estop.launch.py' in launcher_text
+
 
 
 def test_option16_declares_depthimage_to_laserscan_dependency():
@@ -260,6 +278,11 @@ def test_localization_yaml_has_unique_keys_and_far_wall_range():
     assert loc_params['voxel_leaf_size'] >= 0.12
     assert 0.9 <= loc_params['score_threshold'] < 2.0
     assert loc_params['ndt_align_interval_s'] >= 2.0
+    assert loc_params['ndt_resolution'] == 0.5
+    assert loc_params['adaptive_ndt_resolution'] is True
+    assert loc_params['adaptive_ndt_max_resolution'] >= 3.0
+    assert 0.0 < loc_params['adaptive_ndt_resolution_step'] <= 0.1
+    assert 0.0 < loc_params['adaptive_ndt_min_usable_voxel_ratio'] <= 0.01
 
 
 def test_nav2_tolerates_short_tf_jitter_without_recoveries():

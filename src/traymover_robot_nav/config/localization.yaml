@@ -10,6 +10,15 @@
       ndt_step_size: 0.1
       ndt_num_threads: 4
       ndt_max_iterations: 50
+      # NDT_OMP needs at least six target points in a voxel to estimate its
+      # covariance. Keep 0.5 m for dense maps, but enlarge the target voxels
+      # for pre-downsampled large maps until enough of the map is usable.
+      adaptive_ndt_resolution: true
+      adaptive_ndt_max_resolution: 3.0
+      adaptive_ndt_resolution_step: 0.1
+      # Avoid over-coarsening: accept the first resolution where at least 1%
+      # of occupied voxels contain the six points NDT needs for covariance.
+      adaptive_ndt_min_usable_voxel_ratio: 0.01
       transform_epsilon: 0.001
       # Keep far-wall returns as NDT evidence, but cap the range so each
       # alignment does not starve Nav2/TF callbacks on the robot CPU.
