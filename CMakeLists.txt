@@ -25,6 +25,7 @@ find_package(pcl_conversions REQUIRED)
 find_package(PCL REQUIRED)
 find_package(ndt_omp_ros2 REQUIRED)
 find_package(OpenMP)
+include(CTest)
 
 if (OPENMP_FOUND)
     set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
@@ -85,5 +86,14 @@ install(DIRECTORY
   param
   DESTINATION share/${PROJECT_NAME}/
 )
+
+if(BUILD_TESTING)
+  add_executable(test_ndt_map_compatibility
+    test/test_ndt_map_compatibility.cpp)
+  target_include_directories(test_ndt_map_compatibility PRIVATE include)
+  add_test(
+    NAME test_ndt_map_compatibility
+    COMMAND test_ndt_map_compatibility)
+endif()
 
 ament_package()

@@ -56,6 +56,11 @@ public:
   void initializeParameters();
   void initializePubSub();
   void initializeRegistration();
+  bool configureRegistrationTarget(
+    const pcl::PointCloud<pcl::PointXYZI>::Ptr & map_cloud_ptr);
+  bool configureNdtResolutionForMap(
+    const pcl::PointCloud<pcl::PointXYZI> & map_cloud);
+  bool setEffectiveNdtResolution(double resolution);
   void initialPoseReceived(const geometry_msgs::msg::PoseWithCovarianceStamped::SharedPtr msg);
   void mapReceived(const sensor_msgs::msg::PointCloud2::SharedPtr msg);
   void odomReceived(const nav_msgs::msg::Odometry::ConstSharedPtr msg);
@@ -76,6 +81,8 @@ public:
     path_pub_;
   rclcpp_lifecycle::LifecyclePublisher<sensor_msgs::msg::PointCloud2>::SharedPtr
     initial_map_pub_;
+  rclcpp_lifecycle::LifecyclePublisher<sensor_msgs::msg::PointCloud2>::SharedPtr
+    ndt_aligned_scan_pub_;
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::ConstSharedPtr
     map_sub_;
   rclcpp::Subscription<nav_msgs::msg::Odometry>::ConstSharedPtr
@@ -101,6 +108,8 @@ public:
   std::string registration_method_;
   double scan_max_range_;
   double scan_min_range_;
+  double far_point_boost_min_range_{0.0};
+  int far_point_boost_factor_{1};
   double scan_period_;
   double score_threshold_;
   double ndt_resolution_;
@@ -120,12 +129,74 @@ public:
 
   bool use_odom_{false};
   double last_odom_received_time_;
+  // FAST_LIO publishes nav_msgs/Odometry with an empty twist field, so
+  // twist-based integration of the NDT init_guess was a no-op. Instead we
+  // propagate using the pose delta between consecutive odom messages.
+  geometry_msgs::msg::Pose last_odom_pose_;
+  bool last_odom_pose_valid_{false};
+
+  // Planar-lock guards: in narrow indoor spaces 6DOF NDT is under-constrained
+  // on z/roll/pitch (parallel walls give no vertical-axis signal), which
+  // produces tilted robot models and large pose jumps. For a ground robot we
+  // can force z/roll/pitch back to the first accepted NDT match after every
+  // later match, reducing the effective DOF to x/y/yaw.
+  bool lock_planar_{false};
+  double locked_z_{0.0};
+  double locked_roll_{0.0};
+  double locked_pitch_{0.0};
+  bool planar_locked_{false};  // true once a valid NDT match populated the locks
+
+  // Reject an NDT result whose xyz/yaw delta from the init_guess exceeds
+  // these bounds — NDT latching onto repeating geometry (parallel walls,
+  // similar columns) is the main failure mode in narrow corridors.
+  double max_pose_jump_translation_{1.0};  // m
+  double max_pose_jump_rotation_{0.5};     // rad
+
+  // Architecture: FAST_LIO provides continuous tight-coupled odom at 20 Hz,
+  // so NDT's real job is a one-shot /map→/odom offset plus slow drift
+  // correction. Running NDT every scan made it the main localization and
+  // caused jumps whenever it failed. Now we only re-align every
+  // ndt_align_interval_s_ seconds (scan time); between aligns we keep
+  // broadcasting the last good map→odom with the current stamp so TF
+  // never ages out.
+  double ndt_align_interval_s_{5.0};
+  // NDT-validated map->odom only. /initialpose is an initial guess, not proof
+  // of localization, so it must not set have_good_pose_.
+  Eigen::Matrix4f last_good_map_to_odom_{Eigen::Matrix4f::Identity()};
+  bool have_good_pose_{false};
+  bool ndt_bootstrap_pending_{false};
+  double last_align_stamp_s_{0.0};
+
+  // Exponential smoothing weight for new NDT map→odom results.
+  // new_good = slerp(old_good, ndt_result, map_odom_smoothing_).
+  // 1.0 = no smoothing (old behaviour, snap to NDT), 0.3 = 30% new + 70%
+  // old (rejects occasional NDT mis-lockings as small bumps rather than
+  // instantaneous pose jumps visible downstream).
+  double map_odom_smoothing_{0.3};
+
+  // Optional post-NDT gate on the resulting map→odom correction. FAST_LIO
+  // should carry short-term motion; NDT should only move map→odom slowly.
+  // Disable with <= 0.0.
+  double max_map_odom_update_translation_{-1.0};  // m
+  double max_map_odom_update_rotation_{-1.0};     // rad
+
+  // High-frequency re-broadcast of last_good_map_to_odom_ with node clock
+  // stamps. Decouples TF freshness from the slower LiDAR scan rate so RViz
+  // and Nav2 see map→base_link updated at ~50 Hz (limited only by FAST_LIO
+  // odom→body), eliminating the visible RViz-lags-real-robot delay.
+  rclcpp::TimerBase::SharedPtr tf_rebroadcast_timer_;
+  double tf_rebroadcast_rate_hz_{50.0};
+  void rebroadcastMapOdomTF();
   bool use_imu_{false};
   bool enable_debug_{false};
   bool enable_map_odom_tf_{false};
 
   int ndt_num_threads_;
   int ndt_max_iterations_;
+  bool adaptive_ndt_resolution_{true};
+  double adaptive_ndt_max_resolution_{3.0};
+  double adaptive_ndt_resolution_step_{0.1};
+  double adaptive_ndt_min_usable_voxel_ratio_{0.01};
 
   double pose_publish_frequency_;
   bool enable_timer_publishing_{false};

@@ -13,7 +13,7 @@ Green: path, Red: map
 ## IO
 - input  
 /cloud  (sensor_msgs/PointCloud2)  
-/map  (sensor_msgs/PointCloud2)  
+/ndt_map  (sensor_msgs/PointCloud2, only used when an external point-cloud map is published instead of `use_pcd_map`)
 /initialpose (geometry_msgs/PoseStamed)(when `set_initial_pose` is false)  
 /odom (nav_msgs/Odometry)(optional)   
 /imu  (sensor_msgs/Imu)(optional)  
