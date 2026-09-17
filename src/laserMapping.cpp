@@ -608,6 +608,14 @@ void publish_map(rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub
 
 void save_to_pcd()
 {
+    // PCL's writeBinary throws on empty clouds. When /map_save is called
+    // before the robot has moved, pcl_wait_pub can still be empty — skip
+    // instead of letting the exception terminate the node.
+    if (pcl_wait_pub->empty())
+    {
+        std::cout << "[map_save] pcl_wait_pub is empty, nothing to write." << std::endl;
+        return;
+    }
     pcl::PCDWriter pcd_writer;
     pcd_writer.writeBinary(map_file_path, *pcl_wait_pub);
 }
