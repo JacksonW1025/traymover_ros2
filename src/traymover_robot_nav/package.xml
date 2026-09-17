@@ -17,6 +17,8 @@
   <depend>rcl_interfaces</depend>
 
   <exec_depend>nav2_bringup</exec_depend>
+  <exec_depend>nav2_msgs</exec_depend>
+  <exec_depend>action_msgs</exec_depend>
   <exec_depend>nav2_collision_monitor</exec_depend>
   <exec_depend>nav2_map_server</exec_depend>
   <exec_depend>depthimage_to_laserscan</exec_depend>
@@ -29,6 +31,7 @@
   <exec_depend>lidar_localization_ros2</exec_depend>
   <exec_depend>fast_lio</exec_depend>
   <exec_depend>std_srvs</exec_depend>
+  <exec_depend>lifecycle_msgs</exec_depend>
   <exec_depend>tf2_ros</exec_depend>
   <exec_depend>traymover_robot_safety</exec_depend>
   <exec_depend>traymover_robot_description</exec_depend>
@@ -36,6 +39,7 @@
   <exec_depend>local_planner</exec_depend>
   <exec_depend>tf2_geometry_msgs</exec_depend>
 
+  <test_depend>ament_index_python</test_depend>
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
   <test_depend>ament_cmake_pytest</test_depend>

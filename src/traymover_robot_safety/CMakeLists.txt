@@ -111,6 +111,12 @@ if(BUILD_TESTING)
     test_safety_config
     test/test_safety_config.py
   )
+  ament_add_pytest_test(
+    test_auto_estop_reason
+    test/test_auto_estop_reason.py
+    ENV "TRAYMOVER_AUTO_ESTOP_BINARY=$<TARGET_FILE:traymover_auto_estop>"
+    TIMEOUT 90
+  )
 endif()
 
 ament_export_dependencies(

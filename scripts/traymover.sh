@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Interactive launcher for the Traymover robot.
-# Each "start" option opens the command in a new terminal window so the menu
-# stays usable and multiple subsystems can run side by side.
+# Most "start" options open a new terminal window. Option 19 keeps its guided
+# instructions in this terminal and owns its background sensor/safety processes.
 
 set -u
 
@@ -110,6 +110,7 @@ KILL_PATTERNS=(
     'traymover_keyboard'
     'traymover_estop_keyboard'
     'traymover_auto_estop'
+    'detour_supervisor.py'
     'traymover_robot.py'
     'traymover_ekf_filter_node'
     'async_slam_toolbox_node'
@@ -924,6 +925,184 @@ EOF
 EOF
 }
 
+# Option 18 has its own prompts: existing options keep their opt-in EStop default.
+prompt_wait_detour_settings() {
+    local auto_opt detour_opt
+    DETOUR_AUTO_ESTOP_ENABLED="true"
+    DETOUR_ENABLED="true"
+    DETOUR_WAIT_SEC="5.0"
+    DETOUR_TRIGGER_M="1.10"
+    DETOUR_GUARD_M="0.95"
+    DETOUR_LINEAR_SPEED="0.08"
+    DETOUR_ANGULAR_SPEED="0.25"
+    read -r -p "Enable automatic EStop? [Y/n]: " auto_opt
+    if [[ "${auto_opt:-Y}" =~ ^[Nn] ]]; then
+        DETOUR_AUTO_ESTOP_ENABLED="false"
+        DETOUR_ENABLED="false"
+        echo "[traymover] Wait-and-detour requires automatic EStop."
+        echo "[traymover] Detour has been forced OFF."
+        return 0
+    fi
+    read -r -p "Enable wait-and-detour? [Y/n]: " detour_opt
+    if [[ "${detour_opt:-Y}" =~ ^[Nn] ]]; then
+        DETOUR_ENABLED="false"
+        return 0
+    fi
+    read -r -p "Wait before detour [default: 5.0 s]: " DETOUR_WAIT_SEC
+    read -r -p "Detour trigger distance [default: 1.10 m]: " DETOUR_TRIGGER_M
+    read -r -p "Detour guard distance [default: 0.95 m]: " DETOUR_GUARD_M
+    read -r -p "Detour linear speed [default: 0.08 m/s]: " DETOUR_LINEAR_SPEED
+    read -r -p "Detour angular speed [default: 0.25 rad/s]: " DETOUR_ANGULAR_SPEED
+    DETOUR_WAIT_SEC="${DETOUR_WAIT_SEC:-5.0}"
+    DETOUR_TRIGGER_M="${DETOUR_TRIGGER_M:-1.10}"
+    DETOUR_GUARD_M="${DETOUR_GUARD_M:-0.95}"
+    DETOUR_LINEAR_SPEED="${DETOUR_LINEAR_SPEED:-0.08}"
+    DETOUR_ANGULAR_SPEED="${DETOUR_ANGULAR_SPEED:-0.25}"
+    # Validate before interpolating any input into a spawned shell command.
+    local value
+    for value in "${DETOUR_WAIT_SEC}" "${DETOUR_TRIGGER_M}" "${DETOUR_GUARD_M}" \
+                 "${DETOUR_LINEAR_SPEED}" "${DETOUR_ANGULAR_SPEED}"; do
+        if ! [[ "${value}" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+            echo "[traymover] Detour settings must be non-negative decimal numbers."
+            return 1
+        fi
+    done
+    if ! python3 - "${DETOUR_WAIT_SEC}" "${DETOUR_TRIGGER_M}" "${DETOUR_GUARD_M}" \
+            "${DETOUR_LINEAR_SPEED}" "${DETOUR_ANGULAR_SPEED}" <<'PY_VALIDATE'
+import math
+import sys
+wait, trigger, guard, linear, angular = map(float, sys.argv[1:])
+valid = all(math.isfinite(v) for v in (wait, trigger, guard, linear, angular))
+valid = valid and wait > 0 and trigger > guard > 0.8
+valid = valid and 0 < linear <= 0.10 and 0 < angular <= 0.30
+sys.exit(0 if valid else 1)
+PY_VALIDATE
+    then
+        echo "[traymover] Require wait > 0, trigger > guard > 0.80 m, linear in (0, 0.10] m/s, angular in (0, 0.30] rad/s."
+        return 1
+    fi
+}
+
+action_start_nav_wait_detour() {
+    # Preserve Option 16 projection and startup; use independent detour configs.
+    if [ ! -d "${FASTLIO_PCD_DIR}" ]; then
+        echo "[traymover] FAST-LIO PCD directory missing: ${FASTLIO_PCD_DIR}"
+        echo "[traymover] Record a map first (options 6 + 7)."
+        return 1
+    fi
+
+    local -a pcds=()
+    while IFS= read -r -d '' f; do
+        pcds+=("$f")
+    done < <(find "${FASTLIO_PCD_DIR}" -maxdepth 1 -name '*.pcd' -type f -print0 2>/dev/null \
+             | xargs -0 -I{} stat --format='%Y %n' {} 2>/dev/null \
+             | sort -rn | cut -d' ' -f2- | tr '\n' '\0')
+
+    if [ ${#pcds[@]} -eq 0 ]; then
+        echo "[traymover] No .pcd files in ${FASTLIO_PCD_DIR}. Save a map first (option 7)."
+        return 1
+    fi
+
+    echo "Available PCD maps in ${FASTLIO_PCD_DIR} (newest first):"
+    local i size
+    for i in "${!pcds[@]}"; do
+        size="$(du -h "${pcds[i]}" 2>/dev/null | awk '{print $1}')"
+        printf "  [%d] %s  (%s)\n" "$((i+1))" "$(basename "${pcds[i]}")" "${size:-?}"
+    done
+
+    local pick pcd_path
+    read -r -p "Select PCD number [default: 1 = newest]: " pick
+    pick="${pick:-1}"
+    if ! [[ "${pick}" =~ ^[0-9]+$ ]] || [ "${pick}" -lt 1 ] || [ "${pick}" -gt "${#pcds[@]}" ]; then
+        echo "[traymover] Invalid selection: ${pick}"
+        return 1
+    fi
+    pcd_path="${pcds[$((pick-1))]}"
+    echo "[traymover] Selected: ${pcd_path}"
+
+    local rviz_opt rviz_arg
+    read -r -p "Launch RViz? [Y/n]: " rviz_opt
+    if [[ "${rviz_opt:-Y}" =~ ^[Nn] ]]; then
+        rviz_arg="launch_rviz:=false"
+    else
+        rviz_arg="launch_rviz:=true"
+    fi
+    prompt_wait_detour_settings || return 1
+
+    mkdir -p "${NAV_RUNTIME_DIR}"
+    local runtime_name runtime_prefix runtime_map_yaml
+    runtime_name="$(basename "${pcd_path}" .pcd)"
+    runtime_prefix="${NAV_RUNTIME_DIR}/${runtime_name}_2d"
+    runtime_map_yaml="${runtime_prefix}.yaml"
+
+    set +u
+    mkdir -p "${ROS_LOG_DIR_DEFAULT}"
+    export ROS_LOG_DIR="${ROS_LOG_DIR_DEFAULT}"
+    # shellcheck disable=SC1090
+    source "${ROS_DISTRO_SETUP}"
+    if [ -f "${WS_SETUP}" ]; then
+        # shellcheck disable=SC1090
+        source "${WS_SETUP}"
+    fi
+    set -u
+
+    echo "[traymover] Generating runtime 2D nav map from selected PCD ..."
+    if ! python3 "${NAV_SCRIPTS_DIR}/pcd2pgm.py" \
+            --pcd "${pcd_path}" \
+            --out "${runtime_prefix}" \
+            --z-reference absolute \
+            --z-min "${NAV_OBSTACLE_PGM_Z_MIN}" \
+            --z-max "${NAV_OBSTACLE_PGM_Z_MAX}" \
+            --resolution "${NAV_OBSTACLE_PGM_RESOLUTION}" \
+            --min-points "${NAV_OBSTACLE_PGM_MIN_POINTS}" \
+            --dilate "${NAV_OBSTACLE_PGM_DILATE}" \
+            --min-region-cells "${NAV_OBSTACLE_PGM_MIN_REGION_CELLS}"; then
+        echo "[traymover] pcd2pgm failed. Aborting obstacle nav startup."
+        return 1
+    fi
+    if [ ! -f "${runtime_map_yaml}" ]; then
+        echo "[traymover] Expected runtime map YAML missing: ${runtime_map_yaml}"
+        return 1
+    fi
+    echo "[traymover] Runtime map YAML: ${runtime_map_yaml}"
+    echo "[traymover] Runtime map params: absolute_z=[${NAV_OBSTACLE_PGM_Z_MIN}, ${NAV_OBSTACLE_PGM_Z_MAX}] m, resolution=${NAV_OBSTACLE_PGM_RESOLUTION}, min_points=${NAV_OBSTACLE_PGM_MIN_POINTS}, dilate=${NAV_OBSTACLE_PGM_DILATE}, min_region_cells=${NAV_OBSTACLE_PGM_MIN_REGION_CELLS}"
+
+    echo "[traymover] Option 18 distances and speeds are initial tuning values, not hardware-validated safety limits."
+    echo "[traymover] Starting chassis + IMU with automatic EStop=${DETOUR_AUTO_ESTOP_ENABLED} ..."
+    spawn_in_terminal "traymover: chassis_serial" \
+        "ros2 launch turn_on_traymover_robot base_serial.launch.py odom_source_mode:=none auto_estop_enabled:=${DETOUR_AUTO_ESTOP_ENABLED}"
+    action_start_estop_keyboard
+    spawn_in_terminal "traymover: lidar" \
+        "ros2 launch turn_on_traymover_robot traymover_lidar.launch.py enable_scan_bridge:=false"
+    sleep 6
+    # Main detour launch owns the single RealSense driver and the Auto EStop
+    # launch (start_realsense_driver=false there).
+    local pcd_arg map_arg
+    printf -v pcd_arg '%q' "pcd_path:=${pcd_path}"
+    printf -v map_arg '%q' "map:=${runtime_map_yaml}"
+    spawn_in_terminal "traymover: wait_detour_nav_stack" \
+        "ros2 launch traymover_robot_nav traymover_nav_lidar_realsense_detour.launch.py ${rviz_arg} \
+            ${pcd_arg} ${map_arg} \
+            enable_auto_estop:=${DETOUR_AUTO_ESTOP_ENABLED} enable_detour:=${DETOUR_ENABLED} \
+            wait_before_detour_sec:=${DETOUR_WAIT_SEC} \
+            detour_trigger_distance_m:=${DETOUR_TRIGGER_M} \
+            detour_guard_distance_m:=${DETOUR_GUARD_M} \
+            detour_max_linear_speed:=${DETOUR_LINEAR_SPEED} \
+            detour_max_angular_speed:=${DETOUR_ANGULAR_SPEED}"
+    cat <<EOF
+[traymover] Wait detour navigation starting. Expected speed chain:
+  Nav2 -> /cmd_vel_nav -> detour supervisor -> /cmd_vel_detour
+  -> Collision Monitor -> /cmd_vel -> driver aggregate EStop gate -> chassis
+[traymover] Auto EStop=${DETOUR_AUTO_ESTOP_ENABLED}; detour=${DETOUR_ENABLED}
+  Health checks:
+    ros2 topic echo /traymover_detour/state
+    ros2 topic echo /traymover_detour/reason
+    ros2 topic echo /traymover_estop/auto_reason
+    ./scripts/check_localization.sh
+EOF
+}
+
+
 action_start_nav_speed_modes() {
     # Option 15 is an additive variant of option 10: same map selection,
     # runtime 2D map generation, hardware bringup, localization, Nav2 launch,
@@ -1368,6 +1547,152 @@ action_save_map() {
     echo "[traymover] Saved ${map_path}.pgm and ${map_path}.yaml"
 }
 
+action_start_guided_detour_test() {
+    # A subshell confines traps/environment to this session and preserves the
+    # menu's existing signal handling. Never use the global kill_previous here.
+    (
+        local rviz_opt launch_rviz=true sensor_pid='' runner_status=0
+        local session_stamp report_directory sensor_log software_commit package_prefix
+        local keyboard_terminal keyboard_terminal_pid='' session_runtime=''
+        cat <<'EOF'
+
+==================================================
+Traymover Guided EStop-safe Detour Test
+No Map / No Nav2 / Small Indoor Motion
+==================================================
+This test will move the robot after preflight and explicit ARM.
+Automatic EStop: REQUIRED / ENABLED
+Collision Monitor: REQUIRED / ENABLED
+The guided instructions stay in this terminal.
+Manual EStop is available with ! then Enter, including during motion.
+Ctrl+C stops the test. A separate EStop keyboard opens when available.
+EOF
+        read -r -p "Launch sensor visualization/RViz? [Y/n]: " rviz_opt || exit 1
+        if [[ "${rviz_opt:-Y}" =~ ^[Nn] ]]; then
+            launch_rviz=false
+        fi
+        if [[ ! -f "${WS_SETUP}" ]]; then
+            echo "[traymover] TEST ABORT: workspace setup missing; build the workspace first."
+            exit 1
+        fi
+        set +u
+        # shellcheck disable=SC1090
+        source "${ROS_DISTRO_SETUP}" || exit 1
+        # shellcheck disable=SC1090
+        source "${WS_SETUP}" || exit 1
+        set -u
+        if ! command -v setsid >/dev/null 2>&1 || ! command -v ros2 >/dev/null 2>&1; then
+            echo "[traymover] TEST ABORT: ros2 and setsid are required."
+            exit 1
+        fi
+        package_prefix="$(ros2 pkg prefix traymover_robot_nav)" || exit 1
+        if [[ ! -x "${package_prefix}/lib/traymover_robot_nav/guided_detour_test.py" ]]; then
+            echo "[traymover] TEST ABORT: guided runner is not installed; rebuild traymover_robot_nav."
+            exit 1
+        fi
+        if [[ ! -f "${NAV_CONFIG_DIR}/guided_detour_test.yaml" ]]; then
+            echo "[traymover] TEST ABORT: guided test parameters are unavailable."
+            exit 1
+        fi
+        report_directory="${WORKSPACE_DIR}/logs"
+        session_stamp="$(date +%Y%m%d_%H%M%S)_${BASHPID}"
+        mkdir -p "${report_directory}" "${ROS_LOG_DIR_DEFAULT}" || exit 1
+        export ROS_LOG_DIR="${ROS_LOG_DIR_DEFAULT}"
+        sensor_log="${report_directory}/detour_test_${session_stamp}_sensors.log"
+        software_commit="$(git -C "${WORKSPACE_DIR}" rev-parse HEAD 2>/dev/null || printf unknown)"
+        session_runtime="$(mktemp -d "${report_directory}/.detour_session_${session_stamp}.XXXXXX")" || exit 1
+        touch "${session_runtime}/active"
+
+        cleanup_guided_session() {
+            local attempt keyboard_pid=''
+            trap '' INT TERM
+            # A delayed terminal must not start a keyboard after this session
+            # exits. The keyboard checks this marker before and after its PID.
+            rm -f "${session_runtime}/active"
+            if [[ -f "${session_runtime}/keyboard.pid" ]]; then
+                read -r keyboard_pid < "${session_runtime}/keyboard.pid" || true
+                if [[ "${keyboard_pid}" =~ ^[0-9]+$ ]]; then
+                    kill -INT -- "-${keyboard_pid}" 2>/dev/null || true
+                fi
+            fi
+            if [[ -n "${sensor_pid}" ]]; then
+                # Signal only the process group created below. The runner has
+                # already attempted repeated zero commands before normal exit.
+                kill -INT -- "-${sensor_pid}" 2>/dev/null || true
+                for attempt in {1..30}; do
+                    kill -0 -- "-${sensor_pid}" 2>/dev/null || break
+                    sleep 0.1
+                done
+                if kill -0 -- "-${sensor_pid}" 2>/dev/null; then
+                    kill -TERM -- "-${sensor_pid}" 2>/dev/null || true
+                    for attempt in {1..20}; do
+                        kill -0 -- "-${sensor_pid}" 2>/dev/null || break
+                        sleep 0.1
+                    done
+                fi
+                if kill -0 -- "-${sensor_pid}" 2>/dev/null; then
+                    kill -KILL -- "-${sensor_pid}" 2>/dev/null || true
+                fi
+                wait "${sensor_pid}" 2>/dev/null || true
+            fi
+            if [[ "${keyboard_pid}" =~ ^[0-9]+$ ]]; then
+                kill -TERM -- "-${keyboard_pid}" 2>/dev/null || true
+                for attempt in {1..10}; do
+                    kill -0 -- "-${keyboard_pid}" 2>/dev/null || break
+                    sleep 0.1
+                done
+                kill -KILL -- "-${keyboard_pid}" 2>/dev/null || true
+            fi
+            if [[ -n "${keyboard_terminal_pid}" ]]; then
+                kill -TERM "${keyboard_terminal_pid}" 2>/dev/null || true
+            fi
+            rm -rf -- "${session_runtime}"
+        }
+        trap cleanup_guided_session EXIT
+        trap 'exit 130' INT
+        trap 'exit 143' TERM
+        echo "[traymover] Sensor and safety log: ${sensor_log}"
+        echo "[traymover] Software commit: ${software_commit}"
+        setsid ros2 launch traymover_robot_nav guided_detour_test.launch.py \
+            "launch_rviz:=${launch_rviz}" >"${sensor_log}" 2>&1 &
+        sensor_pid=$!
+        keyboard_terminal="$(pick_terminal)"
+        # Pass paths as argv, never interpolate them into the terminal's shell.
+        # This new session's PID is also its process group, so cleanup is scoped.
+        local -a keyboard_command=(setsid bash -c '
+            source "$2" || exit 1
+            source "$3" || exit 1
+            [[ -f "$1/active" ]] || exit 0
+            printf "%s\n" "$$" > "$1/keyboard.pid"
+            [[ -f "$1/active" ]] || exit 0
+            exec ros2 run traymover_robot_safety traymover_estop_keyboard
+        ' guided-estop "${session_runtime}" "${ROS_DISTRO_SETUP}" "${WS_SETUP}")
+        case "${keyboard_terminal}" in
+            gnome-terminal)
+                gnome-terminal --wait --title="traymover: guided test EStop" \
+                    -- "${keyboard_command[@]}" >>"${sensor_log}" 2>&1 &
+                keyboard_terminal_pid=$!
+                ;;
+            xterm)
+                xterm -T "traymover: guided test EStop" -e "${keyboard_command[@]}" \
+                    >>"${sensor_log}" 2>&1 &
+                keyboard_terminal_pid=$!
+                ;;
+            *)
+                echo "[traymover] No extra terminal: use ! then Enter for manual EStop; Ctrl+C aborts."
+                ;;
+        esac
+        # No map, prior cloud, navigation goal, or parameter interview is needed.
+        # The foreground runner waits for mandatory safety preflight before ARM.
+        ros2 run traymover_robot_nav guided_detour_test.py --ros-args \
+            --params-file "${NAV_CONFIG_DIR}/guided_detour_test.yaml" \
+            -p "report_directory:=${report_directory}" \
+            -p "software_commit:=${software_commit}" || runner_status=$?
+        echo "[traymover] Guided session ended. Reports: ${report_directory}"
+        exit "${runner_status}"
+    )
+}
+
 # ---- menu -------------------------------------------------------------------
 
 print_menu() {
@@ -1393,6 +1718,8 @@ print_menu() {
  15) Start navigation with speed mode  (option 10 flow + selectable Nav2 speed)
  16) Navigation with LiDAR + RealSense Dynamic Obstacle Avoidance
  17) Test automatic EStop while stationary  (RealSense + ESTOP/FREE status only)
+ 18) Navigation with LiDAR + RealSense + EStop-safe Wait Detour
+ 19) Guided EStop-safe Detour Test (No Map / No Nav2)
   q) Quit
 ==============================
 EOF
@@ -1426,6 +1753,8 @@ main() {
             15) action_start_nav_speed_modes ;;
             16) action_start_nav_lidar_realsense_obstacle ;;
             17) action_test_auto_estop ;;
+            18) action_start_nav_wait_detour ;;
+            19) action_start_guided_detour_test ;;
             q|Q|quit|exit) echo "Bye."; exit 0 ;;
             "") ;;
             *) echo "Unknown option: ${choice}" ;;

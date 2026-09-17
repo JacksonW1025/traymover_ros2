@@ -8,6 +8,7 @@
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/image.hpp"
 #include "std_msgs/msg/bool.hpp"
+#include "std_msgs/msg/string.hpp"
 #include "traymover_robot_safety/depth_estop_evaluator.hpp"
 
 namespace traymover_robot_safety
@@ -15,6 +16,7 @@ namespace traymover_robot_safety
 namespace
 {
 constexpr char kAutoEstopRequestTopic[] = "/traymover_estop/auto_request";
+constexpr char kAutoEstopReasonTopic[] = "/traymover_estop/auto_reason";
 
 const char * reasonName(DepthEstopReason reason)
 {
@@ -81,6 +83,9 @@ public:
 
     request_pub_ = create_publisher<std_msgs::msg::Bool>(
       kAutoEstopRequestTopic, rclcpp::QoS(rclcpp::KeepLast(1)).reliable());
+    reason_pub_ = create_publisher<std_msgs::msg::String>(
+      kAutoEstopReasonTopic,
+      rclcpp::QoS(rclcpp::KeepLast(1)).reliable().transient_local());
     depth_sub_ = create_subscription<sensor_msgs::msg::Image>(
       depth_topic,
       rclcpp::SensorDataQoS(),
@@ -148,6 +153,21 @@ private:
     std_msgs::msg::Bool message;
     message.data = requested;
     request_pub_->publish(message);
+    // Observability only: never change the evaluator or the Bool request. A
+    // low-valid observation must not leave a previous NEAR_OBSTACLE reason
+    // masking a sensor fault, even during its frame-confirmation period.
+    if (result != nullptr && result->low_valid_depth) {
+      last_reason_ = "LOW_VALID_DEPTH";
+    } else if (std::string(reason) != "HEARTBEAT" && std::string(reason) != "NONE") {
+      last_reason_ = reason;
+    } else if (!requested && std::string(reason) != "HEARTBEAT") {
+      last_reason_ = "NONE";
+    }
+    // Keep the actual cause during heartbeat and clear-frame hysteresis.
+    // NONE is emitted only once healthy frames have released the request.
+    std_msgs::msg::String reason_message;
+    reason_message.data = last_reason_;
+    reason_pub_->publish(reason_message);
     if (!have_published_state_ || requested != last_published_state_) {
       if (requested && result != nullptr) {
         RCLCPP_INFO(
@@ -169,6 +189,7 @@ private:
 
   std::unique_ptr<DepthEstopEvaluator> evaluator_;
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr request_pub_;
+  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr reason_pub_;
   rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr depth_sub_;
   rclcpp::TimerBase::SharedPtr heartbeat_timer_;
   std::chrono::steady_clock::time_point last_depth_time_{};
@@ -177,6 +198,7 @@ private:
   bool have_depth_frame_{false};
   bool have_published_state_{false};
   bool last_published_state_{true};
+  std::string last_reason_{"STARTUP"};
 };
 
 }  // namespace traymover_robot_safety

@@ -1,0 +1,24 @@
+# Conservative initial test values; hardware safety validation is still required.
+# No automatic reverse, measured travel claim, navigation goal, or map is used.
+guided_detour_test:
+  ros__parameters:
+    test_wait_sec: 2.0
+    detour_trigger_distance_m: 1.10
+    detour_guard_distance_m: 0.95
+    clear_confirm_sec: 1.0
+    test_turn_angle_deg: 25.0
+    test_turn_speed: 0.15
+    test_turn_tolerance_deg: 5.0
+    test_turn_timeout_sec: 5.0
+    test_straight_speed: 0.03
+    test_straight_duration: 1.5
+    test_straight_timeout_sec: 2.0
+    estop_test_speed: 0.02
+    estop_test_max_duration: 5.0
+    stop_settle_sec: 0.5
+    scan_timeout_sec: 1.0
+    realsense_timeout_sec: 1.0
+    imu_timeout_sec: 0.5
+    max_total_forward_command_sec: 5.0
+    max_total_rotation_deg: 90.0
+    max_test_duration_sec: 900.0

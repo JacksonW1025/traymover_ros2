@@ -53,6 +53,18 @@ if(BUILD_TESTING)
     test_nav_simple_config
     test/test_nav_simple_config.py
   )
+  foreach(detour_test gate core config supervisor goal_proxy velocity_chain)
+    ament_add_pytest_test(
+      test_detour_${detour_test}
+      test/test_detour_${detour_test}.py
+    )
+  endforeach()
+  foreach(guided_test config node test velocity_chain)
+    ament_add_pytest_test(
+      test_guided_detour_${guided_test}
+      test/test_guided_detour_${guided_test}.py
+    )
+  endforeach()
 endif()
 
 install(
