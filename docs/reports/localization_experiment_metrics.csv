@@ -1,0 +1,6 @@
+experiment_id,pcd_name,duration_s,ndt_align_count,ndt_reject_count,fitness_median,fitness_p90,map_odom_drift_m_per_min,nav_abort_count,notes
+A1,NOT_RUN_clean_pcd,NA,NA,NA,NA,NA,NA,NA,"未采集：当前机器无正在运行的定位节点；ROS 日志缺少当前实现的 NDT aligned/fitness 统计行，不能伪造基线数据。"
+B1,NOT_RUN_raw_pcd,NA,NA,NA,NA,NA,NA,NA,"未采集：未找到按 B 组标记的未净化 PCD 定位实验日志；姊妹滤除报告的合成数据未写作定位实验。"
+C1,NOT_RUN_use_odom_false,NA,NA,NA,NA,NA,NA,NA,"略：use_odom:false 属短距安全区实验，当前无人确认安全场地与急停看护，未启动车辆测试。"
+D1,NOT_RUN_score_threshold_0_5,NA,NA,NA,NA,NA,NA,NA,"未采集：未找到 score_threshold:0.5 的现场运行日志；不能从默认参数日志推断严门限结果。"
+E1,NOT_RUN_u_turn,NA,NA,NA,NA,NA,NA,NA,"未采集：未找到 U 型转弯前后 30 s 的 NDT aligned/jump 日志；旧日志无当前统计格式。"
