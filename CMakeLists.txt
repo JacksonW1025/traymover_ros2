@@ -88,6 +88,40 @@ install(DIRECTORY
 )
 
 if(BUILD_TESTING)
+  add_executable(test_weighted_fitness test/test_weighted_fitness.cpp)
+  target_link_libraries(test_weighted_fitness ${PCL_LIBRARIES})
+  add_test(NAME test_weighted_fitness COMMAND test_weighted_fitness)
+  add_executable(test_tf_responsiveness test/test_tf_responsiveness.cpp)
+  target_link_libraries(test_tf_responsiveness
+    lidar_localization_component ${PCL_LIBRARIES}
+    ${rclcpp_lifecycle_LIBRARIES} ${std_msgs_LIBRARIES})
+  add_test(NAME test_tf_responsiveness COMMAND test_tf_responsiveness)
+  set_tests_properties(test_tf_responsiveness PROPERTIES
+    ENVIRONMENT "ROS_DOMAIN_ID=216;ROS_LOCALHOST_ONLY=1" TIMEOUT 30)
+  add_executable(test_auto_correction test/test_auto_correction.cpp)
+  target_link_libraries(test_auto_correction
+    lidar_localization_component ${PCL_LIBRARIES}
+    ${rclcpp_lifecycle_LIBRARIES} ${std_msgs_LIBRARIES})
+  add_test(NAME test_auto_correction COMMAND test_auto_correction)
+  set_tests_properties(test_auto_correction PROPERTIES
+    ENVIRONMENT "ROS_DOMAIN_ID=215;ROS_LOCALHOST_ONLY=1")
+  add_executable(test_height_weighting test/test_height_weighting.cpp)
+  target_link_libraries(test_height_weighting
+    lidar_localization_component ${PCL_LIBRARIES}
+    ${rclcpp_lifecycle_LIBRARIES} ${std_msgs_LIBRARIES})
+  add_test(NAME test_height_weighting COMMAND test_height_weighting)
+  set_tests_properties(test_height_weighting PROPERTIES
+    ENVIRONMENT "ROS_DOMAIN_ID=214;ROS_LOCALHOST_ONLY=1")
+  add_executable(test_ndt_reinitialization test/test_ndt_reinitialization.cpp)
+  target_link_libraries(test_ndt_reinitialization
+    lidar_localization_component ${PCL_LIBRARIES}
+    ${rclcpp_lifecycle_LIBRARIES} ${std_msgs_LIBRARIES})
+  add_test(NAME test_ndt_reinitialization COMMAND test_ndt_reinitialization)
+  set_tests_properties(test_ndt_reinitialization PROPERTIES
+    ENVIRONMENT "ROS_DOMAIN_ID=213;ROS_LOCALHOST_ONLY=1")
+  add_executable(test_map_downsampling test/test_map_downsampling.cpp)
+  target_link_libraries(test_map_downsampling ${PCL_LIBRARIES})
+  add_test(NAME test_map_downsampling COMMAND test_map_downsampling)
   add_executable(test_ndt_map_compatibility
     test/test_ndt_map_compatibility.cpp)
   target_include_directories(test_ndt_map_compatibility PRIVATE include)

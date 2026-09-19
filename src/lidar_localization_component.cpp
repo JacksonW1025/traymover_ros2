@@ -1,5 +1,7 @@
 #include <lidar_localization/lidar_localization_component.hpp>
 #include <lidar_localization/ndt_map_compatibility.hpp>
+#include <lidar_localization/map_downsampling.hpp>
+#include <lidar_localization/weighted_fitness.hpp>
 #include <algorithm>
 #include <boost/pointer_cast.hpp>
 #include <chrono>
@@ -98,6 +100,7 @@ PCLLocalization::PCLLocalization(const rclcpp::NodeOptions & options)
   broadcaster_(this)
 {
   declare_parameter("global_frame_id", "map");
+  tf_publish_group_ = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
   declare_parameter("odom_frame_id", "odom");
   declare_parameter("base_frame_id", "base_link");
   declare_parameter("enable_map_odom_tf", false);
@@ -113,10 +116,26 @@ PCLLocalization::PCLLocalization(const rclcpp::NodeOptions & options)
   declare_parameter("adaptive_ndt_min_usable_voxel_ratio", 0.01);
   declare_parameter("transform_epsilon", 0.01);
   declare_parameter("voxel_leaf_size", 0.2);
+  declare_parameter("map_voxel_leaf_size", 0.0);
   declare_parameter("scan_max_range", 100.0);
   declare_parameter("scan_min_range", 1.0);
   declare_parameter("far_point_boost_min_range", 0.0);
   declare_parameter("far_point_boost_factor", 1);
+  declare_parameter("height_boost_enabled", false);
+  declare_parameter("height_boost_min_z", 2.0);
+  declare_parameter("auto_correction_enabled", false);
+  declare_parameter("auto_correction_confirmations", auto_correction_policy_.confirmations);
+  declare_parameter("auto_correction_max_translation", auto_correction_policy_.max_translation);
+  declare_parameter("auto_correction_max_rotation", auto_correction_policy_.max_rotation);
+  declare_parameter("auto_correction_consistency_translation", auto_correction_policy_.consistency_translation);
+  declare_parameter("auto_correction_consistency_rotation", auto_correction_policy_.consistency_rotation);
+  declare_parameter("auto_correction_min_improvement", auto_correction_policy_.min_improvement);
+  declare_parameter("auto_correction_max_step_translation", auto_correction_policy_.max_step_translation);
+  declare_parameter("auto_correction_max_step_rotation", auto_correction_policy_.max_step_rotation);
+  declare_parameter("auto_correction_max_gap", auto_correction_policy_.max_gap);
+  declare_parameter("auto_correction_max_odom_speed", auto_correction_policy_.max_odom_speed);
+  declare_parameter("auto_correction_max_odom_vertical_speed", auto_correction_policy_.max_odom_vertical_speed);
+  declare_parameter("auto_correction_max_odom_angular_speed", auto_correction_policy_.max_odom_angular_speed);
   declare_parameter("scan_period", 0.1);
   declare_parameter("use_pcd_map", false);
   declare_parameter("map_path", "/map/map.pcd");
@@ -136,7 +155,10 @@ PCLLocalization::PCLLocalization(const rclcpp::NodeOptions & options)
   declare_parameter("lock_planar", false);
   declare_parameter("max_pose_jump_translation", 1.0);
   declare_parameter("max_pose_jump_rotation", 0.5);
+  declare_parameter("max_bootstrap_pose_jump_translation", -1.0);
+  declare_parameter("max_bootstrap_pose_jump_rotation", -1.0);
   declare_parameter("ndt_align_interval_s", 5.0);
+  declare_parameter("scan_odom_tf_timeout", 0.5);
   declare_parameter("tf_rebroadcast_rate_hz", 50.0);
   declare_parameter("map_odom_smoothing", 0.3);
   declare_parameter("max_map_odom_update_translation", -1.0);
@@ -149,7 +171,33 @@ CallbackReturn PCLLocalization::on_configure(const rclcpp_lifecycle::State &)
 {
   RCLCPP_INFO(get_logger(), "Configuring");
 
+  localization_active_ = false;
+  updateTfSnapshot(false);
   initializeParameters();
+  if (!std::isfinite(scan_odom_tf_timeout_) || scan_odom_tf_timeout_ <= 0.0 ||
+    scan_odom_tf_timeout_ > 2.0)
+  {
+    RCLCPP_ERROR(get_logger(), "scan_odom_tf_timeout must be finite and in (0, 2] seconds");
+    return CallbackReturn::FAILURE;
+  }
+  if (auto_correction_enabled_ && (!auto_correction_policy_.valid() ||
+    !std::isfinite(map_odom_smoothing_) || map_odom_smoothing_ <= 0.0 ||
+    map_odom_smoothing_ > 1.0 || !std::isfinite(max_pose_jump_translation_) ||
+    max_pose_jump_translation_ <= 0.0 || !std::isfinite(max_pose_jump_rotation_) ||
+    max_pose_jump_rotation_ <= 0.0 || enable_timer_publishing_))
+  {
+    RCLCPP_ERROR(get_logger(), "Invalid auto-correction policy: positive finite bounds, "
+      "0 < smoothing <= 1, and scan-driven pose publishing are required");
+    return CallbackReturn::FAILURE;
+  }
+  if (!std::isfinite(height_boost_min_z_) || height_boost_min_z_ < 0.0) {
+    RCLCPP_ERROR(get_logger(), "height_boost_min_z must be finite and >= 0 (base frame metres)");
+    return CallbackReturn::FAILURE;
+  }
+  if (!std::isfinite(map_voxel_leaf_size_) || map_voxel_leaf_size_ < 0.0) {
+    RCLCPP_ERROR(get_logger(), "map_voxel_leaf_size must be finite and >= 0");
+    return CallbackReturn::FAILURE;
+  }
   initializePubSub();
   initializeRegistration();
 
@@ -163,6 +211,8 @@ CallbackReturn PCLLocalization::on_configure(const rclcpp_lifecycle::State &)
 CallbackReturn PCLLocalization::on_activate(const rclcpp_lifecycle::State &)
 {
   RCLCPP_INFO(get_logger(), "Activating");
+  localization_active_ = false;
+  updateTfSnapshot(false);
 
   pose_pub_->on_activate();
   path_pub_->on_activate();
@@ -215,18 +265,19 @@ CallbackReturn PCLLocalization::on_activate(const rclcpp_lifecycle::State &)
       return CallbackReturn::FAILURE;
     }
     map_cloud_ptr = to_xyzi_cloud(raw_map_cloud, get_logger(), map_path_);
+    raw_map_cloud.data.clear();
+    raw_map_cloud.data.shrink_to_fit();
 
     RCLCPP_INFO(get_logger(), "Map Size %ld", map_cloud_ptr->size());
+    if (!configureRegistrationTarget(map_cloud_ptr)) {
+      return CallbackReturn::FAILURE;
+    }
     log_cloud_bounds(get_logger(), "NDT target map", *map_cloud_ptr);
     sensor_msgs::msg::PointCloud2::SharedPtr map_msg_ptr(new sensor_msgs::msg::PointCloud2);
     pcl::toROSMsg(*map_cloud_ptr, *map_msg_ptr);
     map_msg_ptr->header.frame_id = global_frame_id_;
     initial_map_pub_->publish(*map_msg_ptr);
     RCLCPP_INFO(get_logger(), "Initial Map Published");
-
-    if (!configureRegistrationTarget(map_cloud_ptr)) {
-      return CallbackReturn::FAILURE;
-    }
 
     map_recieved_ = true;
   }
@@ -238,8 +289,10 @@ CallbackReturn PCLLocalization::on_activate(const rclcpp_lifecycle::State &)
     const auto period = std::chrono::duration<double>(1.0 / tf_rebroadcast_rate_hz_);
     tf_rebroadcast_timer_ = create_wall_timer(
       std::chrono::duration_cast<std::chrono::nanoseconds>(period),
-      std::bind(&PCLLocalization::rebroadcastMapOdomTF, this));
+      std::bind(&PCLLocalization::rebroadcastMapOdomTF, this), tf_publish_group_);
   }
+  localization_active_ = true;
+  updateTfSnapshot(have_good_pose_);
 
   RCLCPP_INFO(get_logger(), "Activating end");
   return CallbackReturn::SUCCESS;
@@ -248,6 +301,8 @@ CallbackReturn PCLLocalization::on_activate(const rclcpp_lifecycle::State &)
 CallbackReturn PCLLocalization::on_deactivate(const rclcpp_lifecycle::State &)
 {
   RCLCPP_INFO(get_logger(), "Deactivating");
+  localization_active_ = false;
+  updateTfSnapshot(false);
 
   pose_pub_->on_deactivate();
   path_pub_->on_deactivate();
@@ -263,20 +318,36 @@ CallbackReturn PCLLocalization::on_deactivate(const rclcpp_lifecycle::State &)
   return CallbackReturn::SUCCESS;
 }
 
+void PCLLocalization::updateTfSnapshot(bool valid)
+{
+  std::lock_guard<std::mutex> lock(tf_snapshot_mutex_);
+  tf_snapshot_valid_ = valid && localization_active_;
+  if (tf_snapshot_valid_) {
+    tf_snapshot_ = tf2::eigenToTransform(Eigen::Affine3d(last_good_map_to_odom_.cast<double>()));
+    tf_snapshot_.header.frame_id = global_frame_id_;
+    tf_snapshot_.child_frame_id = odom_frame_id_;
+  }
+}
+
 void PCLLocalization::rebroadcastMapOdomTF()
 {
-  if (!have_good_pose_) return;
-  Eigen::Affine3d affine(last_good_map_to_odom_.cast<double>());
-  geometry_msgs::msg::TransformStamped tf_msg = tf2::eigenToTransform(affine);
-  tf_msg.header.stamp = now();
-  tf_msg.header.frame_id = global_frame_id_;
-  tf_msg.child_frame_id = odom_frame_id_;
-  broadcaster_.sendTransform(tf_msg);
+  // Keep the lock through publish so invalidation cannot race a stale send.
+  // No optimizer, pose state, or map cloud is accessed by this callback.
+  std::lock_guard<std::mutex> lock(tf_snapshot_mutex_);
+  if (!tf_snapshot_valid_) {return;}
+  tf_snapshot_.header.stamp = now();
+  broadcaster_.sendTransform(tf_snapshot_);
 }
 
 CallbackReturn PCLLocalization::on_cleanup(const rclcpp_lifecycle::State &)
 {
   RCLCPP_INFO(get_logger(), "Cleaning Up");
+  localization_active_ = false;
+  updateTfSnapshot(false);
+  if (tf_rebroadcast_timer_) {
+    tf_rebroadcast_timer_->cancel();
+    tf_rebroadcast_timer_.reset();
+  }
   initial_pose_sub_.reset();
   initial_map_pub_.reset();
   ndt_aligned_scan_pub_.reset();
@@ -297,6 +368,8 @@ CallbackReturn PCLLocalization::on_cleanup(const rclcpp_lifecycle::State &)
 CallbackReturn PCLLocalization::on_shutdown(const rclcpp_lifecycle::State & state)
 {
   RCLCPP_INFO(get_logger(), "Shutting Down from %s", state.label().c_str());
+  localization_active_ = false;
+  updateTfSnapshot(false);
 
   return CallbackReturn::SUCCESS;
 }
@@ -304,6 +377,8 @@ CallbackReturn PCLLocalization::on_shutdown(const rclcpp_lifecycle::State & stat
 CallbackReturn PCLLocalization::on_error(const rclcpp_lifecycle::State & state)
 {
   RCLCPP_FATAL(get_logger(), "Error Processing from %s", state.label().c_str());
+  localization_active_ = false;
+  updateTfSnapshot(false);
 
   return CallbackReturn::SUCCESS;
 }
@@ -328,10 +403,33 @@ void PCLLocalization::initializeParameters()
     "adaptive_ndt_min_usable_voxel_ratio", adaptive_ndt_min_usable_voxel_ratio_);
   get_parameter("transform_epsilon", transform_epsilon_);
   get_parameter("voxel_leaf_size", voxel_leaf_size_);
+  get_parameter("map_voxel_leaf_size", map_voxel_leaf_size_);
+  RCLCPP_INFO(get_logger(), "map_voxel_leaf_size: %.3f m", map_voxel_leaf_size_);
   get_parameter("scan_max_range", scan_max_range_);
   get_parameter("scan_min_range", scan_min_range_);
   get_parameter("far_point_boost_min_range", far_point_boost_min_range_);
   get_parameter("far_point_boost_factor", far_point_boost_factor_);
+  get_parameter("height_boost_enabled", height_boost_enabled_);
+  get_parameter("height_boost_min_z", height_boost_min_z_);
+  get_parameter("auto_correction_enabled", auto_correction_enabled_);
+  get_parameter("auto_correction_confirmations", auto_correction_policy_.confirmations);
+  get_parameter("auto_correction_max_translation", auto_correction_policy_.max_translation);
+  get_parameter("auto_correction_max_rotation", auto_correction_policy_.max_rotation);
+  get_parameter("auto_correction_consistency_translation", auto_correction_policy_.consistency_translation);
+  get_parameter("auto_correction_consistency_rotation", auto_correction_policy_.consistency_rotation);
+  get_parameter("auto_correction_min_improvement", auto_correction_policy_.min_improvement);
+  get_parameter("auto_correction_max_step_translation", auto_correction_policy_.max_step_translation);
+  get_parameter("auto_correction_max_step_rotation", auto_correction_policy_.max_step_rotation);
+  get_parameter("auto_correction_max_gap", auto_correction_policy_.max_gap);
+  get_parameter("auto_correction_max_odom_speed", auto_correction_policy_.max_odom_speed);
+  get_parameter("auto_correction_max_odom_vertical_speed", auto_correction_policy_.max_odom_vertical_speed);
+  get_parameter("auto_correction_max_odom_angular_speed", auto_correction_policy_.max_odom_angular_speed);
+  RCLCPP_INFO(get_logger(), "auto_correction_enabled: %d; confirmations=%d "
+    "absolute=%.2fm/%.2frad step=%.2fm/%.2frad improvement=%.3f",
+    auto_correction_enabled_, auto_correction_policy_.confirmations,
+    auto_correction_policy_.max_translation, auto_correction_policy_.max_rotation,
+    auto_correction_policy_.max_step_translation, auto_correction_policy_.max_step_rotation,
+    auto_correction_policy_.min_improvement);
   get_parameter("scan_period", scan_period_);
   get_parameter("use_pcd_map", use_pcd_map_);
   get_parameter("map_path", map_path_);
@@ -351,7 +449,10 @@ void PCLLocalization::initializeParameters()
   get_parameter("lock_planar", lock_planar_);
   get_parameter("max_pose_jump_translation", max_pose_jump_translation_);
   get_parameter("max_pose_jump_rotation", max_pose_jump_rotation_);
+  get_parameter("max_bootstrap_pose_jump_translation", max_bootstrap_pose_jump_translation_);
+  get_parameter("max_bootstrap_pose_jump_rotation", max_bootstrap_pose_jump_rotation_);
   get_parameter("ndt_align_interval_s", ndt_align_interval_s_);
+  get_parameter("scan_odom_tf_timeout", scan_odom_tf_timeout_);
   get_parameter("tf_rebroadcast_rate_hz", tf_rebroadcast_rate_hz_);
   get_parameter("map_odom_smoothing", map_odom_smoothing_);
   get_parameter("max_map_odom_update_translation", max_map_odom_update_translation_);
@@ -359,6 +460,8 @@ void PCLLocalization::initializeParameters()
   RCLCPP_INFO(get_logger(), "lock_planar: %d", lock_planar_);
   RCLCPP_INFO(get_logger(), "max_pose_jump_translation: %.2f m", max_pose_jump_translation_);
   RCLCPP_INFO(get_logger(), "max_pose_jump_rotation: %.2f rad", max_pose_jump_rotation_);
+  RCLCPP_INFO(get_logger(), "bootstrap jump limits: translation=%.2f m rotation=%.2f rad",
+    max_bootstrap_pose_jump_translation_, max_bootstrap_pose_jump_rotation_);
   RCLCPP_INFO(get_logger(), "ndt_align_interval_s: %.2f s", ndt_align_interval_s_);
   RCLCPP_INFO(get_logger(), "tf_rebroadcast_rate_hz: %.2f Hz", tf_rebroadcast_rate_hz_);
   RCLCPP_INFO(get_logger(), "map_odom_smoothing: %.2f", map_odom_smoothing_);
@@ -391,6 +494,10 @@ void PCLLocalization::initializeParameters()
   RCLCPP_INFO(get_logger(),"scan_min_range: %lf", scan_min_range_);
   RCLCPP_INFO(get_logger(),"far_point_boost_min_range: %lf", far_point_boost_min_range_);
   RCLCPP_INFO(get_logger(),"far_point_boost_factor: %d", far_point_boost_factor_);
+  RCLCPP_INFO(
+    get_logger(), "height_boost: enabled=%d min_z=%.3f m (base frame) extra_copies=1 "
+    "max_copies=3 (existing far weighting preserved); fitness gate uses baseline cloud",
+    height_boost_enabled_, height_boost_min_z_);
   RCLCPP_INFO(get_logger(),"scan_period: %lf", scan_period_);
   RCLCPP_INFO(get_logger(),"use_pcd_map: %d", use_pcd_map_);
   RCLCPP_INFO(get_logger(),"map_path: %s", map_path_.c_str());
@@ -593,52 +700,91 @@ bool PCLLocalization::configureNdtResolutionForMap(
 }
 
 bool PCLLocalization::configureRegistrationTarget(
-  const pcl::PointCloud<pcl::PointXYZI>::Ptr & map_cloud_ptr)
+  pcl::PointCloud<pcl::PointXYZI>::Ptr & map_cloud_ptr)
 {
+  const auto started = std::chrono::steady_clock::now();
+  const auto original_points = map_cloud_ptr->size();
+  auto target = lidar_localization::downsampleMapCloud(map_cloud_ptr, map_voxel_leaf_size_);
+  if (target->empty()) {
+    RCLCPP_ERROR(get_logger(), "Registration target is empty after map downsampling");
+    return false;
+  }
+  const double elapsed = std::chrono::duration<double>(
+    std::chrono::steady_clock::now() - started).count();
+  RCLCPP_INFO(get_logger(),
+    "Map downsample: leaf=%.3f m input=%zu output=%zu retained=%.1f%% elapsed=%.3f s",
+    map_voxel_leaf_size_, original_points, target->size(),
+    100.0 * target->size() / original_points, elapsed);
   if (registration_method_ == "GICP" || registration_method_ == "GICP_OMP") {
     pcl::PointCloud<pcl::PointXYZI>::Ptr filtered_cloud_ptr(
       new pcl::PointCloud<pcl::PointXYZI>());
-    voxel_grid_filter_.setInputCloud(map_cloud_ptr);
+    voxel_grid_filter_.setInputCloud(target);
     voxel_grid_filter_.filter(*filtered_cloud_ptr);
     registration_->setInputTarget(filtered_cloud_ptr);
+    map_cloud_ptr = filtered_cloud_ptr;
     return true;
   }
 
-  if (!configureNdtResolutionForMap(*map_cloud_ptr)) {
+  if (!configureNdtResolutionForMap(*target)) {
     return false;
   }
-  registration_->setInputTarget(map_cloud_ptr);
+  registration_->setInputTarget(target);
+  map_cloud_ptr = target;
   return true;
 }
 
 void PCLLocalization::initialPoseReceived(const geometry_msgs::msg::PoseWithCovarianceStamped::SharedPtr msg)
 {
   RCLCPP_INFO(get_logger(), "initialPoseReceived");
-  if (msg->header.frame_id != global_frame_id_) {
+  if (!msg || msg->header.frame_id != global_frame_id_) {
     RCLCPP_WARN(this->get_logger(), "initialpose_frame_id does not match global_frame_id");
     return;
   }
+  if (msg->header.stamp.sec < 0 || msg->header.stamp.nanosec >= 1000000000U) {
+    RCLCPP_WARN(get_logger(), "Rejecting invalid initialpose timestamp");
+    return;
+  }
+  const auto & position = msg->pose.pose.position;
+  const auto & orientation = msg->pose.pose.orientation;
+  Eigen::Quaterniond quaternion(
+    orientation.w, orientation.x, orientation.y, orientation.z);
+  if (!std::isfinite(position.x) || !std::isfinite(position.y) ||
+      !std::isfinite(position.z) || !quaternion.coeffs().allFinite() ||
+      !std::isfinite(quaternion.norm()) || quaternion.norm() < 1.0e-6) {
+    RCLCPP_WARN(get_logger(), "Rejecting invalid initialpose position or quaternion");
+    return;
+  }
   initialpose_recieved_ = true;
-  corrent_pose_with_cov_stamped_ptr_ = msg;
+  corrent_pose_with_cov_stamped_ptr_ =
+    std::make_shared<geometry_msgs::msg::PoseWithCovarianceStamped>(*msg);
+  corrent_pose_with_cov_stamped_ptr_->pose.pose.orientation =
+    tf2::toMsg(quaternion.normalized());
   // Reset the odom-delta baseline so the next odom callback rebuilds it
   // against the freshly-set initial pose instead of composing stale motion.
   last_odom_pose_valid_ = false;
+  last_odom_received_time_ = -1.0;
+  correction_evidence_.reset();
+  auto_prediction_map_odom_.setIdentity();
+  auto_last_scan_stamp_ = -1.0;
+  auto_odom_fault_ = false;
   // Force the next cloudReceived to actually run NDT (bypassing the align
   // interval) so we re-establish map→odom against the new initial pose,
   // and drop any previously captured planar lock — the user-supplied pose
   // can't be trusted as ground truth for z/roll/pitch (RViz's SetInitialPose
   // always writes z=0, which is off by the body→base_link offset).
   have_good_pose_ = false;
+  updateTfSnapshot(false);
   ndt_bootstrap_pending_ = true;
+  initial_pose_stamp_ns_ = rclcpp::Time(msg->header.stamp).nanoseconds();
   last_align_stamp_s_ = -1.0e9;
   planar_locked_ = false;
   RCLCPP_INFO(
     get_logger(),
     "Initialpose accepted as NDT guess only; waiting for NDT alignment before publishing map->odom");
 
-  if(last_scan_ptr_) {
-    cloudReceived(last_scan_ptr_);
-  }
+  // The cached scan may precede the manual pose reset by several seconds.
+  // Wait for the next incoming scan instead of reusing an old successful one.
+  last_scan_ptr_.reset();
 
   RCLCPP_INFO(get_logger(), "initialPoseReceived end");
 }
@@ -663,12 +809,21 @@ void PCLLocalization::mapReceived(const sensor_msgs::msg::PointCloud2::SharedPtr
   }
 
   map_recieved_ = true;
+  correction_evidence_.reset();
   RCLCPP_INFO(get_logger(), "mapReceived end");
 }
 
 void PCLLocalization::odomReceived(const nav_msgs::msg::Odometry::ConstSharedPtr msg)
 {
-  if (!use_odom_) {return;}
+  if (!use_odom_ || !msg) {return;}
+  // In auto mode scan-time TF supplies motion. Do not integrate later odom
+  // callbacks into a scan-stamped corrected pose a second time.
+  if (auto_correction_enabled_ && (have_good_pose_ || auto_odom_fault_)) {return;}
+  if (msg->header.stamp.sec < 0 || msg->header.stamp.nanosec >= 1000000000U ||
+      (initial_pose_stamp_ns_ > 0 &&
+       rclcpp::Time(msg->header.stamp).nanoseconds() < initial_pose_stamp_ns_)) {
+    return;
+  }
 
   double current_odom_received_time = msg->header.stamp.sec +
     msg->header.stamp.nanosec * 1e-9;
@@ -676,7 +831,7 @@ void PCLLocalization::odomReceived(const nav_msgs::msg::Odometry::ConstSharedPtr
   // corrent_pose_with_cov_stamped_ptr_ is null until /initialpose arrives;
   // propagating motion below would SIGSEGV. Keep state fresh so we don't
   // later warn about a spurious >1 s gap or miss the first real delta.
-  if (!initialpose_recieved_) {
+  if (!initialpose_recieved_ || !last_odom_pose_valid_) {
     last_odom_received_time_ = current_odom_received_time;
     last_odom_pose_ = msg->pose.pose;
     last_odom_pose_valid_ = true;
@@ -684,6 +839,10 @@ void PCLLocalization::odomReceived(const nav_msgs::msg::Odometry::ConstSharedPtr
   }
 
   double dt_odom = current_odom_received_time - last_odom_received_time_;
+  if (dt_odom < 0.0 /* [sec] */) {
+    RCLCPP_WARN(this->get_logger(), "odom time interval is negative");
+    return;
+  }
   last_odom_received_time_ = current_odom_received_time;
   if (dt_odom > 1.0 /* [sec] */) {
     RCLCPP_WARN(this->get_logger(), "odom time interval is too large");
@@ -691,21 +850,10 @@ void PCLLocalization::odomReceived(const nav_msgs::msg::Odometry::ConstSharedPtr
     last_odom_pose_valid_ = true;
     return;
   }
-  if (dt_odom < 0.0 /* [sec] */) {
-    RCLCPP_WARN(this->get_logger(), "odom time interval is negative");
-    return;
-  }
-
   // FAST_LIO leaves twist empty, so the previous twist-based integration
   // was a no-op. Integrate the odom-frame pose delta instead: take the
   // body-frame motion between consecutive /odom messages and compose it
   // onto the current map-frame estimate.
-  if (!last_odom_pose_valid_) {
-    last_odom_pose_ = msg->pose.pose;
-    last_odom_pose_valid_ = true;
-    return;
-  }
-
   Eigen::Affine3d odom_prev, odom_curr, map_to_base;
   tf2::fromMsg(last_odom_pose_, odom_prev);
   tf2::fromMsg(msg->pose.pose, odom_curr);
@@ -766,6 +914,7 @@ void PCLLocalization::imuReceived(const sensor_msgs::msg::Imu::ConstSharedPtr ms
 
 void PCLLocalization::cloudReceived(const sensor_msgs::msg::PointCloud2::ConstSharedPtr msg)
 {
+  if (!localization_active_) {return;}
   // Architecture note (2026-04-20 rewrite):
   //   FAST_LIO runs continuously as odom→body at 20 Hz and is accurate to
   //   sub-decimeter over short time windows. NDT's only real job here is
@@ -788,16 +937,17 @@ void PCLLocalization::cloudReceived(const sensor_msgs::msg::PointCloud2::ConstSh
     return;
   }
 
+  // A scan queued before the pose reset cannot represent the new guess.
+  // Zero-stamped initial poses retain the conventional "latest" behavior.
+  if (initial_pose_stamp_ns_ > 0 &&
+      rclcpp::Time(msg->header.stamp).nanoseconds() < initial_pose_stamp_ns_) {
+    return;
+  }
+  last_scan_ptr_ = msg;
   if (!map_recieved_ || !initialpose_recieved_) {return;}
 
   auto broadcast_last_good = [&]() {
-    if (!have_good_pose_) return;
-    Eigen::Affine3d last_good_affine(last_good_map_to_odom_.cast<double>());
-    geometry_msgs::msg::TransformStamped tf_msg = tf2::eigenToTransform(last_good_affine);
-    tf_msg.header.stamp = now();
-    tf_msg.header.frame_id = global_frame_id_;
-    tf_msg.child_frame_id = odom_frame_id_;
-    broadcaster_.sendTransform(tf_msg);
+    rebroadcastMapOdomTF();
   };
 
   auto rejected_tf_status = [&]() {
@@ -807,6 +957,10 @@ void PCLLocalization::cloudReceived(const sensor_msgs::msg::PointCloud2::ConstSh
   };
 
   double now_s = msg->header.stamp.sec + msg->header.stamp.nanosec * 1e-9;
+  if (auto_correction_enabled_ && (auto_odom_fault_ || now_s <= last_align_stamp_s_)) {
+    correction_evidence_.reset();
+    return;
+  }
   bool should_align = (ndt_align_interval_s_ <= 0.0) ||
                       ((now_s - last_align_stamp_s_) >= ndt_align_interval_s_);
 
@@ -816,6 +970,59 @@ void PCLLocalization::cloudReceived(const sensor_msgs::msg::PointCloud2::ConstSh
   }
 
   // --- NDT re-align branch ---
+  if (!auto_correction_enabled_) {last_align_stamp_s_ = now_s;}
+  const auto previous_evidence = correction_evidence_;
+  correction_evidence_.reset();  // Every failed attempt breaks consecutive evidence.
+
+  geometry_msgs::msg::TransformStamped odom_to_base_link_msg;
+  Eigen::Affine3d odom_at_scan = Eigen::Affine3d::Identity();
+  auto odom_fault = [&]() {
+    auto_odom_fault_ = true;
+    have_good_pose_ = false;
+    updateTfSnapshot(false);
+    correction_evidence_.reset();
+    RCLCPP_ERROR(get_logger(), "NDT auto correction: odom discontinuity; stopping map->odom "
+      "publication. Restore healthy odometry then provide a new initialpose.");
+  };
+  if (auto_correction_enabled_) {
+    try {
+      odom_to_base_link_msg = tfbuffer_.lookupTransform(
+        odom_frame_id_, base_frame_id_, msg->header.stamp,
+        rclcpp::Duration::from_seconds(scan_odom_tf_timeout_));
+      odom_at_scan = tf2::transformToEigen(odom_to_base_link_msg.transform);
+    } catch (tf2::TransformException & ex) {
+      RCLCPP_WARN(get_logger(), "NDT auto correction: scan-time odom unavailable: %s", ex.what());
+      broadcast_last_good();
+      return;
+    }
+    if (!odom_at_scan.matrix().allFinite()) {
+      odom_fault();
+      return;
+    }
+    if (auto_last_scan_stamp_ >= 0.0) {
+      const double dt = now_s - auto_last_scan_stamp_;
+      if (dt > auto_correction_policy_.max_gap) {
+        // Do not treat a long observation gap as evidence of a velocity jump.
+        // Re-establish an odom baseline, but do not accept this candidate.
+        auto_last_scan_odom_ = odom_at_scan;
+        auto_last_scan_stamp_ = now_s;
+        RCLCPP_WARN(get_logger(), "NDT auto correction: odom observation gap %.2fs; "
+          "waiting for consecutive scans", dt);
+        broadcast_last_good();
+        return;
+      }
+      if (!lidar_localization::plausibleOdom(
+        auto_last_scan_odom_, odom_at_scan, dt, auto_correction_policy_))
+      {
+        odom_fault();
+        return;
+      }
+    }
+    auto_last_scan_odom_ = odom_at_scan;
+    auto_last_scan_stamp_ = now_s;
+  }
+  // A temporarily missing odom sample must not consume the two-second NDT
+  // interval; retry the next scan as soon as exact-time TF becomes available.
   last_align_stamp_s_ = now_s;
 
   pcl::PointCloud<pcl::PointXYZI>::Ptr cloud_ptr(new pcl::PointCloud<pcl::PointXYZI>);
@@ -851,17 +1058,47 @@ void PCLLocalization::cloudReceived(const sensor_msgs::msg::PointCloud2::ConstSh
   voxel_grid_filter_.filter(*filtered_cloud_ptr);
 
   pcl::PointCloud<pcl::PointXYZI> tmp;
+  pcl::PointCloud<pcl::PointXYZI> height_bonus;
+  pcl::PointCloud<pcl::PointXYZI> scoring_cloud;
+  std::vector<int> baseline_weights;
+  std::vector<int> weighted_weights;
+  size_t high_points = 0;
   const int far_boost_extra_copies = std::max(far_point_boost_factor_, 1) - 1;
   for (const auto & p : filtered_cloud_ptr->points) {
     double r = std::sqrt(p.x * p.x + p.y * p.y);
     if (scan_min_range_ < r && r < scan_max_range_) {
+      const int baseline_copies =
+        r >= far_point_boost_min_range_ ? 1 + far_boost_extra_copies : 1;
+      int weighted_copies = baseline_copies;
       tmp.push_back(p);
       if (far_boost_extra_copies > 0 && r >= far_point_boost_min_range_) {
         for (int i = 0; i < far_boost_extra_copies; ++i) {
           tmp.push_back(p);
         }
       }
+      // Classification is in the base frame, before alignment. Append copies
+      // AFTER voxel filtering so they survive and weight NDT's derivatives.
+      if (height_boost_enabled_ && p.z >= height_boost_min_z_) {
+        ++high_points;
+        if (baseline_copies < 3) {
+          height_bonus.push_back(p);
+          ++weighted_copies;
+        }
+      }
+      scoring_cloud.push_back(p);
+      baseline_weights.push_back(baseline_copies);
+      weighted_weights.push_back(weighted_copies);
     }
+  }
+  const size_t baseline_points = tmp.size();
+  if (!height_bonus.empty()) {
+    tmp += height_bonus;
+  }
+  if (tmp.empty()) {
+    RCLCPP_WARN(get_logger(), "No source points remain after NDT range filtering, %s",
+      rejected_tf_status());
+    broadcast_last_good();
+    return;
   }
   pcl::PointCloud<pcl::PointXYZI>::Ptr tmp_ptr(new pcl::PointCloud<pcl::PointXYZI>(tmp));
   registration_->setInputSource(tmp_ptr);
@@ -870,10 +1107,20 @@ void PCLLocalization::cloudReceived(const sensor_msgs::msg::PointCloud2::ConstSh
     "NDT source cloud: raw=%zu filtered=%zu kept=%zu frame=%s",
     cloud_ptr->size(), filtered_cloud_ptr->size(), tmp_ptr->size(),
     base_frame_id_.c_str());
+  if (height_boost_enabled_) {
+    RCLCPP_INFO(
+      get_logger(), "NDT height weighting: frame=%s min_z=%.3f baseline=%zu "
+      "high_unique=%zu added=%zu weighted=%zu",
+      base_frame_id_.c_str(), height_boost_min_z_, baseline_points,
+      high_points, height_bonus.size(), tmp_ptr->size());
+  }
 
   Eigen::Affine3d init_affine;
   tf2::fromMsg(corrent_pose_with_cov_stamped_ptr_->pose.pose, init_affine);
   Eigen::Matrix4f init_guess = init_affine.matrix().cast<float>();
+  if (auto_correction_enabled_ && have_good_pose_ && !ndt_bootstrap_pending_) {
+    init_guess = (auto_prediction_map_odom_ * odom_at_scan).matrix().cast<float>();
+  }
 
   // Clip init_guess onto the locked plane only if we've already captured
   // the lock values from a prior successful NDT match. On the very first
@@ -892,10 +1139,12 @@ void PCLLocalization::cloudReceived(const sensor_msgs::msg::PointCloud2::ConstSh
   }
 
   pcl::PointCloud<pcl::PointXYZI>::Ptr output_cloud(new pcl::PointCloud<pcl::PointXYZI>);
+  const auto align_start = std::chrono::steady_clock::now();
   registration_->align(*output_cloud, init_guess);
+  const double align_ms = std::chrono::duration<double, std::milli>(
+    std::chrono::steady_clock::now() - align_start).count();
 
   const bool has_converged = registration_->hasConverged();
-  const double fitness_score = registration_->getFitnessScore();
   Eigen::Matrix4f final_transformation = registration_->getFinalTransformation();
 
   if (!has_converged) {
@@ -903,7 +1152,26 @@ void PCLLocalization::cloudReceived(const sensor_msgs::msg::PointCloud2::ConstSh
     broadcast_last_good();
     return;
   }
-  if (fitness_score > score_threshold_) {
+  if (!final_transformation.allFinite()) {
+    RCLCPP_WARN(get_logger(), "NDT returned a non-finite transform, %s", rejected_tf_status());
+    broadcast_last_good();
+    return;
+  }
+  const auto fitness_start = std::chrono::steady_clock::now();
+  const auto scores = lidar_localization::evaluateWeightedFitness(
+    scoring_cloud, baseline_weights, weighted_weights, final_transformation,
+    *registration_->getSearchMethodTarget());
+  const double weighted_fitness = scores.weighted;
+  double fitness_score = scores.baseline;
+  if (height_boost_enabled_) {
+    const double fitness_ms = std::chrono::duration<double, std::milli>(
+      std::chrono::steady_clock::now() - fitness_start).count();
+    RCLCPP_INFO(
+      get_logger(), "NDT height fitness: baseline=%.6f weighted=%.6f "
+      "align_ms=%.1f fitness_ms=%.1f nn_queries=%zu (gate=baseline)",
+      fitness_score, weighted_fitness, align_ms, fitness_ms, scores.searches);
+  }
+  if (!std::isfinite(fitness_score) || fitness_score > score_threshold_) {
     RCLCPP_WARN(
       get_logger(),
       "Fitness %.3f > %.3f, %s; init=[%.2f, %.2f, %.2f, yaw=%.3f] "
@@ -916,6 +1184,56 @@ void PCLLocalization::cloudReceived(const sensor_msgs::msg::PointCloud2::ConstSh
     return;
   }
 
+  // A manual re-init may move arbitrarily far from the previous solution,
+  // but the NDT result must stay near the NEW user guess. Bootstrap limits
+  // are separate from the stricter steady-state tracking limits.
+  if (ndt_bootstrap_pending_) {
+    const Eigen::Matrix4f delta = init_guess.inverse() * final_transformation;
+    const double dtrans = delta.block<3, 1>(0, 3).norm();
+    const double rotation = Eigen::AngleAxisf(delta.block<3, 3>(0, 0)).angle();
+    const double translation_limit =
+      max_bootstrap_pose_jump_translation_ > 0.0
+      ? max_bootstrap_pose_jump_translation_ : max_pose_jump_translation_;
+    const double rotation_limit =
+      max_bootstrap_pose_jump_rotation_ > 0.0
+      ? max_bootstrap_pose_jump_rotation_ : max_pose_jump_rotation_;
+    if ((translation_limit > 0.0 && dtrans > translation_limit) ||
+        (rotation_limit > 0.0 && rotation > rotation_limit)) {
+      RCLCPP_WARN(
+        get_logger(),
+        "NDT jump rejected: bootstrap=%d translation=%.3f/%.3f rotation=%.3f/%.3f; %s",
+        ndt_bootstrap_pending_, dtrans, translation_limit, rotation, rotation_limit,
+        rejected_tf_status());
+      broadcast_last_good();
+      return;
+    }
+  }
+
+  // Compute map→odom = map→base_link * (odom→base_link)^-1. Do this before
+  // mutating corrent_pose_with_cov_stamped_ptr_; a candidate that cannot
+  // produce a sane map→odom must not poison the next init_guess.
+  try {
+    if (!auto_correction_enabled_) {
+      odom_to_base_link_msg = tfbuffer_.lookupTransform(
+        odom_frame_id_, base_frame_id_, msg->header.stamp,
+        rclcpp::Duration::from_seconds(0.1));
+    }
+  } catch (tf2::TransformException & ex) {
+    RCLCPP_WARN(
+      this->get_logger(), "odom→base_link lookup failed: %s", ex.what());
+    broadcast_last_good();
+    return;
+  }
+  if (auto_correction_enabled_ && have_good_pose_ && !ndt_bootstrap_pending_ &&
+    !lidar_localization::withinCorrection(
+      Eigen::Affine3d(init_guess.cast<double>()),
+      Eigen::Affine3d(final_transformation.cast<double>()),
+      auto_correction_policy_.max_translation, auto_correction_policy_.max_rotation))
+  {
+    RCLCPP_WARN(get_logger(), "NDT auto correction: raw candidate exceeds absolute 3D bounds");
+    broadcast_last_good();
+    return;
+  }
   // First good match — freeze z/roll/pitch from NDT's own estimate. Avoids
   // the "user initialpose z=0 vs true z≈0.12" bias that otherwise poisons
   // the lock.
@@ -942,45 +1260,37 @@ void PCLLocalization::cloudReceived(const sensor_msgs::msg::PointCloud2::ConstSh
       Eigen::AngleAxisf(static_cast<float>(yaw), Eigen::Vector3f::UnitZ())
     ).toRotationMatrix();
     final_transformation(2, 3) = static_cast<float>(locked_z_);
+    if (auto_correction_enabled_) {
+      fitness_score = lidar_localization::evaluateWeightedFitness(
+        scoring_cloud, baseline_weights, weighted_weights, final_transformation,
+        *registration_->getSearchMethodTarget()).baseline;
+      if (!std::isfinite(fitness_score) || fitness_score > score_threshold_) {
+        RCLCPP_WARN(get_logger(), "NDT auto correction: projected pose fails baseline fitness");
+        broadcast_last_good();
+        return;
+      }
+    }
   }
 
-  // Jump gate (only meaningful once we have a previous good reference).
-  if (have_good_pose_ && !ndt_bootstrap_pending_) {
-    Eigen::Matrix4f delta = init_guess.inverse() * final_transformation;
-    double dx = delta(0, 3), dy = delta(1, 3), dz = delta(2, 3);
-    double dtrans = std::sqrt(dx * dx + dy * dy + dz * dz);
-    Eigen::Matrix3f dR = delta.block<3, 3>(0, 0);
-    double dyaw = std::atan2(dR(1, 0), dR(0, 0));
-    if (dtrans > max_pose_jump_translation_ ||
-        std::abs(dyaw) > max_pose_jump_rotation_) {
-      RCLCPP_WARN(
-        get_logger(),
-        "NDT jump (trans=%.3f m, yaw=%.3f rad), keeping last good TF",
-        dtrans, dyaw);
+  // Preserve tracking semantics: an established planar lock is applied before
+  // checking the steady-state jump, unlike the raw 6DOF bootstrap gate above.
+  if (!auto_correction_enabled_ && have_good_pose_ && !ndt_bootstrap_pending_) {
+    const Eigen::Matrix4f delta = init_guess.inverse() * final_transformation;
+    const double dtrans = delta.block<3, 1>(0, 3).norm();
+    const double dyaw = std::abs(yaw_from_matrix(delta));
+    if (dtrans > max_pose_jump_translation_ || dyaw > max_pose_jump_rotation_) {
+      RCLCPP_WARN(get_logger(),
+        "NDT jump (trans=%.3f m, yaw=%.3f rad), keeping last good TF", dtrans, dyaw);
       broadcast_last_good();
       return;
     }
   }
 
-  // Compute map→odom = map→base_link * (odom→base_link)^-1. Do this before
-  // mutating corrent_pose_with_cov_stamped_ptr_; a candidate that cannot
-  // produce a sane map→odom must not poison the next init_guess.
-  geometry_msgs::msg::TransformStamped odom_to_base_link_msg;
-  try {
-    odom_to_base_link_msg = tfbuffer_.lookupTransform(
-      odom_frame_id_, base_frame_id_, msg->header.stamp,
-      rclcpp::Duration::from_seconds(0.1));
-  } catch (tf2::TransformException & ex) {
-    RCLCPP_WARN(
-      this->get_logger(), "odom→base_link lookup failed: %s", ex.what());
-    broadcast_last_good();
-    return;
-  }
   Eigen::Affine3d odom_to_base_affine = tf2::transformToEigen(odom_to_base_link_msg.transform);
   Eigen::Affine3d map_to_base_affine(final_transformation.cast<double>());
   Eigen::Affine3d map_to_odom_new = map_to_base_affine * odom_to_base_affine.inverse();
 
-  if (have_good_pose_ && !ndt_bootstrap_pending_ &&
+  if (!auto_correction_enabled_ && have_good_pose_ && !ndt_bootstrap_pending_ &&
       (max_map_odom_update_translation_ > 0.0 ||
        max_map_odom_update_rotation_ > 0.0)) {
     Eigen::Affine3d map_to_odom_old(last_good_map_to_odom_.cast<double>());
@@ -1010,7 +1320,99 @@ void PCLLocalization::cloudReceived(const sensor_msgs::msg::PointCloud2::ConstSh
   // downstream sees small, continuous corrections instead of occasional
   // instantaneous jumps from a slightly misaligned NDT lock.
   Eigen::Affine3d map_to_odom_final;
-  if (!have_good_pose_ || map_odom_smoothing_ >= 1.0) {
+  if (auto_correction_enabled_ && have_good_pose_ && !ndt_bootstrap_pending_) {
+    const Eigen::Affine3d prediction(init_guess.cast<double>());
+    const Eigen::Affine3d published(last_good_map_to_odom_.cast<double>());
+    if (!lidar_localization::withinCorrection(prediction, map_to_base_affine,
+      auto_correction_policy_.max_translation, auto_correction_policy_.max_rotation) ||
+      !lidar_localization::withinCorrection(published * odom_at_scan, map_to_base_affine,
+      auto_correction_policy_.max_translation, auto_correction_policy_.max_rotation))
+    {
+      RCLCPP_WARN(get_logger(), "NDT auto correction: correction outside recovery range");
+      broadcast_last_good();
+      return;
+    }
+    const bool large_correction = !lidar_localization::withinCorrection(
+      prediction, map_to_base_affine, max_pose_jump_translation_, max_pose_jump_rotation_);
+    if (large_correction) {
+      const double initial_fitness = lidar_localization::evaluateWeightedFitness(
+        scoring_cloud, baseline_weights, weighted_weights, init_guess,
+        *registration_->getSearchMethodTarget()).baseline;
+      const double improvement = initial_fitness - fitness_score;
+      if (!std::isfinite(initial_fitness) || improvement <= 1.0e-9 ||
+        improvement < auto_correction_policy_.min_improvement * initial_fitness)
+      {
+        RCLCPP_WARN(get_logger(), "NDT auto correction: insufficient improvement "
+          "initial=%.6f candidate=%.6f", initial_fitness, fitness_score);
+        broadcast_last_good();
+        return;
+      }
+      correction_evidence_ = previous_evidence;
+      const bool confirmed = correction_evidence_.confirm(
+        map_to_odom_new, odom_at_scan, now_s, auto_correction_policy_);
+      RCLCPP_INFO(get_logger(), "NDT auto correction: evidence=%d/%d "
+        "initial=%.6f candidate=%.6f translation=%.3f rotation=%.3f",
+        correction_evidence_.count, auto_correction_policy_.confirmations,
+        initial_fitness, fitness_score,
+        (map_to_base_affine.translation() - prediction.translation()).norm(),
+        lidar_localization::rotationDistance(prediction, map_to_base_affine));
+      if (!confirmed) {
+        broadcast_last_good();
+        return;
+      }
+    }
+    // NDT may take seconds. Limit the controller-visible jump at the latest
+    // robot position, not at the old scan pose or the distant odom origin.
+    Eigen::Affine3d odom_at_application;
+    try {
+      const auto latest = tfbuffer_.lookupTransform(
+        odom_frame_id_, base_frame_id_, tf2::TimePointZero);
+      odom_at_application = tf2::transformToEigen(latest.transform);
+      double latest_stamp = latest.header.stamp.sec + latest.header.stamp.nanosec * 1e-9;
+      if (latest_stamp == 0.0) {latest_stamp = now_s;}  // Static TF, used by offline tests.
+      const double application_delay = latest_stamp - now_s;
+      if (application_delay < 0.0 || application_delay > auto_correction_policy_.max_gap) {
+        correction_evidence_.reset();
+        RCLCPP_WARN(get_logger(), "NDT auto correction: application odom time gap %.2fs; "
+          "discarding stale candidate", application_delay);
+        broadcast_last_good();
+        return;
+      }
+      if (!lidar_localization::plausibleOdom(odom_at_scan, odom_at_application,
+        application_delay, auto_correction_policy_))
+      {
+        odom_fault();
+        return;
+      }
+    } catch (tf2::TransformException & ex) {
+      correction_evidence_.reset();
+      RCLCPP_WARN(get_logger(), "NDT auto correction: latest odom unavailable: %s", ex.what());
+      broadcast_last_good();
+      return;
+    }
+    if (!lidar_localization::withinCorrection(
+      published * odom_at_application, map_to_odom_new * odom_at_application,
+      auto_correction_policy_.max_translation, auto_correction_policy_.max_rotation))
+    {
+      correction_evidence_.reset();
+      RCLCPP_WARN(get_logger(), "NDT auto correction: current-pose correction outside recovery range");
+      broadcast_last_good();
+      return;
+    }
+    map_to_odom_final = lidar_localization::boundedCorrection(
+      published, map_to_odom_new, odom_at_application, map_odom_smoothing_,
+      auto_correction_policy_);
+    const Eigen::Affine3d before = published * odom_at_application;
+    const Eigen::Affine3d applied = map_to_odom_final * odom_at_application;
+    const Eigen::Affine3d target = map_to_odom_new * odom_at_application;
+    RCLCPP_INFO(get_logger(), "NDT auto correction: applied translation=%.3f rotation=%.3f "
+      "remaining_translation=%.3f remaining_rotation=%.3f",
+      (applied.translation() - before.translation()).norm(),
+      lidar_localization::rotationDistance(before, applied),
+      (target.translation() - applied.translation()).norm(),
+      lidar_localization::rotationDistance(applied, target));
+    correction_evidence_.reset();
+  } else if (!have_good_pose_ || map_odom_smoothing_ >= 1.0) {
     map_to_odom_final = map_to_odom_new;
   } else {
     Eigen::Affine3d map_to_odom_old(last_good_map_to_odom_.cast<double>());
@@ -1026,8 +1428,15 @@ void PCLLocalization::cloudReceived(const sensor_msgs::msg::PointCloud2::ConstSh
     map_to_odom_final.linear() = q_blend.toRotationMatrix();
   }
 
+  if (auto_correction_enabled_) {
+    auto_prediction_map_odom_ = map_to_odom_new;
+    // Pose/path describe the applied correction, while aligned_scan remains
+    // the raw optimizer result for diagnosis. The next guess uses the raw model.
+    final_transformation = (map_to_odom_final * odom_at_scan).matrix().cast<float>();
+  }
   last_good_map_to_odom_ = map_to_odom_final.matrix().cast<float>();
   have_good_pose_ = true;
+  updateTfSnapshot(true);
   ndt_bootstrap_pending_ = false;
   last_align_stamp_s_ = now_s;
 
@@ -1074,8 +1483,6 @@ void PCLLocalization::cloudReceived(const sensor_msgs::msg::PointCloud2::ConstSh
     path_pub_->publish(*path_ptr_);
   }
 
-  last_scan_ptr_ = msg;
-
   if (enable_debug_) {
     std::cout << "NDT filtered_points=" << filtered_cloud_ptr->size()
               << " fitness=" << fitness_score
@@ -1086,7 +1493,7 @@ void PCLLocalization::cloudReceived(const sensor_msgs::msg::PointCloud2::ConstSh
 
 void PCLLocalization::timerPublishPose()
 {
-  if (!corrent_pose_with_cov_stamped_ptr_ || !have_good_pose_) {return;}
+  if (!localization_active_ || !corrent_pose_with_cov_stamped_ptr_ || !have_good_pose_) {return;}
   geometry_msgs::msg::PoseWithCovarianceStamped pose_copy = *corrent_pose_with_cov_stamped_ptr_;
   pose_copy.header.stamp = now();
 

@@ -1,6 +1,7 @@
 #include <chrono>
 #include <iostream>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <thread>
 #include <utility>
@@ -36,6 +37,7 @@
 #include <pclomp/gicp_omp_impl.hpp>
 
 #include "lidar_localization/lidar_undistortion.hpp"
+#include "lidar_localization/ndt_auto_correction.hpp"
 
 using namespace std::chrono_literals;
 
@@ -57,7 +59,7 @@ public:
   void initializePubSub();
   void initializeRegistration();
   bool configureRegistrationTarget(
-    const pcl::PointCloud<pcl::PointXYZI>::Ptr & map_cloud_ptr);
+    pcl::PointCloud<pcl::PointXYZI>::Ptr & map_cloud_ptr);
   bool configureNdtResolutionForMap(
     const pcl::PointCloud<pcl::PointXYZI> & map_cloud);
   bool setEffectiveNdtResolution(double resolution);
@@ -100,6 +102,7 @@ public:
 
   bool map_recieved_{false};
   bool initialpose_recieved_{false};
+  bool localization_active_{false};
 
   // parameters
   std::string global_frame_id_;
@@ -110,12 +113,22 @@ public:
   double scan_min_range_;
   double far_point_boost_min_range_{0.0};
   int far_point_boost_factor_{1};
+  bool height_boost_enabled_{false};
+  double height_boost_min_z_{2.0};
+  bool auto_correction_enabled_{false};
+  lidar_localization::AutoCorrectionPolicy auto_correction_policy_;
+  lidar_localization::CorrectionEvidence correction_evidence_;
+  Eigen::Affine3d auto_prediction_map_odom_{Eigen::Affine3d::Identity()};
+  Eigen::Affine3d auto_last_scan_odom_{Eigen::Affine3d::Identity()};
+  double auto_last_scan_stamp_{-1.0};
+  bool auto_odom_fault_{false};
   double scan_period_;
   double score_threshold_;
   double ndt_resolution_;
   double ndt_step_size_;
   double transform_epsilon_;
   double voxel_leaf_size_;
+  double map_voxel_leaf_size_{0.0};
   bool use_pcd_map_{false};
   std::string map_path_;
   bool set_initial_pose_{false};
@@ -151,6 +164,10 @@ public:
   // similar columns) is the main failure mode in narrow corridors.
   double max_pose_jump_translation_{1.0};  // m
   double max_pose_jump_rotation_{0.5};     // rad
+  // First match after each /initialpose is bounded against the new guess.
+  // Nonpositive values fall back to the steady-state jump limits.
+  double max_bootstrap_pose_jump_translation_{-1.0};
+  double max_bootstrap_pose_jump_rotation_{-1.0};
 
   // Architecture: FAST_LIO provides continuous tight-coupled odom at 20 Hz,
   // so NDT's real job is a one-shot /map→/odom offset plus slow drift
@@ -160,11 +177,13 @@ public:
   // broadcasting the last good map→odom with the current stamp so TF
   // never ages out.
   double ndt_align_interval_s_{5.0};
+  double scan_odom_tf_timeout_{0.5};
   // NDT-validated map->odom only. /initialpose is an initial guess, not proof
   // of localization, so it must not set have_good_pose_.
   Eigen::Matrix4f last_good_map_to_odom_{Eigen::Matrix4f::Identity()};
   bool have_good_pose_{false};
   bool ndt_bootstrap_pending_{false};
+  int64_t initial_pose_stamp_ns_{0};
   double last_align_stamp_s_{0.0};
 
   // Exponential smoothing weight for new NDT map→odom results.
@@ -185,6 +204,11 @@ public:
   // and Nav2 see map→base_link updated at ~50 Hz (limited only by FAST_LIO
   // odom→body), eliminating the visible RViz-lags-real-robot delay.
   rclcpp::TimerBase::SharedPtr tf_rebroadcast_timer_;
+  rclcpp::CallbackGroup::SharedPtr tf_publish_group_;
+  std::mutex tf_snapshot_mutex_;
+  geometry_msgs::msg::TransformStamped tf_snapshot_;
+  bool tf_snapshot_valid_{false};
+  void updateTfSnapshot(bool valid);
   double tf_rebroadcast_rate_hz_{50.0};
   void rebroadcastMapOdomTF();
   bool use_imu_{false};
