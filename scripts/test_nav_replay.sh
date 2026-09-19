@@ -1,0 +1,419 @@
+#!/usr/bin/env bash
+# Replay a recorded LiDAR/IMU rosbag through FAST-LIO + NDT localization + Nav2.
+# Usage:
+#   ./scripts/test_nav_replay.sh [--mode static|continuous] <map.pcd> <bag_dir> [start_offset_sec]
+#
+# static mode: short recorded window for manual initial pose -> NDT matching.
+# continuous mode: FAST-LIO + NDT + Nav2 replay test (default).
+# Migrated from traymover_ros2_paramchanged; tuning remains comment-only in
+# src/traymover_robot_nav/config/ndt_replay_candidates.yaml.
+
+set -Eeuo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+WORKSPACE_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+ROS_SETUP="/opt/ros/humble/setup.bash"
+WS_SETUP="${WORKSPACE_DIR}/install/setup.bash"
+PCD2PGM="${WORKSPACE_DIR}/src/traymover_robot_nav/scripts/pcd2pgm.py"
+MONITOR_RVIZ="${WORKSPACE_DIR}/src/traymover_robot_nav/rviz/traymover_sensor_monitor.rviz"
+NDT_DIAGNOSTICS="${WORKSPACE_DIR}/scripts/ndt_diagnostics.py"
+FASTLIO_DIAGNOSTICS="${WORKSPACE_DIR}/scripts/fastlio_diagnostics.py"
+RUNTIME_DIR="${TRAYMOVER_RUNTIME_DIR:-/tmp/traymover_nav_runtime}"
+RUN_ROOT="${TRAYMOVER_REPLAY_LOG_ROOT:-${HOME}/.ros/traymover_nav_replay}"
+
+usage() {
+    echo "Usage: $0 [--mode static|continuous] <map.pcd> <bag_dir> [start_offset_sec]"
+    echo "After startup, type: play | once | pause | resume | stop | restart | status | quit"
+    echo "Logs: \$TRAYMOVER_REPLAY_LOG_ROOT/<run-id> (default: ~/.ros/traymover_nav_replay)"
+    echo "Control stays here; set TRAYMOVER_REPLAY_EXTERNAL_CONTROL=1 for a separate terminal."
+    echo "static is localization-only; continuous also starts Nav2 (no hardware drivers)."
+}
+
+if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+    usage
+    exit 0
+fi
+
+MODE="continuous"
+if [[ "${1:-}" == "--mode" ]]; then
+    [[ ${#} -ge 3 ]] || { usage >&2; exit 2; }
+    MODE="$2"
+    shift 2
+fi
+
+if [[ "${MODE}" != "static" && "${MODE}" != "continuous" ]]; then
+    echo "Invalid mode: ${MODE} (choose static or continuous)" >&2
+    exit 2
+fi
+if [[ ${#} -lt 2 || ${#} -gt 3 ]]; then
+    usage >&2
+    exit 2
+fi
+
+MAP_PATH="$1"
+BAG_PATH="$2"
+START_OFFSET="${3:-0}"
+
+if ! [[ "${START_OFFSET}" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+    echo "Start offset must be a non-negative number: ${START_OFFSET}" >&2
+    exit 2
+fi
+
+[[ "${MAP_PATH}" = /* ]] || MAP_PATH="${WORKSPACE_DIR}/${MAP_PATH}"
+[[ -d "${BAG_PATH}" ]] || { echo "Bag directory not found: ${BAG_PATH}" >&2; exit 1; }
+[[ -f "${MAP_PATH}" ]] || { echo "PCD map not found: ${MAP_PATH}" >&2; exit 1; }
+[[ -f "${ROS_SETUP}" ]] || { echo "ROS Humble setup not found: ${ROS_SETUP}" >&2; exit 1; }
+[[ -f "${WS_SETUP}" ]] || { echo "Workspace is not built: ${WS_SETUP}" >&2; exit 1; }
+[[ -f "${PCD2PGM}" ]] || { echo "PCD conversion script not found: ${PCD2PGM}" >&2; exit 1; }
+[[ -f "${MONITOR_RVIZ}" ]] || { echo "Sensor monitor RViz config not found: ${MONITOR_RVIZ}" >&2; exit 1; }
+[[ -f "${NDT_DIAGNOSTICS}" ]] || { echo "NDT diagnostics script not found: ${NDT_DIAGNOSTICS}" >&2; exit 1; }
+[[ -f "${FASTLIO_DIAGNOSTICS}" ]] || { echo "FAST-LIO diagnostics script not found: ${FASTLIO_DIAGNOSTICS}" >&2; exit 1; }
+command -v setsid >/dev/null || { echo "setsid is required" >&2; exit 1; }
+
+RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)_$$"
+RUN_DIR="${RUN_ROOT}/${RUN_ID}_${MODE}"
+NDT_LOG_DIR="${RUN_DIR}/ndt"
+FASTLIO_LOG_DIR="${RUN_DIR}/fastlio"
+mkdir -p "${NDT_LOG_DIR}" "${FASTLIO_LOG_DIR}" "${RUN_DIR}/processes" "${RUN_DIR}/ros"
+printf 'mode=%s\nmap=%s\nbag=%s\nstart_offset=%s\nstarted_utc=%s\n' \
+    "${MODE}" "${MAP_PATH}" "${BAG_PATH}" "${START_OFFSET}" "${RUN_ID}" \
+    > "${RUN_DIR}/run_info.txt"
+git -C "${WORKSPACE_DIR}" rev-parse HEAD > "${RUN_DIR}/software_commit.txt" 2>/dev/null || true
+git -C "${WORKSPACE_DIR}" status --short > "${RUN_DIR}/software_status.txt" 2>/dev/null || true
+echo "[traymover] Run logs: ${RUN_DIR}"
+
+# ROS setup scripts reference optional variables that may be unset.  Source
+# them with nounset temporarily disabled, then restore strict shell checking.
+set +u
+source "${ROS_SETUP}"
+source "${WS_SETUP}"
+set -u
+export ROS_LOG_DIR="${RUN_DIR}/ros"
+
+for pkg in fast_lio lidar_localization_ros2 ndt_omp_ros2 traymover_robot_nav; do
+    if ! ros2 pkg prefix "${pkg}" >/dev/null 2>&1; then
+        echo "ROS package not available: ${pkg}" >&2
+        exit 1
+    fi
+done
+
+if ! ros2 bag info "${BAG_PATH}" > "${RUN_DIR}/bag_info.txt" 2>&1; then
+    echo "Unable to read rosbag: ${BAG_PATH}" >&2
+    exit 1
+fi
+
+launch_pids=()
+control_pid=""
+control_fifo=""
+start_process() {
+    local name="$1"
+    shift
+    local log_file="${RUN_DIR}/processes/${name}.log"
+    echo "[traymover] Starting ${name}; log=${log_file}"
+    setsid "$@" > "${log_file}" 2>&1 &
+    launch_pids+=("$!")
+}
+# Every managed process has its own group, including ros2 launch children.
+stop_process() {
+    local pid="${1:-}" attempt
+    [[ -n "${pid}" ]] || return 0
+    kill -CONT -- "-${pid}" 2>/dev/null || true
+    kill -INT -- "-${pid}" 2>/dev/null || true
+    for attempt in {1..30}; do
+        kill -0 -- "-${pid}" 2>/dev/null || break
+        sleep 0.1
+    done
+    if kill -0 -- "-${pid}" 2>/dev/null; then
+        kill -TERM -- "-${pid}" 2>/dev/null || true
+        for attempt in {1..20}; do
+            kill -0 -- "-${pid}" 2>/dev/null || break
+            sleep 0.1
+        done
+        kill -KILL -- "-${pid}" 2>/dev/null || true
+    fi
+    wait "${pid}" 2>/dev/null || true
+}
+cleanup() {
+    local pid
+    trap '' INT TERM
+    if [[ -n "${control_pid:-}" ]]; then
+        kill "${control_pid}" 2>/dev/null || true
+    fi
+    [[ -z "${control_fifo:-}" ]] || rm -f -- "${control_fifo}"
+    stop_process "${bag_pid:-}"
+    for pid in "${launch_pids[@]}"; do
+        stop_process "${pid}"
+    done
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+if [[ "${MODE}" == "continuous" ]]; then
+    mkdir -p "${RUNTIME_DIR}"
+    map_name="$(basename "${MAP_PATH}" .pcd)"
+    map_prefix="${RUNTIME_DIR}/${map_name}_replay_2d"
+    map_yaml="${map_prefix}.yaml"
+
+    # Keep current option-10 projection values; source candidate z-min=0.10
+    # is archived in config/ndt_replay_candidates.yaml, pending log review.
+    echo "[traymover] Generating 2D Nav2 map from: ${MAP_PATH}"
+    python3 "${PCD2PGM}" \
+        --pcd "${MAP_PATH}" \
+        --out "${map_prefix}" \
+        --z-reference floor \
+        --z-min 0.17 \
+        --z-max 2.20 \
+        --min-points 1 \
+        --dilate 2 \
+        --min-region-cells 2
+    [[ -f "${map_yaml}" ]] || { echo "2D map generation failed: ${map_yaml}" >&2; exit 1; }
+
+    echo "[traymover] Starting Nav2 + FAST-LIO + NDT (hardware bringup disabled)."
+    start_process nav2 ros2 launch traymover_robot_nav traymover_nav.launch.py \
+        use_sim_time:=true \
+        bringup_hardware:=false \
+        launch_rviz:=true \
+        "pcd_path:=${MAP_PATH}" \
+        "map:=${map_yaml}"
+    echo "[traymover] Starting sensor-monitor RViz (camera + raw LiDAR)."
+    start_process sensor_monitor_rviz rviz2 -d "${MONITOR_RVIZ}" --ros-args -p use_sim_time:=true
+else
+    echo "[traymover] Starting point-cloud preprocessing (no Nav2)."
+    start_process pointcloud_preprocessor ros2 launch traymover_robot_nav navigation_pointcloud.launch.py \
+        use_sim_time:=true \
+        input_cloud_topic:=/point_cloud_raw \
+        localization_cloud_topic:=/point_cloud_localization \
+        nav_cloud_topic:=/point_cloud_nav \
+        publish_scan:=false
+
+    echo "[traymover] Starting FAST-LIO + NDT localization only."
+    start_process localization ros2 launch traymover_robot_nav lidar_localization.launch.py \
+        use_sim_time:=true \
+        "pcd_path:=${MAP_PATH}" \
+        cloud_topic:=/point_cloud_localization
+
+    echo "[traymover] Starting RViz (set 2D Pose Estimate manually)."
+    start_process localization_rviz rviz2 -d "${WORKSPACE_DIR}/src/traymover_robot_nav/rviz/traymover_nav.rviz" --ros-args -p use_sim_time:=true
+    echo "[traymover] Starting sensor-monitor RViz (camera + raw LiDAR)."
+    start_process sensor_monitor_rviz rviz2 -d "${MONITOR_RVIZ}" --ros-args -p use_sim_time:=true
+fi
+
+start_process ndt_diagnostics python3 "${NDT_DIAGNOSTICS}" \
+    --output-dir "${NDT_LOG_DIR}" \
+    --cloud-topic /point_cloud_localization \
+    --interval-sec "${TRAYMOVER_NDT_LOG_INTERVAL_SEC:-5}"
+
+start_process fastlio_diagnostics python3 "${FASTLIO_DIAGNOSTICS}" \
+    --output-dir "${FASTLIO_LOG_DIR}" \
+    --odom-topic /odom \
+    --interval-sec "${TRAYMOVER_FASTLIO_LOG_INTERVAL_SEC:-2}"
+
+start_ndt_terminal() {
+    local tail_cmd
+    tail_cmd="printf '%s\\n' ${NDT_LOG_DIR@Q}; echo 'files: ndt_events.log ndt_rosout.log ndt_metrics.csv'; tail -n +1 -F ${NDT_LOG_DIR@Q}/ndt_events.log ${NDT_LOG_DIR@Q}/ndt_rosout.log"
+
+    local terminal_cmd=""
+    if command -v x-terminal-emulator >/dev/null 2>&1; then
+        terminal_cmd="x-terminal-emulator"
+    elif command -v gnome-terminal >/dev/null 2>&1; then
+        terminal_cmd="gnome-terminal"
+    elif command -v xfce4-terminal >/dev/null 2>&1; then
+        terminal_cmd="xfce4-terminal"
+    elif command -v xterm >/dev/null 2>&1; then
+        terminal_cmd="xterm"
+    fi
+
+    if [[ -z "${terminal_cmd}" ]]; then
+        echo "[traymover] No terminal emulator found; inspect ${NDT_LOG_DIR} for NDT logs."
+        return 1
+    fi
+
+    case "${terminal_cmd}" in
+        gnome-terminal) gnome-terminal -- bash -lc "${tail_cmd}" & ;;
+        xfce4-terminal) xfce4-terminal --command="bash -lc ${tail_cmd@Q}" & ;;
+        xterm) xterm -e bash -lc "${tail_cmd}" & ;;
+        *) x-terminal-emulator -e bash -lc "${tail_cmd}" & ;;
+    esac
+    echo "[traymover] NDT log terminal started."
+    return 0
+}
+
+start_fastlio_terminal() {
+    local tail_cmd
+    tail_cmd="printf '%s\\n' ${FASTLIO_LOG_DIR@Q}; echo 'files: fastlio_events.log fastlio_rosout.log fastlio_metrics.csv'; tail -n +1 -F ${FASTLIO_LOG_DIR@Q}/fastlio_events.log ${FASTLIO_LOG_DIR@Q}/fastlio_rosout.log"
+
+    local terminal_cmd=""
+    if command -v x-terminal-emulator >/dev/null 2>&1; then
+        terminal_cmd="x-terminal-emulator"
+    elif command -v gnome-terminal >/dev/null 2>&1; then
+        terminal_cmd="gnome-terminal"
+    elif command -v xfce4-terminal >/dev/null 2>&1; then
+        terminal_cmd="xfce4-terminal"
+    elif command -v xterm >/dev/null 2>&1; then
+        terminal_cmd="xterm"
+    fi
+
+    if [[ -z "${terminal_cmd}" ]]; then
+        echo "[traymover] No terminal emulator found; inspect ${FASTLIO_LOG_DIR} for FAST-LIO logs."
+        return 1
+    fi
+
+    case "${terminal_cmd}" in
+        gnome-terminal) gnome-terminal -- bash -lc "${tail_cmd}" & ;;
+        xfce4-terminal) xfce4-terminal --command="bash -lc ${tail_cmd@Q}" & ;;
+        xterm) xterm -e bash -lc "${tail_cmd}" & ;;
+        *) x-terminal-emulator -e bash -lc "${tail_cmd}" & ;;
+    esac
+    echo "[traymover] FAST_LIO log terminal started."
+    return 0
+}
+
+start_fastlio_terminal || true
+
+start_ndt_terminal || true
+
+echo "[traymover] Waiting for stack to initialize..."
+sleep 8
+for pid in "${launch_pids[@]}"; do
+    if ! kill -0 "${pid}" 2>/dev/null; then
+        echo "[traymover] A replay process exited during startup; inspect ${RUN_DIR}/processes" >&2
+        exit 1
+    fi
+done
+
+# Record installed/effective parameters, not just source YAML: a stale overlay
+# otherwise makes later fitness/TF analysis impossible to reproduce.
+mkdir -p "${RUN_DIR}/parameters"
+for node in lidar_localization fastlio_mapping pointcloud_nav_preprocessor; do
+    if ! timeout 5 ros2 param dump "/${node}" > "${RUN_DIR}/parameters/${node}.yaml" 2> "${RUN_DIR}/parameters/${node}.stderr"; then
+        echo "[traymover] Parameter snapshot unavailable for ${node}; see parameters/${node}.stderr"
+    fi
+done
+
+# FAST-LIO and NDT do not consume camera data in this replay. Excluding the
+# high-bandwidth image topics keeps bag playback focused on the localization chain.
+bag_args=("${BAG_PATH}" --clock --topics \
+    /point_cloud_raw /imu/data_raw /tf_static)
+if [[ "${START_OFFSET}" != "0" ]]; then
+    bag_args+=(--start-offset "${START_OFFSET}")
+fi
+bag_pid=""
+bag_paused=0
+stop_bag() {
+    stop_process "${bag_pid}"
+    bag_pid=""
+    bag_paused=0
+}
+
+play_bag() {
+    stop_bag
+    echo "[traymover] Starting loop playback."
+    setsid ros2 bag play "${bag_args[@]}" --loop > "${RUN_DIR}/rosbag.log" 2>&1 &
+    bag_pid="$!"
+    bag_paused=0
+}
+once_bag() {
+    stop_bag
+    echo "[traymover] Playing bag once."
+    setsid ros2 bag play "${bag_args[@]}" > "${RUN_DIR}/rosbag.log" 2>&1 &
+    bag_pid="$!"
+    bag_paused=0
+}
+pause_bag() {
+    if [[ -n "${bag_pid}" ]] && kill -0 "${bag_pid}" 2>/dev/null && [[ "${bag_paused}" -eq 0 ]]; then
+        kill -STOP "${bag_pid}" 2>/dev/null || true
+        bag_paused=1
+        echo "[traymover] rosbag paused; set initial pose, then use resume."
+    else
+        echo "[traymover] rosbag is not running or already paused."
+    fi
+}
+resume_bag() {
+    if [[ -n "${bag_pid}" ]] && [[ "${bag_paused}" -eq 1 ]]; then
+        kill -CONT "${bag_pid}" 2>/dev/null || true
+        bag_paused=0
+        echo "[traymover] rosbag resumed."
+    else
+        echo "[traymover] rosbag is not paused."
+    fi
+}
+status_bag() {
+    if [[ -n "${bag_pid}" ]] && kill -0 "${bag_pid}" 2>/dev/null; then
+        echo "[traymover] rosbag is running (PID ${bag_pid})."
+    else
+        bag_pid=""
+        echo "[traymover] rosbag is stopped."
+    fi
+}
+
+start_control_terminal() {
+    control_fifo="${RUN_DIR}/control.fifo"
+    mkdir -p "${RUNTIME_DIR}"
+    rm -f "${control_fifo}"
+    mkfifo "${control_fifo}"
+
+    local fifo_q
+    printf -v fifo_q '%q' "${control_fifo}"
+    local control_cmd
+    control_cmd="echo 'Traymover control: play | once | pause | resume | stop | restart | status | quit'; while true; do printf 'traymover> '; IFS= read -r c || exit 0; printf '%s\\n' \"\$c\" > ${fifo_q}; case \"\${c,,}\" in quit|exit|q) exit 0;; esac; done"
+
+    local terminal_cmd=""
+    if command -v x-terminal-emulator >/dev/null 2>&1; then
+        terminal_cmd="x-terminal-emulator"
+    elif command -v gnome-terminal >/dev/null 2>&1; then
+        terminal_cmd="gnome-terminal"
+    elif command -v xfce4-terminal >/dev/null 2>&1; then
+        terminal_cmd="xfce4-terminal"
+    elif command -v xterm >/dev/null 2>&1; then
+        terminal_cmd="xterm"
+    fi
+
+    if [[ -z "${terminal_cmd}" ]]; then
+        echo "[traymover] No terminal emulator found; use this terminal for control."
+        return 1
+    fi
+
+    case "${terminal_cmd}" in
+        gnome-terminal) gnome-terminal -- bash -lc "${control_cmd}" & ;;
+        xfce4-terminal) xfce4-terminal --command="bash -lc ${control_cmd@Q}" & ;;
+        xterm) xterm -e bash -lc "${control_cmd}" & ;;
+        *) x-terminal-emulator -e bash -lc "${control_cmd}" & ;;
+    esac
+    control_pid="$!"
+    # Open read/write so opening the FIFO does not block before the new window
+    # starts writing commands.
+    exec 3<>"${control_fifo}"
+    echo "[traymover] Control terminal started (PID ${control_pid})."
+    return 0
+}
+
+control_external=0
+if [[ "${TRAYMOVER_REPLAY_EXTERNAL_CONTROL:-0}" == "1" ]]; then
+    if start_control_terminal; then
+        control_external=1
+    else
+        [[ -z "${control_fifo}" ]] || rm -f -- "${control_fifo}"
+        control_fifo=""
+    fi
+fi
+echo "[traymover] Control commands: play, once, pause, resume, stop, restart, status, quit"
+while true; do
+    if [[ "${control_external}" -eq 1 ]]; then
+        IFS= read -r -u 3 command || command="quit"
+    else
+        read -r -p "traymover> " command || command="quit"
+    fi
+    case "${command,,}" in
+        play|start) play_bag ;;
+        once) once_bag ;;
+        pause) pause_bag ;;
+        resume|continue) resume_bag ;;
+        stop) stop_bag ;;
+        restart) play_bag ;;
+        status) status_bag ;;
+        quit|exit|q) stop_bag; break ;;
+        "") ;;
+        *) echo "Commands: play, once, pause, resume, stop, restart, status, quit" ;;
+    esac
+done

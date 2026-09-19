@@ -33,7 +33,7 @@ bash scripts/traymover.sh
 ## 软件链与共享逻辑
 
 ```text
-LiDAR raw cloud -> /scan + /scan_detour_perimeter ----+
+LiDAR raw cloud -> /scan (full 360°, shared evidence) -+
 RealSense -> depthimage_to_laserscan -> /scan_realsense +-> shared Detour Core
 IMU /imu/data_raw ----------------------------------+
 RealSense depth -> automatic EStop -> driver states -+
@@ -53,7 +53,9 @@ IMU yaw 转向、时间受限直行、显式逐动作授权和 session limits。
 中断路径；不能声称测试模式验证了生产定位位移精度。测试 observation 不伪造导航目标或
 localization_healthy，不订阅 wheel odometry、map pose 或 navigation action。
 
-LiDAR 使用完整周向投影，以保留生产旋转空间验证。未知/缺失 LiDAR rays 不当作自由空间。
+LiDAR 仅运行一份完整周向投影 `/scan`，检测和周向检查共享同一缓存及采集时间戳，
+不再重复投影或补偿。保留生产旋转空间验证，未知/缺失 LiDAR rays 不当作自由空间。
+仅在显式指定独立输入时使用 `perimeter_scan_topic`；默认 `/scan`。
 缓存扫描依据采集时 IMU yaw 转到当前 heading，并扣除保守的命令运动余量；该余量不是实测距离。
 固定 TF 使用 URDF 的 `base_link`，RViz 和测试 CM 的 fixed/odom frame 均为 `base_link`。
 没有伪造 `odom`、`map` 或里程计。
@@ -112,6 +114,44 @@ Obstacle clear recovery: PASS
 Stage 7 的 Guard 始终有效，可能先于 Auto EStop 阻止运动。程序允许继续观察静止 EStop
 与释放，但没有真实“运动中被 Auto EStop 打断”的证据时，该项和完整旧动作丢弃验证保持
 INCOMPLETE。这不会被改写成 PASS。无需人员站在运动机器人正前方。
+
+## Preflight 退出码与扫描诊断
+
+`[ros2run]: Process exited with failure 1` 表示测试结果不是完整 PASS，不能单凭这行判定程序崩溃。
+先看终端末尾 `Stop reason` 和 `Preflight failure`，或 JSON 的 `stop_reason`、
+`sensor_preflight`。输入不是严格大写 `ARM`、输入 `q` 或关闭输入，也会结束会话而不运动。
+
+扫描预检现在记录原始 frame、beam 数量、有效距离/NaN/+inf/-inf/超范围数量、采集与接收年龄、
+接受的射线数、等待 IMU/TF 的原因和转换旋转。`zero accepted rays (unknown space)` 与
+`accepted acquisition stale` 是不同故障；新鲜时间戳不代表有有效的障碍观测。
+
+RealSense 的扫描使用中央10行，范围0.20–10.0m。较大图像 ROI 的 Auto EStop FREE 不能证明这条
+扫描带有足够观测；大量 NaN 或中央视野缺失时测试保持停止。不要把 NaN 当作自由空间，
+也不要通过缩小 EStop 距离或放宽 freshness 来获得 PASS。传感器项通过后，还要等待
+`Detour core readiness` 通过，避免在共享 Core 尚未完成启动故障恢复时要求 ARM。
+
+前台等待键盘时持续处理 ROS 回调；观察条件按20Hz检查。较早扫描等待 IMU/TF 时不再挡住
+后面可用的新扫描，但所有缓存仍保留原采集时间，过期数据不会变成新鲜数据。菜单输入关闭
+后直接退出，不再循环打印菜单。
+
+2026-09-17 相机单独采样确认：中央扫描带有大量有效的3.5–6m深度，原3m转换上限将其
+过滤成NaN。对照转换最后一帧的有效点数为3m上限9点、10m上限586点。因此只将Option19
+的转换上限改为10m，保留真实有限远距离；零深度/NaN仍保持未知。10m是数据接受上限，
+不是相机测距可靠性认证。原Option16/18配置、0.80m Auto EStop、0.95m Guard、中央覆盖
+及freshness检查均不变。采样记录位于 `logs/depth_probe_20260917_175327.json`。
+
+输入 `ARM` 后不会以某个瞬时快照立即结束：程序保持零速，最多等待10秒，要求所有检查
+连续通过 `clear_confirm_sec`（默认1秒），然后才设置本会话的 ARM。任何失败都重新开始
+稳定计时，传感器/服务的 freshness 门槛和共享 Core 的 HOLD/FAULT 恢复要求不变；不会
+手动重置 Core 来跳过故障。期间 `q`/Ctrl+C 可退出，`!` 请求手动 EStop。
+恢复后继续静止观察阶段，TURN/STRAIGHT 仍各需单独确认。无法稳定则记录
+`arm_preflight_initial`、`arm_preflight`、`arm_health_events`，终端末尾打印实际 ARM 失败项，
+避免拿启动时的 PASS 快照解释后来的 ARM 失败。
+
+底盘串口轮询可能在同一轮中先发布 motor feedback、再发布 motor status，两条
+`/battery_state` 使用相同的采集时间戳。guided adapter 忽略这种相同时间戳的重复消息，
+不刷新 freshness；报告显示忽略计数。时间戳倒退/无效仍报错，只有重复消息而没有新的
+时间戳时仍按原超时停车。driver、EStop 和 watchdog 本身不作修改。
 
 ## 初始限制
 

@@ -32,6 +32,7 @@ source install/setup.bash
 | `8` | Record FAST-LIO rosbag | 录制 `/point_cloud_raw`、`/imu/data_raw`、`/tf_static`、`/tf`，用于离线建图。 |
 | `9` | Replay FAST-LIO rosbag offline | 用 `use_sim_time` 回放选项 `8` 的 rosbag，并离线跑 FAST-LIO。 |
 | `10` | Start navigation | 当前默认慢速 2D Nav2 导航：选择 PCD，重建运行时 2D 地图，启动底盘、雷达、FAST-LIO+NDT、Nav2 和可选 RViz。 |
+| `20` | Conservative 2D AMCL navigation | 三高度带合成扫描 + AMCL；无轮速 FAST-LIO 里程计；雷达/完整深度图避障、强制停车门控；PCD 整平后保留三维 RViz。见 [选项 20 操作说明](docs/option20_navigation.md)。 |
 | `11` | Start teleop-only | 只启动底盘串口和键盘，不启动雷达、IMU、EKF。 |
 | `12` | Clean FAST-LIO PCD | 对 PCD 做 SOR、悬浮柱、DBSCAN 等离线清理，输出 `_clean.pcd`。 |
 | `13` | Intersect multiple FAST-LIO PCDs | 多次建图结果做体素多数投票，保留跨 session 稳定出现的点。 |
@@ -75,8 +76,15 @@ src/traymover_robot_slam/FAST_LIO/rosbag
 选择 `10`。脚本会：
 
 1. 从 `src/traymover_robot_slam/FAST_LIO/PCD` 中选择一个 PCD。
-2. 使用该 PCD 重新生成运行时 2D 栅格地图到 `/tmp/traymover_nav_runtime`。
-3. 启动底盘串口、雷达、点云预处理、FAST-LIO、NDT 定位、Nav2 和可选 RViz。
+2. 回答 `Enable ground-plane fitting for 2D map? [y/N]:`：输入 `y`/`yes`
+   使用拟合地面，输入 `n`/`no` 或直接回车使用原水平切片。选择仅对本次
+   选项 `10` 生效，下次运行会重新询问。
+3. 使用该 PCD 重新生成运行时 2D 栅格地图到 `/tmp/traymover_nav_runtime`。
+4. 启动底盘串口、雷达、点云预处理、FAST-LIO、NDT 定位、Nav2 和可选 RViz。
+
+拟合模式按点到估计地面平面的距离筛选障碍，保留原 PCD 和 XY 定位坐标。
+单平面能修正整体倾斜，但不能表示局部地形起伏，因此默认关闭。拟合失败
+会中止本次启动，不自动回退到旧切片。该交互仅加入选项 `10`。
 
 启动后：
 

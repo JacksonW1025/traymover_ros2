@@ -33,6 +33,13 @@ ament_target_dependencies(${PROJECT_NAME}_progress_checker ${dependencies})
 
 if(BUILD_TESTING)
   find_package(ament_cmake_pytest REQUIRED)
+  ament_add_pytest_test(test_static_tf_cleanup test/test_static_tf_cleanup.py)
+  foreach(option20_test map sensors guard config)
+    ament_add_pytest_test(
+      test_option20_${option20_test}
+      test/test_option20_${option20_test}.py
+    )
+  endforeach()
   ament_add_pytest_test(
     test_pcd2pgm
     test/test_pcd2pgm.py
@@ -53,13 +60,42 @@ if(BUILD_TESTING)
     test_nav_simple_config
     test/test_nav_simple_config.py
   )
+  ament_add_pytest_test(
+    test_nav_clearance_config
+    test/test_nav_clearance_config.py
+  )
+  ament_add_pytest_test(
+    test_nav_clearance_planning
+    test/test_nav_clearance_planning.py
+    TIMEOUT 120
+  )
+  ament_add_pytest_test(
+    test_ndt_replay_tools
+    test/test_ndt_replay_tools.py
+  )
+  ament_add_pytest_test(
+    test_motion_diagnostics
+    test/test_motion_diagnostics.py
+  )
+  ament_add_pytest_test(
+    test_option10_logging
+    test/test_option10_logging.py
+  )
+  ament_add_pytest_test(
+    test_ndt_height_launch
+    test/test_ndt_height_launch.py
+  )
+  ament_add_pytest_test(
+    test_ndt_auto_correction_launch
+    test/test_ndt_auto_correction_launch.py
+  )
   foreach(detour_test gate core config supervisor goal_proxy velocity_chain)
     ament_add_pytest_test(
       test_detour_${detour_test}
       test/test_detour_${detour_test}.py
     )
   endforeach()
-  foreach(guided_test config node test velocity_chain)
+  foreach(guided_test config node test velocity_chain depth_scan)
     ament_add_pytest_test(
       test_guided_detour_${guided_test}
       test/test_guided_detour_${guided_test}.py

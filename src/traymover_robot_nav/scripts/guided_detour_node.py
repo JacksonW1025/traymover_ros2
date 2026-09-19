@@ -68,6 +68,7 @@ class GuidedDetourNode(Node):
         self.extra = {
             name: self.declare_parameter(name, default).value for name, default in {
                 'base_frame': 'base_link', 'imu_topic': '/imu/data_raw',
+                'perimeter_scan_topic': '/scan',
                 'driver_node': '/turn_on_traymover_robot',
                 'collision_monitor_node': '/collision_monitor',
                 'estop_timeout_sec': 1.0, 'driver_timeout_sec': 1.0,
@@ -79,8 +80,17 @@ class GuidedDetourNode(Node):
                     raise ValueError(f'{key} must be finite and positive')
         self.tf = Buffer()
         self.listener = TransformListener(self.tf, self)
-        self.scans = {key: None for key in ('lidar', 'realsense', 'perimeter')}
+        # Guided launch projects one full-360 LiDAR scan. Both logical core
+        # inputs use the same acquisition evidence, including invalidation.
+        self.scan_topics = {'lidar': '/scan', 'realsense': '/scan_realsense'}
+        self.perimeter_key = 'lidar'
+        if self.extra['perimeter_scan_topic'] != '/scan':
+            self.perimeter_key = 'perimeter'
+            self.scan_topics['perimeter'] = self.extra['perimeter_scan_topic']
+        self.scans = dict.fromkeys(self.scan_topics)
         self.scan_headers = {}
+        self.scan_accepted_headers = {}
+        self.scan_diagnostics = {key: {} for key in self.scans}
         self.scan_yaws = {}
         self.scan_tf_ok = {key: False for key in self.scans}
         self.pending_scans = {key: deque(maxlen=10) for key in self.scans}
@@ -88,6 +98,7 @@ class GuidedDetourNode(Node):
         self.imu_yaw = None
         self.imu_at = self.imu_header = float('-inf')
         self.battery_at = self.battery_header = float('-inf')
+        self.duplicate_battery_samples = 0
         self.estop = {'aggregate': True, 'manual': False, 'auto': True,
                       'reason': 'STARTUP', 'request': True}
         self.estop_at = {key: float('-inf') for key in self.estop}
@@ -114,8 +125,7 @@ class GuidedDetourNode(Node):
         status_qos = QoSProfile(depth=1, reliability=ReliabilityPolicy.RELIABLE,
                                 durability=DurabilityPolicy.TRANSIENT_LOCAL)
         self.status = self.create_publisher(String, '/guided_detour_test/state', status_qos)
-        for key, topic in (('lidar', '/scan'), ('realsense', '/scan_realsense'),
-                           ('perimeter', '/scan_detour_perimeter')):
+        for key, topic in self.scan_topics.items():
             self.create_subscription(LaserScan, topic,
                                      lambda msg, key=key: self.on_scan(key, msg),
                                      qos_profile_sensor_data)
@@ -184,7 +194,13 @@ class GuidedDetourNode(Node):
     def on_battery(self, message):
         try:
             acquired, header = self.acquisition_time(message.header.stamp, time.monotonic())
-            if header <= self.battery_header:
+            # Motor feedback and the 1 Hz status poll legitimately publish
+            # battery messages with the same driver-cycle acquisition stamp.
+            # Ignore duplicates without refreshing or restoring serial evidence.
+            if header == self.battery_header:
+                self.duplicate_battery_samples += 1
+                return
+            if header < self.battery_header:
                 raise ValueError('non-advancing chassis serial stamp')
             self.battery_at, self.battery_header = acquired, header
         except ValueError:
@@ -192,45 +208,100 @@ class GuidedDetourNode(Node):
             self.input_failure('invalid chassis serial sample during motion')
 
     def on_scan(self, key, message):
+        received = time.monotonic()
+        diagnostic = dict.fromkeys(('finite_in_range', 'nan', 'positive_inf',
+                                    'negative_inf', 'below_min', 'above_max'), 0)
+        diagnostic.update(frame_id=message.header.frame_id, beam_count=len(message.ranges),
+                          range_min_m=message.range_min, range_max_m=message.range_max,
+                          received_monotonic=received, last_rejection='')
+        for value in message.ranges:
+            if math.isnan(value):
+                category = 'nan'
+            elif math.isinf(value):
+                category = 'positive_inf' if value > 0 else 'negative_inf'
+            elif value < message.range_min:
+                category = 'below_min'
+            elif value > message.range_max:
+                category = 'above_max'
+            else:
+                category = 'finite_in_range'
+            diagnostic[category] += 1
+        self.scan_diagnostics[key] = diagnostic
         try:
-            acquired, header = self.acquisition_time(message.header.stamp, time.monotonic())
+            acquired, header = self.acquisition_time(message.header.stamp, received)
+            diagnostic.update(acquired_monotonic=acquired, header_stamp_sec=header)
             if header <= self.scan_headers.get(key, float('-inf')):
                 raise ValueError('non-advancing scan stamp')
             self.scan_headers[key] = header
-            self.pending_scans[key].append((message, acquired))
+            self.pending_scans[key].append((message, acquired, diagnostic))
             self.consume_scans(key)
-        except ValueError:
+        except ValueError as error:
+            diagnostic['last_rejection'] = str(error)
             self.pending_scans[key].clear()
             self.scans[key], self.scan_tf_ok[key] = None, False
             self.input_failure(f'invalid {key} scan during motion')
 
     def consume_scans(self, key):
         pending = self.pending_scans[key]
+        retry = []
+        # Visit every bounded pending sample: missing IMU/TF for one acquisition
+        # must not prevent evaluating a newer sample with available evidence.
         while pending:
-            message, acquired = pending[0]
+            message, acquired, diagnostic = pending.popleft()
+            header = diagnostic['header_stamp_sec']
+            if header <= self.scan_accepted_headers.get(key, float('-inf')):
+                diagnostic['last_rejection'] = 'superseded by newer accepted scan'
+                continue
+            saved = self.scans[key]
+            if saved is not None and acquired <= saved.stamp:
+                diagnostic['last_rejection'] = 'non-advancing acquisition estimate'
+                continue
             timeout = (self.config.realsense_timeout_sec if key == 'realsense'
                        else self.config.scan_timeout_sec)
             if time.monotonic() - acquired > timeout:
-                pending.popleft()
+                diagnostic['last_rejection'] = 'acquired scan expired'
                 continue
             acquired_yaw = self.yaw_at(acquired)
             if acquired_yaw is None:
-                break
+                diagnostic['last_rejection'] = 'IMU association unavailable'
+                retry.append((message, acquired, diagnostic))
+                continue
             try:
                 transform = self.tf.lookup_transform(
                     self.extra['base_frame'], message.header.frame_id,
                     Time.from_msg(message.header.stamp))
-            except TransformException:
-                break
-            pending.popleft()
+            except TransformException as error:
+                diagnostic['last_rejection'] = 'TF unavailable: ' + str(error)
+                retry.append((message, acquired, diagnostic))
+                continue
             try:
-                self.scans[key] = scan_to_rays(
+                converted = scan_to_rays(
                     message, transform.transform, acquired, allow_infinite=(key == 'realsense'))
+                # Conversion itself costs time; expired evidence must never enter
+                # the accepted cache even if it was fresh before transformation.
+                if time.monotonic() - acquired > timeout:
+                    diagnostic['last_rejection'] = 'acquired scan expired'
+                    continue
+                self.scans[key] = converted
+                self.scan_accepted_headers[key] = header
                 self.scan_yaws[key] = acquired_yaw
                 self.scan_tf_ok[key] = True
-            except ValueError:
+                q = transform.transform.rotation
+                diagnostic['transform_rotation'] = {
+                    name: getattr(q, name) for name in ('x', 'y', 'z', 'w')}
+                eligible = diagnostic['finite_in_range']
+                if key == 'realsense':
+                    eligible += diagnostic['positive_inf']
+                diagnostic['planar_rejected_rays'] = eligible - len(converted.rays)
+                diagnostic['converted_rays'] = len(converted.rays)
+                diagnostic['last_rejection'] = '' if converted.rays else 'zero accepted rays'
+            except ValueError as error:
+                diagnostic['last_rejection'] = 'invalid transform/scan: ' + str(error)
                 self.scans[key], self.scan_tf_ok[key] = None, False
                 self.input_failure(f'invalid {key} transform during motion')
+        accepted_header = self.scan_accepted_headers.get(key, float('-inf'))
+        pending.extend(item for item in retry
+                       if item[2]['header_stamp_sec'] > accepted_header)
 
     def on_estop(self, key, message):
         now = time.monotonic()
@@ -369,18 +440,16 @@ class GuidedDetourNode(Node):
         services_fresh = now - self.driver_parameter_at <= self.extra['service_timeout_sec']
         driver_fresh = (now - self.battery_at <= self.extra['driver_timeout_sec']
                         and services_fresh and self.driver_auto_enabled)
-        collision_fresh = (
-            self.cm_active and self.cm_zero_seen
-            and now - self.cm_state_at <= self.extra['service_timeout_sec']
-            and now - self.cm_output_at <= self.extra['collision_monitor_timeout_sec'])
+        collision_fresh = self.collision_monitor_fresh(now)
         fault = self.adapter_fault or self.graph_fault
         if now - self.graph_at > self.extra['service_timeout_sec']:
             fault = fault or 'velocity ownership information stale'
         if not self.manual_service.service_is_ready():
             fault = fault or 'manual EStop service unavailable'
+        current = {key: current_scan(key) for key in self.scans}
         return GuidedObservation(
-            lidar=current_scan('lidar'), realsense=current_scan('realsense'),
-            perimeter=current_scan('perimeter'),
+            lidar=current['lidar'], realsense=current['realsense'],
+            perimeter=current[self.perimeter_key],
             imu_yaw=self.imu_yaw, imu_stamp=self.imu_at,
             aggregate_estop=self.estop['aggregate'], manual_estop=self.estop['manual'],
             auto_estop=self.estop['auto'] or self.estop['request'],
@@ -391,9 +460,14 @@ class GuidedDetourNode(Node):
             collision_monitor_fresh=collision_fresh, driver_fresh=driver_fresh,
             health_fault=fault)
 
+    def collision_monitor_fresh(self, now):
+        return (self.cm_active and self.cm_zero_seen
+                and now - self.cm_state_at <= self.extra['service_timeout_sec']
+                and now - self.cm_output_at <= self.extra['collision_monitor_timeout_sec'])
+
     def preflight(self):
         now = time.monotonic()
-        obs = self.observation(now)
+        collision_fresh = self.collision_monitor_fresh(now)
         checks = {}
 
         def check(name, okay, stamp=None, detail=''):
@@ -405,14 +479,44 @@ class GuidedDetourNode(Node):
         check('IMU', self.imu_yaw is not None
               and now - self.imu_at <= self.config.imu_timeout_sec, self.imu_at)
         for key, label in (('lidar', 'LiDAR'), ('realsense', 'RealSense scan'),
-                           ('perimeter', 'Perimeter scan')):
+                           (self.perimeter_key, 'Perimeter scan')):
             saved = self.scans[key]
             timeout = (self.config.realsense_timeout_sec if key == 'realsense'
                        else self.config.scan_timeout_sec)
             stamp = saved.stamp if saved else None
-            check(label, bool(saved and saved.rays and now - stamp <= timeout), stamp)
+            diagnostic = dict(self.scan_diagnostics[key])
+            for field, age_name in (('received_monotonic', 'received_age_sec'),
+                                    ('acquired_monotonic', 'acquisition_age_sec')):
+                value = diagnostic.get(field)
+                diagnostic[age_name] = max(0.0, now - value) if value is not None else None
+            diagnostic['accepted_rays'] = len(saved.rays) if saved else 0
+            diagnostic['accepted_header_stamp_sec'] = self.scan_accepted_headers.get(key)
+            diagnostic['pending_count'] = len(self.pending_scans[key])
+            problems = []
+            if diagnostic.get('received_age_sec') is None:
+                problems.append('no scan received')
+            elif diagnostic['received_age_sec'] > timeout:
+                problems.append('scan receipt stale')
+            acquisition_age = diagnostic.get('acquisition_age_sec')
+            if acquisition_age is not None and acquisition_age > timeout:
+                problems.append('latest acquisition expired')
+            if saved is None:
+                problems.append('no accepted scan')
+            else:
+                if not saved.rays:
+                    problems.append('zero accepted rays (unknown space)')
+                if now - stamp > timeout:
+                    problems.append('accepted acquisition stale')
+            rejection = diagnostic.get('last_rejection')
+            if rejection:
+                problems.append(rejection)
+            detail = '; '.join(problems) or f'{len(saved.rays)} accepted rays'
+            check(label, bool(saved and saved.rays and now - stamp <= timeout), stamp, detail)
+            checks[label]['diagnostics'] = diagnostic
         check('Driver serial', now - self.battery_at <= self.extra['driver_timeout_sec'],
-              self.battery_at)
+              self.battery_at,
+              f'duplicate acquisition stamps ignored: {self.duplicate_battery_samples}')
+        checks['Driver serial']['duplicate_battery_samples'] = self.duplicate_battery_samples
         check('Driver Auto EStop parameter', self.driver_auto_enabled
               and now - self.driver_parameter_at <= self.extra['service_timeout_sec'],
               self.driver_parameter_at,
@@ -425,15 +529,18 @@ class GuidedDetourNode(Node):
         check('Auto reason', self.estop['reason'] == 'NONE'
               and now - self.estop_at['reason'] <= self.extra['estop_timeout_sec'],
               self.estop_at['reason'], self.estop['reason'])
-        check('Collision Monitor', obs.collision_monitor_fresh, self.cm_output_at,
-              'ACTIVE + zero output observed' if obs.collision_monitor_fresh
+        check('Collision Monitor', collision_fresh, self.cm_output_at,
+              'ACTIVE + zero output observed' if collision_fresh
               else 'missing active/output proof')
         check('Velocity ownership', not self.graph_fault
               and now - self.graph_at <= self.extra['service_timeout_sec'],
               self.graph_at, self.graph_fault)
         check('Manual EStop service', self.manual_service.service_is_ready())
-        check('Sensor transforms', obs.tf_healthy,
+        check('Sensor transforms', all(self.scan_tf_ok.values()),
               detail='exact-time sensor -> base_link; no map/odom')
+        check('Detour core readiness',
+              self.core.state not in ('FAULT_HOLD', 'HOLD_ESTOP', 'ABORTED'),
+              detail=self.core.state + ': ' + self.core.reason)
         if self.adapter_fault:
             check('Latched adapter fault', False, detail=self.adapter_fault)
         return checks

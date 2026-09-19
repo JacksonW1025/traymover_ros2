@@ -84,7 +84,7 @@ evaluator, or disables Collision Monitor. An active EStop always inhibits
 supervisor motion and independently inhibits the driver.
 
 The supervisor subscribes to `/cmd_vel_nav`, `/scan`, `/scan_realsense`,
-the full-perimeter `/scan_detour_perimeter` (also used by Option 19),
+the Option 18 full-perimeter `/scan_detour_perimeter`,
 `/traymover_estop/state`, `/traymover_estop/manual_state`,
 `/traymover_estop/auto_state`, `/traymover_estop/auto_reason`, TF, and
 `/pcl_pose`. Its only velocity output is `/cmd_vel_detour`. Nonzero output

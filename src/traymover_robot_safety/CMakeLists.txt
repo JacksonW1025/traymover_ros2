@@ -22,12 +22,14 @@ set(CMAKE_AUTOMOC ON)
 
 set(HDR_FILES
   include/traymover_robot_safety/estop_panel.hpp
+  include/traymover_robot_safety/option20_health_panel.hpp
 )
 
 qt5_wrap_cpp(MOC_FILES ${HDR_FILES})
 
 add_library(${PROJECT_NAME} SHARED
   src/estop_panel.cpp
+  src/option20_health_panel.cpp
   ${HDR_FILES}
   ${MOC_FILES}
 )
@@ -107,6 +109,9 @@ if(BUILD_TESTING)
   )
   target_link_libraries(test_depth_estop_evaluator depth_estop_evaluator)
   ament_target_dependencies(test_depth_estop_evaluator sensor_msgs)
+  ament_add_gtest(test_option20_health_panel test/test_option20_health_panel.cpp)
+  target_link_libraries(test_option20_health_panel ${PROJECT_NAME} Qt5::Widgets)
+  ament_target_dependencies(test_option20_health_panel rclcpp rviz_common std_msgs)
   ament_add_pytest_test(
     test_safety_config
     test/test_safety_config.py

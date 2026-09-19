@@ -6,4 +6,11 @@
       Traymover emergency stop panel with mutually exclusive EStop and Free controls.
     </description>
   </class>
+  <class name="traymover_robot_safety/Option20HealthPanel"
+         type="traymover_robot_safety::Option20HealthPanel"
+         base_class_type="rviz_common::Panel">
+    <description>
+      Read-only Option 20 readiness, command gate and health reasons with timeout detection.
+    </description>
+  </class>
 </library>

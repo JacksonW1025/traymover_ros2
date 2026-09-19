@@ -1,0 +1,117 @@
+# NDT 定位测试候选参数档案（仅注释，不参与 ROS 参数加载）
+# 来源仓库：/home/wheeltec/traymover_ros2_paramchanged
+# 对照仓库：/home/wheeltec/traymover_ros2
+# 记录日期：2026-09-18
+# 当前值指迁移时工作区中的配置值；不是编译后二进制或运行中节点的实测值。
+# 用户要求：先迁移测试工具，参数仅以注释保留；待分析实际运行日志后再决定是否覆盖。
+# 本文件所有内容均为注释，yaml.safe_load 的结果应为 None；不要直接作为 --params-file 使用。
+# 来源注释里的回放结论尚未在本仓库验证，不能视为当前硬件/地图的调参依据。
+# 后续实施记录：按用户新指令已迁入重新 Init 的 bootstrap 门限支持，
+# nav/config/localization.yaml 已启用 2.5 m / 0.60 rad，并新增地图降采样 0.15 m。
+# 下文“当前/缺少支持”是最初迁移时的历史快照；最新行为见 docs/ndt_replay_test.md。
+
+# 来源路径：src/traymover_robot_nav/config/localization.yaml
+# 下列键均位于 /**.ros__parameters，嵌套键使用点号表示。
+# score_threshold: 3.0  # 当前：1.0
+# adaptive_ndt_resolution: 来源删除此键（保留本仓库值，不自动恢复节点默认值）  # 当前：true
+# adaptive_ndt_max_resolution: 来源删除此键（保留本仓库值，不自动恢复节点默认值）  # 当前：3.0
+# adaptive_ndt_resolution_step: 来源删除此键（保留本仓库值，不自动恢复节点默认值）  # 当前：0.1
+# adaptive_ndt_min_usable_voxel_ratio: 来源删除此键（保留本仓库值，不自动恢复节点默认值）  # 当前：0.01
+# max_bootstrap_pose_jump_translation: 2.5  # 当前：未配置（不代表节点支持）
+# max_bootstrap_pose_jump_rotation: 0.6  # 当前：未配置（不代表节点支持）
+
+# 来源路径：src/traymover_robot_slam/lidar_localization_ros2/param/localization.yaml
+# 下列键均位于 /**.ros__parameters，嵌套键使用点号表示。
+# ndt_num_threads: 0  # 当前：4
+# ndt_max_iterations: 来源删除此键（保留本仓库值，不自动恢复节点默认值）  # 当前：35
+# enable_map_odom_tf: 来源删除此键（保留本仓库值，不自动恢复节点默认值）  # 当前：false
+# enable_timer_publishing: 来源删除此键（保留本仓库值，不自动恢复节点默认值）  # 当前：false
+# pose_publish_frequency: 来源删除此键（保留本仓库值，不自动恢复节点默认值）  # 当前：30.0
+
+# 来源路径：src/traymover_robot_slam/FAST_LIO/config/traymover.yaml
+# 下列键均位于 /**.ros__parameters，嵌套键使用点号表示。
+# point_filter_num: 1  # 当前：2
+# filter_size_surf: 0.4  # 当前：0.2
+# filter_size_map: 0.4  # 当前：0.2
+# runtime_pos_log_enable: false  # 当前：true
+# map_file_path: "/home/wheeltec/traymover_ros2/src/traymover_robot_slam/FAST_LIO/PCD/traymover_fastlio.pcd"  # 当前："/home/wheeltec/traymover_ros2/src/traymover_robot_slam/FAST_LIO/PCD/traymover.pcd"
+# preprocess.scan_rate: 10  # 当前：20
+# preprocess.blind: 0.15  # 当前：0.5
+# mapping.acc_cov: 0.0059215155351791055  # 当前：0.1
+# mapping.gyr_cov: 0.0015059072284923697  # 当前：0.1
+# mapping.b_acc_cov: 0.0001337937864030618  # 当前：0.0001
+# mapping.b_gyr_cov: 4.34308552835512e-05  # 当前：0.0001
+# mapping.det_range: 200.0  # 当前：100.0
+# mapping.extrinsic_est_en: false  # 当前：true
+# publish.scan_bodyframe_pub_en: true  # 当前：false
+# publish.map_en: false  # 当前：true
+# pcd_save.pcd_save_en: false  # 当前：true
+# diagnostics.frame_trace: false  # 当前：未配置（不代表节点支持）
+# diagnostics.min_effective_features: 0  # 当前：未配置（不代表节点支持）
+# diagnostics.max_update_translation: 0.0  # 当前：未配置（不代表节点支持）
+# diagnostics.max_consecutive_rejects: 5  # 当前：未配置（不代表节点支持）
+# common.lidar_qos_reliable: false  # 当前：未配置（不代表节点支持）
+# common.lidar_qos_depth: 20  # 当前：未配置（不代表节点支持）
+# publish.effect_map_en: false  # 当前：未配置（不代表节点支持）
+
+# 来源路径：src/traymover_robot_nav/launch/lidar_localization.launch.py
+# 来源新增 launch 参数（本仓库目前均未声明；现有值来自配置文件）：
+# publish_fastlio_clouds: true
+#   同时覆盖 publish.path_en、publish.scan_publish_en、publish.scan_bodyframe_pub_en。
+#   当前对应配置值分别为 true、true、false。
+# fastlio_frame_trace: false                # 当前：无对应节点参数支持
+# fastlio_min_effective_features: 0         # 当前：无对应节点参数支持
+# fastlio_max_update_translation: 0.0       # 当前：无对应节点参数支持
+# enable_debug: true                       # 当前：由 localization.yaml 设置为 false
+# 三个 fastlio_* 参数分别传给 diagnostics.frame_trace、diagnostics.min_effective_features、
+# diagnostics.max_update_translation；launch 声明本身不能补齐 C++ 实现。
+
+# 来源路径：src/traymover_robot_nav/launch/traymover_nav.launch.py
+# 来源新增并转发到 lidar_localization.launch.py 的默认值：
+# publish_fastlio_clouds: false             # 当前：未声明；云/路径发布由配置控制
+# fastlio_frame_trace: true                 # 当前：未声明，也无节点支持
+# fastlio_min_effective_features: 1000      # 当前：未声明，也无节点支持
+# fastlio_max_update_translation: 2.0       # 当前：未声明，也无节点支持
+# 注意：导航入口与单独定位入口的候选默认值不同；不得混用为已验证的统一配置。
+# max_map_odom_update_translation=0.50、max_map_odom_update_rotation=0.25 两仓库相同。
+
+# 来源路径：scripts/traymover.sh
+# NAV_PGM_Z_MIN: 0.10                       # 当前：0.17 m
+# 来源地图投影默认使用地面高度基准；当前额外保留 floor/plane 选择，默认 floor。
+# NAV_PGM_Z_MAX=2.20、MIN_POINTS=1、DILATE=2、MIN_REGION_CELLS=2 两仓库相同。
+# action_replay_fastlio_bag 的候选回放参数：
+# bag_rate: 0.2                            # 当前：0.5
+# bag_topics: [/point_cloud_raw, /imu/data_raw, /tf_static]  # 当前：不限定 topics
+# bag_qos_profile: scripts/qos/fastlio_bag_play.yaml        # 当前菜单：不传 QoS 配置
+# lidar_qos_reliable: true                  # 当前 mapping.launch.py：无此参数支持
+# fastlio_input: /point_cloud_raw           # 当前菜单：先过滤前 180 度，再输入 /point_cloud_raw_front
+# 来源绕过前向角度过滤的行为仅归档，不移除当前过滤器。
+# 来源回放默认选择最新 bag；当前优先选择 >=60s 且有 LiDAR+IMU 的 bag，不回退此改进。
+
+# 来源路径：scripts/qos/fastlio_bag_play.yaml
+# /point_cloud_raw: {reliability: reliable, durability: volatile, history: keep_last, depth: 20}
+# /tf_static: {reliability: reliable, durability: transient_local, history: keep_last, depth: 1}
+# 当前原有菜单没有此 QoS override；这里只保存来源候选内容。
+
+# 代码支持核查（迁移时）
+# 1. 本仓库 lidar_localization_component.cpp/.hpp 没有 max_bootstrap_pose_jump_*。
+#    来源 src/traymover_robot_slam/lidar_localization_ros2/src/lidar_localization_component.cpp
+#    声明并读取这两个参数，在 ndt_bootstrap_pending_ 时选择 bootstrap 门限。
+#    当前首次定位仍受 max_pose_jump_translation=0.35、max_pose_jump_rotation=0.45 控制。
+#    仅取消候选参数注释不会获得 bootstrap 放宽逻辑；必须先迁移并验证相关 C++ 实现。
+# 2. 本仓库 FAST_LIO/src/laserMapping.cpp 没有 diagnostics.*、common.lidar_qos_* 支持。
+#    当前 PointCloud2 订阅使用 rclcpp::SensorDataQoS()，没有来源的 make_lidar_qos()。
+#    来源还修改了 FAST_LIO/launch/mapping.launch.py，声明并转发 lidar_qos_reliable/depth。
+#    FAST_LIO 候选 diagnostics 与 QoS 参数在补齐并验证实现前不能认为已生效。
+#    publish.effect_map_en 已有代码支持，来源只是显式写入默认 false。
+# 3. nav/localization.yaml 中来源删除了 adaptive_ndt_*，本次保留当前自适应分辨率设置。
+#    不应因为来源缺键就删除当前配置；需结合地图有效体素比例、最终分辨率分析。
+# 4. 底层 param/localization.yaml 删除项的当前代码默认值：ndt_max_iterations=35、
+#    enable_map_odom_tf=false、enable_timer_publishing=false、pose_publish_frequency=10.0。
+#    配置删除不是等价改写，尤其 pose_publish_frequency 当前显式配置为 30.0。
+
+# 日志决策依据（后续执行）
+# 对同一 bag/地图记录实际生效参数、/clock、FAST_LIO 输出频率与耗时、NDT 收敛/fitness、
+# 首次定位与连续跟踪拒绝原因、pose jump、map->odom 更新、TF 年龄和丢帧情况。
+# 先比较当前配置基线，再逐项评估候选；不要把来源注释中 2.3-3.0 分数当作通用门限。
+# 目前仅完成候选归档，没有启用这些参数，也没有据此宣称实际回放通过。

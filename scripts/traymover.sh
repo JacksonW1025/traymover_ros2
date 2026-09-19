@@ -22,7 +22,7 @@ NAV_CONFIG_DIR="${NAV_PKG_DIR}/config"
 NAV_MAP_DIR="${NAV_PKG_DIR}/map"
 NAV_SCRIPTS_DIR="${NAV_PKG_DIR}/scripts"
 NAV_RUNTIME_DIR="/tmp/traymover_nav_runtime"
-NAV_PGM_Z_MIN="0.10"
+NAV_PGM_Z_MIN="0.17"
 NAV_PGM_Z_MAX="2.20"
 NAV_PGM_MIN_POINTS="1"
 NAV_PGM_DILATE="2"
@@ -63,10 +63,11 @@ spawn_in_terminal() {
 
     # Wrap the command so the shell sources ROS first and keeps the window open
     # on exit (so the user can read any error before the window closes).
-    local wrapped
+    local wrapped ros_log_dir_q
+    printf -v ros_log_dir_q '%q' "${ROS_LOG_DIR_DEFAULT}"
     wrapped="echo '[traymover] ${title}'; \
-mkdir -p '${ROS_LOG_DIR_DEFAULT}'; \
-export ROS_LOG_DIR='${ROS_LOG_DIR_DEFAULT}'; \
+mkdir -p ${ros_log_dir_q}; \
+export ROS_LOG_DIR=${ros_log_dir_q}; \
 source '${ROS_DISTRO_SETUP}'; \
 if [ -f '${WS_SETUP}' ]; then source '${WS_SETUP}'; else echo '[traymover] WARNING: ${WS_SETUP} not found — did you colcon build?'; fi; \
 ${cmd}; \
@@ -95,6 +96,9 @@ echo; echo '[traymover] ${title} exited. Press Enter to close.'; read"
 # begins from a known-empty state. We match on launch/run command lines and
 # known node executables — broad on purpose (this is a dedicated robot).
 KILL_PATTERNS=(
+    'scripts/run_nav_logged.sh'
+    'scripts/ndt_diagnostics.py'
+    'scripts/fastlio_diagnostics.py'
     'ros2 launch turn_on_traymover_robot'
     'ros2 launch traymover_slam_toolbox'
     'ros2 launch traymover_robot_nav2'
@@ -112,6 +116,9 @@ KILL_PATTERNS=(
     'traymover_auto_estop'
     'detour_supervisor.py'
     'traymover_robot.py'
+    # setuptools launches this console entry point, not the source .py file.
+    'lib/turn_on_traymover_robot/traymover_robot_node([[:space:]]|$)'
+    'lib/hipnuc_imu/talker([[:space:]]|$)'
     'traymover_ekf_filter_node'
     'async_slam_toolbox_node'
     'sync_slam_toolbox_node'
@@ -123,9 +130,19 @@ KILL_PATTERNS=(
     'depthimage_to_laserscan_node'
     'pointcloud_to_laserscan'
     'pointcloud_nav_preprocessor'
+    'scripts/run_option20.sh'
+    'option20_odom.py'
+    'option20_clouds.py'
+    'option20_depth.py'
+    'option20_guard.py'
+    'option20_pcd_display.py'
     'imu_pose_broadcaster'
     'robot_state_publisher'
     'joint_state_publisher'
+    # These survive a killed launch process unless explicitly stopped. Option
+    # 20 and option 10 assign different parents to base_link; stale static TF
+    # would otherwise disconnect the next localization tree.
+    'lib/tf2_ros/static_transform_publisher .*__node:=(static_odom_to_camera_init|static_body_to_base_link|option20_raw_origin|option20_base_height|option20_scan_origin)([[:space:]]|$)'
     'rviz2'
     'ekf_node'
     # traymover_robot_nav components
@@ -144,6 +161,7 @@ KILL_PATTERNS=(
     # option 0, which re-publish /tf and /map and cause RViz to black out
     # on the next nav start until they self-terminate from lost heartbeats.
     'lib/nav2_map_server'
+    'lib/nav2_amcl'
     'lib/nav2_planner'
     'lib/nav2_controller'
     'lib/nav2_behaviors'
@@ -666,10 +684,47 @@ action_show_battery() {
     echo "  Status  : ${charge_text}"
 }
 
+prompt_ndt_height_boost() {
+    NDT_HEIGHT_BOOST_ENABLED="false"
+    NDT_HEIGHT_BOOST_MIN_Z="2.0"
+    local height_input height_value
+    while true; do
+        if ! read -r -p "NDT high-structure threshold (base_link z, metres; Enter = disabled): " height_input; then
+            echo "[traymover] Input ended. Aborting nav startup before hardware bringup."
+            return 1
+        fi
+        if [[ "${height_input}" =~ ^[[:space:]]*$ ]]; then
+            echo "[traymover] NDT height weighting disabled for this run."
+            return 0
+        fi
+        if height_value="$(command python3 - "${height_input}" <<'PY'
+import math
+import re
+import sys
+
+text = sys.argv[1].strip()
+if not re.fullmatch(r'(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)', text):
+    sys.exit(1)
+value = float(text)
+if not math.isfinite(value):
+    sys.exit(1)
+print(repr(value))
+PY
+        )"; then
+            NDT_HEIGHT_BOOST_ENABLED="true"
+            NDT_HEIGHT_BOOST_MIN_Z="${height_value}"
+            echo "[traymover] NDT height weighting: z >= ${height_value} m in base_link; +1 source copy (normal/far/high+far = 1/2/3 at default far weighting)."
+            echo "[traymover] This is relative to base_link, not floor height; low points remain included."
+            return 0
+        fi
+        echo "[traymover] Enter a finite nonnegative decimal in metres (e.g. 2.0), or Enter to disable."
+    done
+}
+
 action_start_nav() {
     # Autonomous navigation bringup. Prompts the user to:
     #   1) pick a PCD map from FAST_LIO/PCD/ (the prior map for lidar_localization_ros2)
-    #   2) regenerate a matching 2D occupancy PGM/YAML from that same PCD
+    #   2) choose ground-plane fitting, then regenerate a matching PGM/YAML
     #      into /tmp so Nav2's static layer and NDT always share one source map
     #   3) choose whether to launch RViz
     # Then spawns chassis + lidar + nav stack in separate terminals so each
@@ -710,6 +765,20 @@ action_start_nav() {
     pcd_path="${pcds[$((pick-1))]}"
     echo "[traymover] Selected: ${pcd_path}"
 
+    local ground_fit_opt z_reference="floor"
+    while true; do
+        if ! read -r -p "Enable ground-plane fitting for 2D map? [y/N]: " ground_fit_opt; then
+            echo "[traymover] Input ended. Aborting nav startup."
+            return 1
+        fi
+        case "${ground_fit_opt,,}" in
+            y|yes) z_reference="plane"; break ;;
+            n|no|"") break ;;
+            *) echo "[traymover] Please enter y or n (Enter = n)." ;;
+        esac
+    done
+    echo "[traymover] Ground reference for this run: ${z_reference}"
+
     # Always regenerate the 2D map from the selected PCD. Allowing a stale
     # traymover_2d.yaml to survive across runs makes Nav2's static map and the
     # PCD used by NDT diverge, which in turn shifts RViz 2D Pose Estimate away
@@ -731,10 +800,14 @@ action_start_nav() {
     fi
     set -u
 
+    # Check before overwriting shared runtime maps or starting hardware. Scope
+    # orphan cleanup to our named static publishers in the current ROS domain.
+    python3 "${SCRIPT_DIR}/cleanup_static_tf.py" || return 1
     echo "[traymover] Generating runtime 2D nav map from selected PCD ..."
     if ! python3 "${NAV_SCRIPTS_DIR}/pcd2pgm.py" \
             --pcd "${pcd_path}" \
             --out "${runtime_prefix}" \
+            --z-reference "${z_reference}" \
             --z-min "${NAV_PGM_Z_MIN}" \
             --z-max "${NAV_PGM_Z_MAX}" \
             --min-points "${NAV_PGM_MIN_POINTS}" \
@@ -748,7 +821,7 @@ action_start_nav() {
         return 1
     fi
     echo "[traymover] Runtime map YAML: ${runtime_map_yaml}"
-    echo "[traymover] Runtime map params: z=[${NAV_PGM_Z_MIN}, ${NAV_PGM_Z_MAX}] m above floor, min_points=${NAV_PGM_MIN_POINTS}, dilate=${NAV_PGM_DILATE}, min_region_cells=${NAV_PGM_MIN_REGION_CELLS}"
+    echo "[traymover] Runtime map params: reference=${z_reference}, height=[${NAV_PGM_Z_MIN}, ${NAV_PGM_Z_MAX}] m, min_points=${NAV_PGM_MIN_POINTS}, dilate=${NAV_PGM_DILATE}, min_region_cells=${NAV_PGM_MIN_REGION_CELLS}"
 
     local rviz_opt rviz_arg
     read -r -p "Launch RViz? [Y/n]: " rviz_opt
@@ -759,6 +832,28 @@ action_start_nav() {
         rviz_arg="launch_rviz:=false"
     fi
     prompt_auto_estop
+
+    local NDT_HEIGHT_BOOST_ENABLED NDT_HEIGHT_BOOST_MIN_Z
+    prompt_ndt_height_boost || return 1
+
+    # Scope every option-10 run to its own logs, including launch stdout and
+    # passive monitors. No localization parameter is changed by the collectors.
+    local nav_log_root nav_run_dir logged_nav_cmd
+    nav_log_root="${TRAYMOVER_NAV_LOG_ROOT:-${WORKSPACE_DIR}/logs/nav}"
+    mkdir -p "${nav_log_root}" || return 1
+    nav_log_root="$(cd "${nav_log_root}" && pwd)" || return 1
+    nav_run_dir="$(mktemp -d "${nav_log_root}/$(date -u +%Y%m%dT%H%M%SZ)_option10.XXXXXX")" || return 1
+    local ROS_LOG_DIR_DEFAULT="${nav_run_dir}/ros"
+    mkdir -p "${ROS_LOG_DIR_DEFAULT}" || return 1
+    printf 'mode=live_option10\npcd=%s\nmap=%s\nz_reference=%s\nuse_sim_time=false\n' \
+        "${pcd_path}" "${runtime_map_yaml}" "${z_reference}" > "${nav_run_dir}/run_info.txt"
+    printf 'height_boost_enabled=%s\nheight_boost_min_z=%s\nheight_boost_frame=base_link\nheight_boost_extra_copies=1\n' \
+        "${NDT_HEIGHT_BOOST_ENABLED}" "${NDT_HEIGHT_BOOST_MIN_Z}" >> "${nav_run_dir}/run_info.txt"
+    printf 'auto_correction_enabled=true\n' >> "${nav_run_dir}/run_info.txt"
+    cp -- "${runtime_map_yaml}" "${nav_run_dir}/map.yaml"
+    git -C "${WORKSPACE_DIR}" rev-parse HEAD > "${nav_run_dir}/software_commit.txt" 2>/dev/null || true
+    git -C "${WORKSPACE_DIR}" status --short > "${nav_run_dir}/software_status.txt" 2>/dev/null || true
+    echo "[traymover] Option 10 logs: ${nav_run_dir}"
 
     echo "[traymover] Starting chassis + IMU (base_serial) ..."
     spawn_in_terminal "traymover: chassis_serial" \
@@ -775,11 +870,18 @@ action_start_nav() {
     sleep 6
 
     echo "[traymover] Starting nav stack with pcd_path=${pcd_path} map=${runtime_map_yaml} ..."
-    spawn_in_terminal "traymover: nav_stack" \
-        "ros2 launch traymover_robot_nav traymover_nav.launch.py ${rviz_arg} pcd_path:='${pcd_path}' map:='${runtime_map_yaml}'"
+    echo "[traymover] NDT automatic correction enabled (bounded, multi-frame confirmation for larger corrections)."
+    printf -v logged_nav_cmd '%q ' bash "${SCRIPT_DIR}/run_nav_logged.sh" "${nav_run_dir}" \
+        ros2 launch traymover_robot_nav traymover_nav.launch.py "${rviz_arg}" \
+        "pcd_path:=${pcd_path}" "map:=${runtime_map_yaml}" \
+        "height_boost_enabled:=${NDT_HEIGHT_BOOST_ENABLED}" \
+        "height_boost_min_z:=${NDT_HEIGHT_BOOST_MIN_Z}" \
+        "auto_correction_enabled:=true"
+    spawn_in_terminal "traymover: nav_stack" "${logged_nav_cmd}"
 
     cat <<EOF
 [traymover] Nav stack starting. Next steps once lifecycle activates (~10-20 s):
+  NDT + FAST-LIO analysis logs: ${nav_run_dir}
   1) In RViz click '2D Pose Estimate' and drag on the map at the robot's current spot.
   2) Wait for RobotModel to snap to pose and /pcl_pose to converge.
   3) Click '2D Goal Pose' to send a navigation goal.
@@ -1693,6 +1795,55 @@ EOF
     )
 }
 
+action_start_option20() {
+    local -a pcds=()
+    while IFS= read -r -d '' file; do pcds+=("${file}"); done < <(
+        python3 - "${FASTLIO_PCD_DIR}" <<'PY'
+from pathlib import Path
+import sys
+for path in sorted(Path(sys.argv[1]).glob('*.pcd'),
+                   key=lambda p: (p.stat().st_mtime_ns, p.name), reverse=True):
+    if path.is_file():
+        sys.stdout.buffer.write(str(path).encode() + b'\0')
+PY
+    )
+    if [[ ${#pcds[@]} -eq 0 ]]; then
+        echo '[traymover] No PCD maps available.'
+        return 1
+    fi
+    local i pick pcd_path run_dir command
+    for i in "${!pcds[@]}"; do
+        printf '  [%d] %s\n' "$((i + 1))" "$(basename "${pcds[i]}")"
+    done
+    read -r -p 'Option 20 PCD [1 = newest]: ' pick || return 1
+    pick="${pick:-1}"
+    if ! [[ "${pick}" =~ ^[0-9]+$ ]] || [[ ${#pick} -gt 5 ]]; then
+        echo '[traymover] Invalid PCD selection.'; return 1
+    fi
+    pick=$((10#${pick}))
+    if (( pick < 1 || pick > ${#pcds[@]} )); then
+        echo '[traymover] Invalid PCD selection.'; return 1
+    fi
+    pcd_path="${pcds[$((pick - 1))]}"
+    mkdir -p "${WORKSPACE_DIR}/logs/nav" || return 1
+    run_dir="$(mktemp -d "${WORKSPACE_DIR}/logs/nav/$(date -u +%Y%m%dT%H%M%SZ)_option20.XXXXXX")" || return 1
+    echo "[traymover] Preparing levelled AMCL/navigation maps from ${pcd_path}"
+    echo '[traymover] Three height bands feed one AMCL. Unknown navigation cells remain blocked.'
+    if ! python3 "${SCRIPT_DIR}/option20_prepare_map.py" \
+            --pcd "${pcd_path}" --output-dir "${run_dir}/maps" \
+            > "${run_dir}/map_preparation.log" 2>&1; then
+        cat "${run_dir}/map_preparation.log"
+        echo '[traymover] Map preparation failed; hardware was not started.'
+        return 1
+    fi
+    cat "${run_dir}/map_preparation.log"
+    cp "${NAV_CONFIG_DIR}/nav2_option20.yaml" "${run_dir}/nav2_params.yaml"
+    git -C "${WORKSPACE_DIR}" rev-parse HEAD > "${run_dir}/software_commit.txt" 2>/dev/null || true
+    printf -v command '%q ' bash "${SCRIPT_DIR}/run_option20.sh" "${run_dir}/maps" "${run_dir}"
+    spawn_in_terminal 'traymover: option20 AMCL' "${command}"
+    echo "[traymover] Option 20 logs: ${run_dir}"
+}
+
 # ---- menu -------------------------------------------------------------------
 
 print_menu() {
@@ -1720,6 +1871,7 @@ print_menu() {
  17) Test automatic EStop while stationary  (RealSense + ESTOP/FREE status only)
  18) Navigation with LiDAR + RealSense + EStop-safe Wait Detour
  19) Guided EStop-safe Detour Test (No Map / No Nav2)
+ 20) Conservative 2D AMCL navigation (3 height bands + LiDAR/IMU odom + depth safety + 3D RViz)
   q) Quit
 ==============================
 EOF
@@ -1733,7 +1885,10 @@ main() {
 
     while true; do
         print_menu
-        read -r -p "Select an option: " choice
+        if ! read -r -p "Select an option: " choice; then
+            echo "Input closed. Bye."
+            return 0
+        fi
         case "${choice}" in
             0) action_kill_all ;;
             1) action_start_chassis ;;
@@ -1755,6 +1910,7 @@ main() {
             17) action_test_auto_estop ;;
             18) action_start_nav_wait_detour ;;
             19) action_start_guided_detour_test ;;
+            20) action_start_option20 ;;
             q|Q|quit|exit) echo "Bye."; exit 0 ;;
             "") ;;
             *) echo "Unknown option: ${choice}" ;;

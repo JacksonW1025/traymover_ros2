@@ -138,6 +138,14 @@ def generate_launch_description():
             localization_params,
             {'use_sim_time': use_sim_time},
             {'map_path': LaunchConfiguration('pcd_path')},
+            {'auto_correction_enabled': ParameterValue(
+                LaunchConfiguration('auto_correction_enabled'), value_type=bool)},
+            {
+                'height_boost_enabled': ParameterValue(
+                    LaunchConfiguration('height_boost_enabled'), value_type=bool),
+                'height_boost_min_z': ParameterValue(
+                    LaunchConfiguration('height_boost_min_z'), value_type=float),
+            },
             {
                 'max_map_odom_update_translation': ParameterValue(
                     max_map_odom_update_translation, value_type=float),
@@ -191,6 +199,15 @@ def generate_launch_description():
         DeclareLaunchArgument('use_sim_time', default_value='false'),
         DeclareLaunchArgument('localization_params', default_value=default_params),
         DeclareLaunchArgument('urdf_model', default_value=default_urdf),
+        DeclareLaunchArgument(
+            'auto_correction_enabled', default_value='false',
+            description='Enable bounded NDT correction; default preserves other entrypoints.'),
+        DeclareLaunchArgument(
+            'height_boost_enabled', default_value='false',
+            description='Add one NDT source copy for high structures; default disabled.'),
+        DeclareLaunchArgument(
+            'height_boost_min_z', default_value='2.0',
+            description='Nonnegative z threshold in base_link metres, not floor height.'),
         DeclareLaunchArgument(
             'cloud_topic', default_value='/point_cloud_raw',
             description='Point cloud topic consumed by lidar_localization_ros2.'),

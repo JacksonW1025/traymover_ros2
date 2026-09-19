@@ -1,0 +1,14 @@
+<!-- Bounded wait and replan only; never clear obstacles or move blindly. -->
+<root main_tree_to_execute="MainTree">
+  <BehaviorTree ID="MainTree">
+    <RecoveryNode number_of_retries="30" name="WaitForClearRoute">
+      <PipelineSequence name="NavigateWithReplanning">
+        <RateController hz="1.0">
+          <ComputePathThroughPoses goals="{goals}" path="{path}" planner_id="GridBased"/>
+        </RateController>
+        <FollowPath path="{path}" controller_id="FollowPath"/>
+      </PipelineSequence>
+      <Wait wait_duration="2.0"/>
+    </RecoveryNode>
+  </BehaviorTree>
+</root>

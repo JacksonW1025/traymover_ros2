@@ -85,7 +85,10 @@ def generate_launch_description():
                 ('scan', '/scan_realsense'),
             ],
             parameters=[{
-                'scan_height': 10, 'range_min': 0.20, 'range_max': 3.0,
+                # Valid indoor returns beyond 3 m otherwise become NaN in the
+                # converter, making a healthy camera appear entirely unknown.
+                # Keep finite far observations; missing depth remains unknown.
+                'scan_height': 10, 'range_min': 0.20, 'range_max': 10.0,
                 'output_frame': 'camera_depth_frame',
             }],
         ),
@@ -100,22 +103,19 @@ def generate_launch_description():
             condition=IfCondition(LaunchConfiguration('launch_rviz')),
         ),
     ]
-    # Match the production full-perimeter projection. Finite observed returns,
-    # never unknown/no-return bins, certify rotation space in the shared core.
-    # Keep both public topics so the production and test adapters use one contract.
-    for name, topic in [('traymover_guided_scan', '/scan'),
-                        ('traymover_detour_perimeter_scan', '/scan_detour_perimeter')]:
-        actions.append(Node(
-            package='pointcloud_to_laserscan', executable='pointcloud_to_laserscan_node',
-            name=name, output='screen',
-            remappings=[('cloud_in', '/point_cloud_raw'), ('scan', topic)],
-            parameters=[{
-                'target_frame': 'base_link', 'transform_tolerance': 0.05,
-                'min_height': -0.25, 'max_height': 1.05,
-                'angle_min': -math.pi, 'angle_max': math.pi,
-                'angle_increment': 0.0087, 'scan_time': 0.1,
-                'range_min': 0.30, 'range_max': 60.0,
-                'use_inf': True, 'inf_epsilon': 1.0,
-            }],
-        ))
+    # One full-360 projection supplies both logical LiDAR/perimeter core inputs
+    # and Collision Monitor. Unknown/no-return bins stay unknown in the core.
+    actions.append(Node(
+        package='pointcloud_to_laserscan', executable='pointcloud_to_laserscan_node',
+        name='traymover_guided_scan', output='screen',
+        remappings=[('cloud_in', '/point_cloud_raw'), ('scan', '/scan')],
+        parameters=[{
+            'target_frame': 'base_link', 'transform_tolerance': 0.05,
+            'min_height': -0.25, 'max_height': 1.05,
+            'angle_min': -math.pi, 'angle_max': math.pi,
+            'angle_increment': 0.0087, 'scan_time': 0.1,
+            'range_min': 0.30, 'range_max': 60.0,
+            'use_inf': True, 'inf_epsilon': 1.0,
+        }],
+    ))
     return LaunchDescription(actions)

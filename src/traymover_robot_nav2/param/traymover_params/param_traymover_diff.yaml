@@ -210,8 +210,9 @@ controller_server:
         collision_cost: 10000.0
         collision_margin_distance: 0.08
         near_goal_distance: 0.4
-        cost_scaling_factor: 5.0
-        inflation_radius: 0.30
+        # Match local inflation for MPPI cost-to-distance conversion.
+        cost_scaling_factor: 2.0
+        inflation_radius: 1.20
       PreferForwardCritic:
         enabled: true
         cost_power: 1
@@ -275,8 +276,9 @@ local_costmap:
           obstacle_min_range: 0.0
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        cost_scaling_factor: 3.0
-        inflation_radius: 0.35
+        # Broad soft cost gradient favors corridor centers; not a hard margin.
+        cost_scaling_factor: 2.0
+        inflation_radius: 1.20
       always_send_full_costmap: True
   local_costmap_client:
     ros__parameters:
@@ -316,8 +318,9 @@ global_costmap:
         map_subscribe_transient_local: True
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        cost_scaling_factor: 3.0
-        inflation_radius: 0.35
+        # Broad soft cost gradient favors corridor centers; not a hard margin.
+        cost_scaling_factor: 2.0
+        inflation_radius: 1.20
       always_send_full_costmap: True
   global_costmap_client:
     ros__parameters:

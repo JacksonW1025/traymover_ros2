@@ -114,26 +114,37 @@ class GuidedSession:
         self.estop_motion = None
         self.estop_started = math.inf
         self.motion_input = False
+        self.waiting_for_arm = False
 
     def pump(self):
         self.spin(self.node, timeout_sec=0.05)
-        if self.motion_input and self.read_line is None:
+        if (self.motion_input or self.waiting_for_arm) and self.read_line is None:
             ready, _, _ = select.select([sys.stdin], [], [], 0)
             if ready:
                 answer = sys.stdin.readline()
                 if not answer or answer.strip().lower() in ('q', '!'):
-                    self.node.assert_manual_estop()
-                    raise TestAbort('operator stop during motion; manual EStop requested')
+                    if self.motion_input or answer.strip() == '!':
+                        self.node.assert_manual_estop()
+                        raise TestAbort('operator stop during motion; manual EStop requested'
+                                        if self.motion_input else 'manual EStop during ARM wait')
+                    self.node.publish_zero()
+                    raise TestAbort('operator aborted during ARM verification')
                 # Discard other input during motion. It cannot authorize a later phase.
         if self.core.state in ('ABORTED', 'LIMIT_REACHED'):
             raise TestAbort(self.core.reason)
 
     def wait(self, predicate, timeout):
         deadline = self.clock() + timeout
+        next_check = self.clock()
         while self.clock() < deadline:
             self.pump()
-            if predicate():
-                return True
+            # Drain ready ROS callbacks without rebuilding scene/preflight data
+            # for every IMU or EStop heartbeat. The core still ticks at 20 Hz.
+            now = self.clock()
+            if now >= next_check:
+                if predicate():
+                    return True
+                next_check = now + 0.05
         return bool(predicate())
 
     def prompt(self, text, exact_enter=False):
@@ -143,7 +154,9 @@ class GuidedSession:
         while True:
             if self.read_line is None:
                 self.pump()
-                ready, _, _ = select.select([sys.stdin], [], [], 0.05)
+                # spin_once already waits when no callback is ready. A second
+                # 50 ms sleep here caps ROS processing at ~20 callbacks/sec.
+                ready, _, _ = select.select([sys.stdin], [], [], 0)
                 if not ready:
                     continue
                 answer = sys.stdin.readline()
@@ -217,12 +230,15 @@ full airport detour, or physical stopping distance.
         healthy = self.wait(lambda: all(
             row['status'] == 'PASS' for row in self.node.preflight().values()), 20.0)
         checks = self.node.preflight()
+        healthy = healthy and all(row['status'] == 'PASS' for row in checks.values())
         for label, row in checks.items():
             age = row.get('age', row.get('age_sec'))
             age_text = '' if age is None else f' age={age:.3f} s'
             print(f"{label:28s} {row['status']}{age_text} {row.get('detail', '')}")
         self.report.data['sensor_preflight'] = checks
-        self.result('Preflight sensors', 'PASS' if healthy else 'FAIL')
+        failures = '; '.join(label + ': ' + (row.get('detail') or 'input unavailable')
+                             for label, row in checks.items() if row['status'] != 'PASS')
+        self.result('Preflight sensors', 'PASS' if healthy else 'FAIL', failures)
         if not healthy:
             raise TestAbort('PRECHECK FAILED. Motion tests disabled. TEST ABORT.')
         answer = self.prompt('''The robot has NOT moved yet.
@@ -232,12 +248,65 @@ Remain next to the robot with one hand ready for the manual EStop.
 Type ARM to allow low-speed motion tests. Anything else aborts.''')
         if answer != 'ARM':
             raise TestAbort('ARM not supplied; motion disabled')
-        # ARM is single-session only and never overrides a changed preflight.
-        if not all(row['status'] == 'PASS' for row in self.node.preflight().values()):
-            self.result('Preflight sensors', 'FAIL', 'inputs changed before ARM')
-            raise TestAbort('PRECHECK FAILED at ARM')
+        self.verify_arm()
+
+    def verify_arm(self):
+        """Keep zero while an explicit ARM request awaits stable fresh inputs."""
+        self.node.publish_zero()
+        self.report.data['arm_preflight_initial'] = self.node.preflight()
+        self.report.data['arm_health_events'] = []
+        stable_since = None
+        signature = None
+        had_failure = any(row['status'] != 'PASS'
+                          for row in self.report.data['arm_preflight_initial'].values())
+        print('ARM requested. Robot remains STOPPED. Waiting up to 10 seconds for\n'
+              f'all checks to stay PASS for {self.config.clear_confirm_sec:g} seconds.\n'
+              'q + Enter cancels; ! + Enter requests manual EStop.', flush=True)
+
+        def stable():
+            nonlocal stable_since, signature, had_failure
+            now = self.clock()
+            checks = self.node.preflight()
+            self.report.data['arm_preflight'] = checks
+            failures = {name: row.get('detail') or 'input unavailable'
+                        for name, row in checks.items() if row['status'] != 'PASS'}
+            current = tuple(failures.items())
+            if current != signature:
+                self.report.data['arm_health_events'].append({
+                    'stamp': now, 'failures': failures})
+                if failures:
+                    print('ARM waiting — ' + '; '.join(
+                        name + ': ' + detail for name, detail in failures.items()), flush=True)
+                signature = current
+            if failures:
+                had_failure = True
+                stable_since = None
+                return False
+            if stable_since is None:
+                stable_since = now
+            return now - stable_since >= self.config.clear_confirm_sec
+
+        self.waiting_for_arm = True
+        try:
+            healthy = self.wait(stable, 10.0)
+        finally:
+            self.waiting_for_arm = False
+        # Recheck at the decision point, without accepting the earlier startup
+        # snapshot or resetting the shared Core out of HOLD/FAULT.
+        checks = self.node.preflight()
+        self.report.data['arm_preflight'] = checks
+        self.report.save()
+        if not healthy or not all(row['status'] == 'PASS' for row in checks.values()):
+            detail = '; '.join(name + ': ' + (row.get('detail') or 'input unavailable')
+                               for name, row in checks.items() if row['status'] != 'PASS')
+            self.result('Preflight sensors', 'FAIL', detail or 'inputs did not stay stable')
+            raise TestAbort('PRECHECK FAILED at ARM: inputs did not remain stable within 10 s')
         if not self.core.arm(self.clock()):
-            raise TestAbort('core refused ARM')
+            self.result('ARM readiness', 'FAIL', self.core.reason)
+            raise TestAbort('core refused ARM after input verification')
+        self.result('ARM readiness', 'WARN' if had_failure else 'PASS',
+                    'inputs recovered and remained stable; no motion requested' if had_failure
+                    else 'fresh inputs remained stable; no motion requested')
 
     def detection(self):
         self.begin_stage(1, 'FRONT OBSTACLE DETECTION', '''Robot motion: NONE.
@@ -590,6 +659,16 @@ This runner never clears EStop. No movement will be requested in this stage.''')
             print(' - ' + item)
         print('\nA person-detection test may be performed later, but is not required.')
         print('If space is insufficient, stop and reposition manually; never auto-reverse.')
+        # Keep the actual stop cause beside the path; otherwise a short pasted
+        # terminal tail contains only the generic safety boundary and exit code.
+        if reason:
+            print('Stop reason: ' + reason)
+        checks = self.report.data.get('arm_preflight',
+                                      self.report.data.get('sensor_preflight', {}))
+        context = 'ARM' if 'arm_preflight' in self.report.data else 'Preflight'
+        for label, row in checks.items():
+            if row['status'] != 'PASS':
+                print(f"{context} failure — {label}: {row.get('detail') or 'input unavailable'}")
         print(f'Report: {self.report.path}', flush=True)
 
 

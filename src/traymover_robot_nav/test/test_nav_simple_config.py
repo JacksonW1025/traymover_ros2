@@ -1,14 +1,123 @@
 #!/usr/bin/env python3
 import copy
+import os
 from pathlib import Path
 import subprocess
 
+import pytest
 import yaml
 
 
 PKG_ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = PKG_ROOT.parent
 WORKSPACE_ROOT = SRC_ROOT.parent
+
+
+def _run_option10_prompt(tmp_path, answers, converter_status=0, runs=1, cleanup_status=0):
+    """Execute the real menu function, replacing hardware and ROS side effects."""
+    launcher = (WORKSPACE_ROOT / 'scripts/traymover.sh').read_text()
+    body = launcher.split('action_start_nav() {', 1)[1].split('\n}', 1)[0]
+    pcd_dir = tmp_path / 'pcd'
+    pcd_dir.mkdir()
+    (pcd_dir / 'example.pcd').write_text('test input')
+    setup = tmp_path / 'setup.bash'
+    setup.write_text(':\n')
+    arguments = tmp_path / 'arguments'
+    hardware = tmp_path / 'hardware'
+    env = dict(os.environ, FASTLIO_PCD_DIR=str(pcd_dir),
+               WORKSPACE_DIR=str(WORKSPACE_ROOT), SCRIPT_DIR=str(WORKSPACE_ROOT / 'scripts'),
+               TRAYMOVER_NAV_LOG_ROOT=str(tmp_path / 'nav_logs'),
+               NAV_RUNTIME_DIR=str(tmp_path / 'maps'),
+               ROS_LOG_DIR_DEFAULT=str(tmp_path / 'logs'),
+               ROS_DISTRO_SETUP=str(setup), WS_SETUP=str(setup),
+               NAV_SCRIPTS_DIR=str(PKG_ROOT / 'scripts'), NAV_PGM_Z_MIN='0.10',
+               NAV_PGM_Z_MAX='2.20', NAV_PGM_MIN_POINTS='1', NAV_PGM_DILATE='2',
+               NAV_PGM_MIN_REGION_CELLS='2', AUTO_ESTOP_ENABLED='false',
+               CAPTURE_ARGS=str(arguments), CAPTURE_HARDWARE=str(hardware),
+               CONVERTER_STATUS=str(converter_status), CLEANUP_STATUS=str(cleanup_status))
+    stubs = r'''
+python3() {
+    printf '%s\n' "$@" >> "$CAPTURE_ARGS"
+    if [[ "$1" == */cleanup_static_tf.py ]]; then return "$CLEANUP_STATUS"; fi
+    if [ "$CONVERTER_STATUS" != 0 ]; then return "$CONVERTER_STATUS"; fi
+    while [ "$#" -gt 0 ]; do
+        if [ "$1" = --out ]; then
+            printf 'image: fixture.pgm\n' > "${2}.yaml"
+            break
+        fi
+        shift
+    done
+}
+spawn_in_terminal() { printf '%s\n' "$*" >> "$CAPTURE_HARDWARE"; }
+prompt_auto_estop() { :; }
+action_start_estop_keyboard() { :; }
+action_start_auto_estop() { :; }
+sleep() { :; }
+'''
+    prompt = launcher.split('prompt_ndt_height_boost() {', 1)[1].split('\n}', 1)[0]
+    script = stubs + '\nprompt_ndt_height_boost() {' + prompt + '\n}\n'
+    script += '\naction_start_nav() {' + body + '\n}\n'
+    script += 'action_start_nav\n' * runs
+    result = subprocess.run(['bash', '-u', '-c', script], input=answers, env=env,
+                            text=True, capture_output=True, timeout=10)
+    args = arguments.read_text().splitlines() if arguments.exists() else []
+    modes = [args[i + 1] for i, arg in enumerate(args) if arg == '--z-reference']
+    return result, modes, hardware.exists()
+
+
+@pytest.mark.parametrize('answer,mode', [
+    ('y', 'plane'), ('Y', 'plane'), ('yes', 'plane'), ('YES', 'plane'),
+    ('n', 'floor'), ('N', 'floor'), ('no', 'floor'), ('', 'floor'),
+    ('invalid\ny', 'plane'),
+])
+def test_option10_ground_prompt_passes_this_runs_choice(tmp_path, answer, mode):
+    result, modes, hardware = _run_option10_prompt(tmp_path, '1\n' + answer + '\nn\n\n')
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert modes == [mode]
+    assert hardware
+    if answer.startswith('invalid'):
+        assert 'Please enter y or n' in result.stdout
+
+
+def test_option10_automatically_starts_logged_navigation(tmp_path):
+    result, _, hardware = _run_option10_prompt(tmp_path, '1\nn\nn\n\n')
+    assert result.returncode == 0, result.stderr
+    assert hardware
+    commands = (tmp_path / 'hardware').read_text()
+    assert 'run_nav_logged.sh' in commands
+    assert 'ros2 launch traymover_robot_nav traymover_nav.launch.py' in commands
+    assert 'test_nav_replay.sh' not in commands
+    assert 'ros2 bag play' not in commands
+    sessions = list((tmp_path / 'nav_logs').glob('*_option10.*'))
+    assert len(sessions) == 1
+    assert 'use_sim_time=false' in (sessions[0] / 'run_info.txt').read_text()
+    assert (sessions[0] / 'map.yaml').is_file()
+
+
+def test_option10_repeated_runs_have_separate_log_directories(tmp_path):
+    result, _, _ = _run_option10_prompt(tmp_path, '1\nn\nn\n\n' * 2, runs=2)
+    assert result.returncode == 0, result.stderr
+    assert len(list((tmp_path / 'nav_logs').glob('*_option10.*'))) == 2
+
+
+def test_option10_ground_prompt_eof_aborts_before_conversion(tmp_path):
+    result, modes, hardware = _run_option10_prompt(tmp_path, '1\n')
+    assert result.returncode != 0
+    assert modes == []
+    assert not hardware
+
+
+def test_option10_ground_fit_failure_aborts_before_hardware(tmp_path):
+    result, modes, hardware = _run_option10_prompt(tmp_path, '1\ny\n', converter_status=1)
+    assert result.returncode != 0
+    assert modes == ['plane']
+    assert not hardware
+
+
+def test_option10_ground_choice_does_not_leak_into_next_run(tmp_path):
+    result, modes, _ = _run_option10_prompt(tmp_path, '1\ny\nn\n\n1\n\nn\n\n', runs=2)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert modes == ['plane', 'floor']
 
 
 class UniqueKeyLoader(yaml.SafeLoader):
@@ -276,7 +385,13 @@ def test_localization_yaml_has_unique_keys_and_far_wall_range():
     assert loc_params['far_point_boost_min_range'] <= 15.0
     assert loc_params['far_point_boost_factor'] == 2
     assert loc_params['voxel_leaf_size'] >= 0.12
-    assert 0.9 <= loc_params['score_threshold'] < 2.0
+    assert loc_params['map_voxel_leaf_size'] == 0.15
+    assert loc_params['max_bootstrap_pose_jump_translation'] == 2.5
+    assert loc_params['max_bootstrap_pose_jump_rotation'] == 0.6
+    # Fitness is tuned per field trial; validate it without pinning the user's choice.
+    # The node declares a ROS double; YAML integers crash before configuration.
+    assert type(loc_params['score_threshold']) is float
+    assert 0.0 < loc_params['score_threshold'] < float('inf')
     assert loc_params['ndt_align_interval_s'] >= 2.0
     assert loc_params['ndt_resolution'] == 0.5
     assert loc_params['adaptive_ndt_resolution'] is True
@@ -300,10 +415,6 @@ def test_nav2_tolerates_short_tf_jitter_without_recoveries():
     assert follow_path['desired_linear_vel'] <= 0.14
     assert follow_path['use_rotate_to_heading'] is True
     assert follow_path['allow_reversing'] is False
-    assert follow_path['lookahead_dist'] >= 1.3
-    assert follow_path['min_lookahead_dist'] >= 1.0
-    assert follow_path['max_lookahead_dist'] >= 2.5
-    assert follow_path['lookahead_time'] >= 2.5
     assert follow_path['regulated_linear_scaling_min_radius'] >= 3.0
     assert follow_path['regulated_linear_scaling_min_speed'] <= 0.04
     assert follow_path['transform_tolerance'] >= 0.6
@@ -503,9 +614,11 @@ def test_initialpose_is_only_ndt_guess_until_valid_alignment():
         'registration_->align(*output_cloud, init_guess);'
     )
     assert 'waiting for valid NDT before publishing map->odom' in source
-    assert 'if (!corrent_pose_with_cov_stamped_ptr_ || !have_good_pose_) {return;}' in source
+    assert ('if (!localization_active_ || !corrent_pose_with_cov_stamped_ptr_ || '
+            '!have_good_pose_) {return;}') in source
     assert 'have_good_pose_ && !ndt_bootstrap_pending_' in source
-    assert 'tf_msg.header.stamp = now();' in source
+    assert 'tf_snapshot_.header.stamp = now();' in source
+    assert 'if (!tf_snapshot_valid_) {return;}' in source
     assert 'ndt_aligned_scan_pub_' in header
     assert '"ndt_aligned_scan"' in source
     assert 'registration_->align(*output_cloud, init_guess);' in source

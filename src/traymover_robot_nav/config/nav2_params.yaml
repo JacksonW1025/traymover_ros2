@@ -65,12 +65,12 @@ controller_server:
       # Lookahead: how far ahead along the path RPP aims. Smaller = tighter
       # tracking (oscillation risk); larger = smoother but cuts corners.
       use_velocity_scaled_lookahead_dist: true
-      # Longer lookahead reduces commanded curvature, lowering yaw rate without
-      # adding another cmd_vel layer while keeping the existing direct chain.
-      lookahead_dist: 1.40
-      min_lookahead_dist: 1.10
-      max_lookahead_dist: 2.60
-      lookahead_time: 2.80
+      # Follow the corridor bend closely instead of aiming across its inside.
+      # At a large heading error, rotate-to-heading below turns before driving.
+      lookahead_dist: 0.50
+      min_lookahead_dist: 0.45
+      max_lookahead_dist: 0.65
+      lookahead_time: 1.50
       use_rotate_to_heading: true
       rotate_to_heading_min_angle: 0.35
       rotate_to_heading_angular_vel: 0.45
@@ -80,8 +80,8 @@ controller_server:
       # intentionally disabled for the current simple navigation pass.
       use_regulated_linear_velocity_scaling: true
       # Slow more aggressively on curves. RPP has no hard angular-velocity cap
-      # in follow mode, so turn-speed limiting is done through lookahead and
-      # curvature-based linear speed regulation.
+      # in follow mode; retain curvature-based linear speed regulation with
+      # the shorter lookahead so tighter tracking still slows down at bends.
       regulated_linear_scaling_min_radius: 3.20
       regulated_linear_scaling_min_speed: 0.035
       use_cost_regulated_linear_velocity_scaling: false
@@ -113,8 +113,9 @@ local_costmap:
       plugins: ["inflation_layer"]
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        cost_scaling_factor: 3.0
-        inflation_radius: 0.35
+        # Broad soft cost gradient favors corridor centers; not a hard margin.
+        cost_scaling_factor: 2.0
+        inflation_radius: 1.20
       always_send_full_costmap: True
 
 global_costmap:
@@ -135,8 +136,9 @@ global_costmap:
         map_subscribe_transient_local: True
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        cost_scaling_factor: 3.0
-        inflation_radius: 0.35
+        # Broad soft cost gradient favors corridor centers; not a hard margin.
+        cost_scaling_factor: 2.0
+        inflation_radius: 1.20
       always_send_full_costmap: True
 
 map_server:

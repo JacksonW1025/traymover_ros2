@@ -20,9 +20,9 @@ import guided_detour_node as guided  # noqa: E402
 
 
 @pytest.fixture
-def node(monkeypatch):
+def node(monkeypatch, request):
     monkeypatch.setenv('ROS_LOCALHOST_ONLY', '1')
-    rclpy.init(args=[], domain_id=80 + os.getpid() % 70)
+    rclpy.init(args=getattr(request, 'param', []), domain_id=80 + os.getpid() % 70)
     instance = guided.GuidedDetourNode()
     yield instance
     instance.destroy_node()
@@ -114,6 +114,18 @@ def test_preflight_requires_serial_parameter_output_and_services(node):
     assert not node.observation().collision_monitor_fresh
     node.battery_at -= 2.0
     assert not node.observation().driver_fresh
+
+
+def test_preflight_waits_for_core_startup_recovery_even_with_fresh_inputs(node):
+    healthy(node)
+    node.core.state = 'FAULT_HOLD'
+    node.core.reason = 'current-heading RealSense coverage unknown'
+    checks = node.preflight()
+    assert checks['RealSense scan']['status'] == 'PASS'
+    assert checks['Detour core readiness']['status'] == 'FAIL'
+    assert 'coverage unknown' in checks['Detour core readiness']['detail']
+    node.core.state = 'READY'
+    assert node.preflight()['Detour core readiness']['status'] == 'PASS'
 
 
 def test_sensor_tf_uses_acquisition_time_and_base_only(node):
@@ -313,3 +325,286 @@ def test_guided_node_cannot_bypass_collision_monitor(node):
     assert '/cmd_vel_detour_test' in publishers
     assert '/cmd_vel' not in publishers
     assert '/traymover_estop/auto_request' not in publishers
+
+
+def test_preflight_does_not_project_scans(node, monkeypatch):
+    healthy(node)
+
+    def unexpected(*args):
+        pytest.fail('preflight must not reproject obstacle scans')
+
+    monkeypatch.setattr(node, 'observation', unexpected)
+    assert all(row['status'] == 'PASS' for row in node.preflight().values())
+
+
+@pytest.mark.parametrize('missing', ['imu', 'tf'])
+def test_unmatched_old_scan_does_not_starve_newer_scan(node, monkeypatch, missing):
+    node.tf = TransformBuffer()
+    old = scan(node, age=0.3)
+    fresh = scan(node)
+    old_header = guided.stamp_seconds(old.header.stamp)
+    if missing == 'imu':
+        monkeypatch.setattr(node, 'yaw_at', lambda acquired:
+                            None if time.monotonic() - acquired > 0.2 else 0.0)
+    else:
+        monkeypatch.setattr(node, 'yaw_at', lambda acquired: 0.0)
+        lookup = node.tf.lookup_transform
+
+        def selective(*args):
+            if abs(args[2].nanoseconds * 1e-9 - old_header) < 0.00001:
+                raise LookupException('old transform missing')
+            return lookup(*args)
+
+        node.tf.lookup_transform = selective
+    node.on_scan('lidar', old)
+    assert node.scans['lidar'] is None
+    node.on_scan('lidar', fresh)
+    accepted = node.scans['lidar']
+    assert accepted is not None and accepted.rays
+    # An older pending scan must never overwrite an accepted newer sample.
+    monkeypatch.setattr(node, 'yaw_at', lambda acquired: 0.0)
+    node.tf = TransformBuffer()
+    node.consume_scans('lidar')
+    assert node.scans['lidar'] is accepted
+    assert not node.pending_scans['lidar']
+
+
+def test_expired_scan_remains_failed_with_receipt_and_acquisition_diagnostics(node):
+    node.tf = TransformBuffer()
+    node.on_scan('lidar', scan(node, age=2.0))
+    row = node.preflight()['LiDAR']
+    assert row['status'] == 'FAIL'
+    assert row['diagnostics']['received_age_sec'] < 0.5
+    assert row['diagnostics']['acquisition_age_sec'] > 1.0
+    assert 'expired' in row['detail']
+    assert row['diagnostics']['last_rejection'] == 'acquired scan expired'
+
+
+@pytest.mark.parametrize('ranges,counts,accepted', [
+    ([], {'beam_count': 0}, 0),
+    ([math.nan] * 3, {'nan': 3}, 0),
+    ([math.inf, -math.inf, math.nan, 0.1, 9.0, 2.0],
+     {'positive_inf': 1, 'negative_inf': 1, 'nan': 1,
+      'below_min': 1, 'above_max': 1, 'finite_in_range': 1}, 2),
+])
+def test_scan_diagnostics_distinguish_unknown_and_valid_depth(node, ranges, counts, accepted):
+    node.tf = TransformBuffer()
+    node.on_imu(imu(node))
+    message = scan(node)
+    message.ranges = ranges
+    node.on_scan('realsense', message)
+    row = node.preflight()['RealSense scan']
+    diagnostic = row['diagnostics']
+    for name, count in counts.items():
+        assert diagnostic[name] == count
+    assert diagnostic['accepted_rays'] == accepted
+    assert diagnostic['frame_id'] == 'laser'
+    assert diagnostic['range_min_m'] == pytest.approx(0.2)
+    assert diagnostic['range_max_m'] == pytest.approx(8.0)
+    assert row['status'] == ('PASS' if accepted else 'FAIL')
+    if not accepted:
+        assert 'zero accepted rays' in row['detail']
+
+
+def test_scan_diagnostics_explain_tilt_rejection(node):
+    node.tf = TransformBuffer()
+    node.on_imu(imu(node))
+    transform = TransformStamped()
+    transform.transform.rotation.y = math.sin(math.pi / 4)
+    transform.transform.rotation.w = math.cos(math.pi / 4)
+    node.tf.lookup_transform = lambda *args: transform
+    message = scan(node)
+    message.angle_min = 0.0
+    message.ranges = [2.0]
+    node.on_scan('realsense', message)
+    row = node.preflight()['RealSense scan']
+    assert row['status'] == 'FAIL'
+    assert row['diagnostics']['planar_rejected_rays'] == 1
+    assert row['diagnostics']['transform_rotation']['y'] == pytest.approx(math.sqrt(0.5))
+
+
+def test_pending_scan_can_retry_but_expires_without_fabricating_freshness(node, monkeypatch):
+    node.tf = TransformBuffer()
+    clock = time.monotonic()
+    monkeypatch.setattr(node, 'yaw_at', lambda acquired: None)
+    monkeypatch.setattr(guided.time, 'monotonic', lambda: clock)
+    node.on_scan('lidar', scan(node))
+    assert len(node.pending_scans['lidar']) == 1
+    assert node.preflight()['LiDAR']['diagnostics']['last_rejection'] == (
+        'IMU association unavailable')
+    clock += 1.1
+    monkeypatch.setattr(node, 'yaw_at', lambda acquired: 0.0)
+    node.consume_scans('lidar')
+    assert not node.pending_scans['lidar']
+    assert node.scans['lidar'] is None
+    assert node.preflight()['LiDAR']['status'] == 'FAIL'
+    assert node.preflight()['LiDAR']['diagnostics']['last_rejection'] == 'acquired scan expired'
+
+
+def test_pending_scan_accepts_once_imu_evidence_arrives(node, monkeypatch):
+    node.tf = TransformBuffer()
+    node.on_scan('lidar', scan(node))
+    acquired = node.pending_scans['lidar'][0][1]
+    monkeypatch.setattr(node, 'yaw_at', lambda when: 0.0)
+    node.consume_scans('lidar')
+    assert node.scans['lidar'].stamp == acquired
+    assert node.scans['lidar'].rays
+    assert not node.pending_scans['lidar']
+
+
+def test_new_header_with_older_acquisition_estimate_cannot_replace_cache(node, monkeypatch):
+    healthy(node)
+    saved = node.scans['lidar']
+    header = node.scan_headers['lidar']
+    monkeypatch.setattr(node, 'acquisition_time',
+                        lambda *args: (saved.stamp - 0.01, header + 0.01))
+    monkeypatch.setattr(node, 'yaw_at', lambda when: 0.0)
+    node.on_scan('lidar', scan(node))
+    assert node.scans['lidar'] is saved
+    assert not node.pending_scans['lidar']
+
+
+def test_shared_scan_uses_one_subscription_and_exact_observation(node, monkeypatch):
+    topics = [subscription.topic_name for subscription in node.subscriptions]
+    assert topics.count('/scan') == 1
+    assert '/scan_detour_perimeter' not in topics
+    assert set(node.scans) == {'lidar', 'realsense'}
+    healthy(node)
+    original = guided.adjusted_scan
+    calls = []
+
+    def counted(*args):
+        calls.append(args[0])
+        return original(*args)
+
+    monkeypatch.setattr(guided, 'adjusted_scan', counted)
+    obs = node.observation()
+    assert obs.lidar is obs.perimeter
+    assert obs.perimeter.stamp == node.scans['lidar'].stamp
+    assert len(calls) == 2
+    checks = node.preflight()
+    assert checks['LiDAR'] == checks['Perimeter scan']
+
+
+def test_shared_scan_missing_stale_and_invalid_evidence_stays_shared(node, monkeypatch):
+    assert node.observation().lidar is node.observation().perimeter is None
+    healthy(node)
+    future = time.monotonic() + node.config.scan_timeout_sec + 0.1
+    monkeypatch.setattr(guided.time, 'monotonic', lambda: future)
+    checks = node.preflight()
+    assert checks['LiDAR']['status'] == checks['Perimeter scan']['status'] == 'FAIL'
+    obs = node.observation()
+    assert obs.lidar is obs.perimeter
+    assert future - obs.perimeter.stamp > node.config.scan_timeout_sec
+    msg = scan(node)
+    node.on_scan('lidar', msg)
+    node.on_scan('lidar', msg)
+    obs = node.observation()
+    assert obs.lidar is obs.perimeter is None
+    assert not obs.tf_healthy
+
+
+@pytest.mark.parametrize('node', [[
+    '--ros-args', '-p', 'perimeter_scan_topic:=/scan_detour_perimeter']], indirect=True)
+def test_distinct_perimeter_requires_its_own_fresh_evidence(node):
+    topics = [subscription.topic_name for subscription in node.subscriptions]
+    assert topics.count('/scan_detour_perimeter') == 1
+    healthy(node)
+    node.scans['perimeter'] = None
+    node.scan_tf_ok['perimeter'] = False
+    obs = node.observation()
+    assert obs.lidar is not None and obs.perimeter is None
+    assert not obs.tf_healthy
+    assert node.preflight()['LiDAR']['status'] == 'PASS'
+    assert node.preflight()['Perimeter scan']['status'] == 'FAIL'
+
+
+def test_shared_projected_infinite_bins_never_certify_free_space(node):
+    node.tf = TransformBuffer()
+    node.on_imu(imu(node))
+    msg = scan(node)
+    msg.ranges = [float('inf')] * len(msg.ranges)
+    node.on_scan('lidar', msg)
+    obs = node.observation()
+    assert obs.lidar is obs.perimeter
+    assert not obs.perimeter.rays
+    checks = node.preflight()
+    assert checks['LiDAR']['status'] == checks['Perimeter scan']['status'] == 'FAIL'
+
+
+@pytest.mark.parametrize('node', [[
+    '--ros-args', '-p', 'perimeter_scan_topic:=/scan_detour_perimeter']], indirect=True)
+def test_distinct_perimeter_old_acquisition_is_not_refreshed_by_lidar(node, monkeypatch):
+    monkeypatch.setattr(node, 'yaw_at', lambda acquired: 0.0)
+    healthy(node)
+    saved = node.scans['perimeter']
+    node.scans['perimeter'] = guided.Scan(saved.stamp - 2.0, saved.rays)
+    node.on_scan('lidar', scan(node))
+    obs = node.observation()
+    assert obs.perimeter.stamp == saved.stamp - 2.0
+    assert obs.lidar.stamp > obs.perimeter.stamp
+    checks = node.preflight()
+    assert checks['LiDAR']['status'] == 'PASS'
+    assert checks['Perimeter scan']['status'] == 'FAIL'
+
+
+def test_duplicate_battery_header_preserves_freshness_without_motion_fault(node):
+    healthy(node)
+    output = capture(node)
+    node.last_command = guided.Velocity(0.03, 0.0)
+    message = BatteryState()
+    message.header.stamp = stamp(node)
+    node.on_battery(message)
+    acquired = node.battery_at
+    node.on_battery(message)
+    assert node.battery_at == acquired
+    assert node.duplicate_battery_samples == 1
+    assert node.preflight()['Driver serial']['duplicate_battery_samples'] == 1
+    assert not node.adapter_fault
+    assert not output
+    assert node.last_command == guided.Velocity(0.03, 0.0)
+
+
+def test_duplicate_battery_stream_never_renews_expired_serial_evidence(node, monkeypatch):
+    healthy(node)
+    message = BatteryState()
+    message.header.stamp = stamp(node)
+    node.on_battery(message)
+    acquired = node.battery_at
+    future = acquired + node.extra['driver_timeout_sec'] + 0.1
+    monkeypatch.setattr(guided.time, 'monotonic', lambda: future)
+    for _ in range(5):
+        node.on_battery(message)
+    assert node.battery_at == acquired
+    assert node.duplicate_battery_samples == 5
+    assert not node.observation().driver_fresh
+    assert node.preflight()['Driver serial']['status'] == 'FAIL'
+    advancing = BatteryState()
+    advancing.header.stamp = stamp(node)
+    node.on_battery(advancing)
+    assert node.battery_at > acquired
+    assert node.preflight()['Driver serial']['status'] == 'PASS'
+
+
+def test_out_of_order_battery_header_still_faults_during_motion(node):
+    healthy(node)
+    output = capture(node)
+    node.last_command = guided.Velocity(0.03, 0.0)
+    old = BatteryState()
+    old.header.stamp = stamp(node, age=0.1)
+    node.on_battery(old)
+    assert not math.isfinite(node.battery_at)
+    assert node.adapter_fault == 'invalid chassis serial sample during motion'
+    assert guided.twist_is_zero(output[-1])
+
+
+def test_malformed_battery_then_duplicate_cannot_restore_serial_health(node):
+    healthy(node)
+    message = BatteryState()
+    message.header.stamp = stamp(node)
+    node.on_battery(message)
+    node.on_battery(BatteryState())
+    assert not math.isfinite(node.battery_at)
+    node.on_battery(message)
+    assert not math.isfinite(node.battery_at)
+    assert node.preflight()['Driver serial']['status'] == 'FAIL'

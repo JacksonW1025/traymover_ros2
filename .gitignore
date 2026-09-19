@@ -3,6 +3,10 @@ build/
 install/
 log/
 
+# Local navigation runs and intermediate map-processing outputs
+logs/
+tmp/
+
 # Pythoni
 __pycache__/
 *.pyc

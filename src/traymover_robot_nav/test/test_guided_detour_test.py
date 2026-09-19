@@ -116,6 +116,64 @@ class FakeNode:
         self.destroyed = True
 
 
+def test_prompt_drains_ready_callbacks_without_keyboard_poll_sleep(tmp_path, monkeypatch):
+    clock = Clock()
+    node = FakeNode(tmp_path, clock)
+    report = runner.SessionReport(tmp_path, 'test-commit', {})
+    callbacks = []
+    keyboard_timeouts = []
+
+    def spin(unused_node, timeout_sec):
+        callbacks.append(clock())
+        clock.advance(0.001)  # A ready sensor callback, not an executor timeout.
+
+    def keyboard_poll(readers, writers, errors, timeout):
+        keyboard_timeouts.append(timeout)
+        clock.advance(timeout)
+        return (readers if clock() >= 1.4 else [], [], [])
+
+    monkeypatch.setattr(runner.sys, 'stdin', io.StringIO('ARM\n'))
+    monkeypatch.setattr(runner.select, 'select', keyboard_poll)
+    session = runner.GuidedSession(node, report, spin, clock=clock)
+    assert session.prompt('Type ARM') == 'ARM'
+    assert len(callbacks) >= 100
+    assert not any(keyboard_timeouts)
+    assert not node.core.requests
+
+
+def test_observation_wait_services_callbacks_without_rechecking_every_message(tmp_path):
+    clock = Clock()
+    node = FakeNode(tmp_path, clock)
+    report = runner.SessionReport(tmp_path, 'test-commit', {})
+    callbacks, checks = [], []
+
+    def spin(unused_node, timeout_sec):
+        callbacks.append(clock())
+        clock.advance(0.001)
+
+    def observed():
+        checks.append(clock())
+        return False
+
+    session = runner.GuidedSession(node, report, spin, clock=clock)
+    assert not session.wait(observed, 0.2)
+    assert len(callbacks) >= 100
+    assert len(checks) <= 7
+
+
+def test_report_tail_contains_preflight_cause(tmp_path, capsys):
+    session, node, unused_report = session_fixture(tmp_path)
+    session.report.data['sensor_preflight'] = {
+        'RealSense scan': {'status': 'FAIL', 'detail': 'no usable rays; nan=640'},
+    }
+    session.finish('PRECHECK FAILED. Motion tests disabled. TEST ABORT.')
+    tail = capsys.readouterr().out.splitlines()[-4:]
+    assert any('PRECHECK FAILED' in line for line in tail)
+    assert any('RealSense scan: no usable rays; nan=640' in line for line in tail)
+    assert tail[-1].startswith('Report: ')
+    assert node.close_count == 1
+
+
 def session_fixture(tmp_path, answers=()):
     clock = Clock()
     node = FakeNode(tmp_path, clock)
@@ -204,6 +262,91 @@ def test_health_is_rechecked_after_operator_arm_input(tmp_path):
         session.preflight()
     assert not node.core.armed
     assert report.data['checks']['Preflight sensors']['status'] == 'FAIL'
+
+
+def test_arm_waits_stopped_for_transient_sensor_recovery(tmp_path):
+    session, node, report = session_fixture(tmp_path)
+    original_spin = session.spin
+    requested_at = []
+
+    def request_arm():
+        requested_at.append(node.clock())
+        node.healthy = False
+        return 'ARM'
+
+    def recovering_spin(unused_node, timeout_sec):
+        original_spin(unused_node, timeout_sec)
+        if requested_at and node.clock() >= requested_at[0] + 0.5:
+            node.healthy = True
+
+    session.read_line = request_arm
+    session.spin = recovering_spin
+    session.preflight()
+    assert node.core.armed
+    assert node.core.arm_calls[0] >= requested_at[0] + 1.5
+    assert not node.core.requests
+    assert report.data['arm_preflight_initial']['IMU']['status'] == 'FAIL'
+    assert report.data['arm_preflight']['IMU']['status'] == 'PASS'
+    assert report.data['checks']['ARM readiness']['status'] == 'WARN'
+
+
+def test_arm_stability_restarts_after_a_second_dropout(tmp_path):
+    session, node, report = session_fixture(tmp_path)
+    requested_at = []
+    original_preflight = node.preflight
+
+    def request_arm():
+        requested_at.append(node.clock())
+        return 'ARM'
+
+    def changing_inputs():
+        if requested_at:
+            elapsed = node.clock() - requested_at[0]
+            node.healthy = not (elapsed < 0.2 or 0.7 <= elapsed < 1.0)
+        return original_preflight()
+
+    session.read_line = request_arm
+    node.preflight = changing_inputs
+    session.preflight()
+    assert node.core.arm_calls[0] >= requested_at[0] + 2.0
+    assert len(report.data['arm_health_events']) >= 4
+    assert not node.core.requests
+
+
+def test_arm_timeout_saves_the_actual_failed_snapshot(tmp_path, capsys):
+    session, node, report = session_fixture(tmp_path)
+    requested_at = []
+
+    def request_arm():
+        requested_at.append(node.clock())
+        node.healthy = False
+        return 'ARM'
+
+    session.read_line = request_arm
+    with pytest.raises(runner.TestAbort, match='PRECHECK FAILED at ARM'):
+        session.preflight()
+    assert 10.0 <= node.clock() - requested_at[0] <= 10.1
+    assert report.data['sensor_preflight']['IMU']['status'] == 'PASS'
+    assert report.data['arm_preflight']['IMU']['status'] == 'FAIL'
+    assert not node.core.arm_calls and not node.core.requests
+    session.finish('PRECHECK FAILED at ARM')
+    assert 'ARM failure — IMU' in capsys.readouterr().out
+
+
+@pytest.mark.parametrize('answer,manual_count', [('q\n', 0), ('!\n', 1), ('', 0)])
+def test_arm_wait_can_be_cancelled_without_authorizing_motion(
+        tmp_path, monkeypatch, answer, manual_count):
+    session, node, unused_report = session_fixture(tmp_path)
+    session.read_line = None
+    node.healthy = False
+    stream = io.StringIO(answer)
+    monkeypatch.setattr(runner.sys, 'stdin', stream)
+    monkeypatch.setattr(runner.select, 'select', lambda *args: ([stream], [], []))
+    with pytest.raises(runner.TestAbort):
+        session.verify_arm()
+    assert not node.core.arm_calls and not node.core.requests
+    assert not session.waiting_for_arm
+    assert node.manual_estops == manual_count
 
 
 @pytest.mark.parametrize('answer,reason,manual_count', [

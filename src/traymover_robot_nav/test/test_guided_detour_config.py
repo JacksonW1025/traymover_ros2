@@ -93,6 +93,14 @@ def test_rviz_uses_available_robot_root_and_sensor_topics():
                for panel in rviz['Panels'])
 
 
+def test_menu_closed_input_exits_without_reprinting_forever():
+    result = subprocess.run(['bash', str(WORKSPACE / 'scripts/traymover.sh')],
+                            input='', text=True, capture_output=True, timeout=3)
+    assert result.returncode == 0
+    assert result.stdout.count('===== Traymover Launcher =====') == 1
+    assert 'Input closed. Bye.' in result.stdout
+
+
 def test_menu_cleans_only_owned_launch_and_preserves_parent_trap(tmp_path):
     """Exercise real process-group cleanup using fake ROS commands, never ROS."""
     menu = (WORKSPACE / 'scripts' / 'traymover.sh').read_text()
@@ -218,10 +226,15 @@ def test_standalone_launch_requires_safety_without_navigation(monkeypatch):
         'robot_state_publisher', 'joint_state_publisher', 'depthimage_to_laserscan',
         'pointcloud_to_laserscan', 'rviz2',
     }
-    projectors = [node for node in nodes if node['package'] == 'pointcloud_to_laserscan']
-    assert {dict(node['remappings'])['scan'] for node in projectors} == {
-        '/scan', '/scan_detour_perimeter',
+    depth_scan = next(node for node in nodes
+                      if node['package'] == 'depthimage_to_laserscan')
+    assert depth_scan['parameters'][0] == {
+        'scan_height': 10, 'range_min': 0.20, 'range_max': 10.0,
+        'output_frame': 'camera_depth_frame',
     }
+    projectors = [node for node in nodes if node['package'] == 'pointcloud_to_laserscan']
+    assert len(projectors) == 1
+    assert dict(projectors[0]['remappings'])['scan'] == '/scan'
     for node in projectors:
         assert dict(node['remappings'])['cloud_in'] == '/point_cloud_raw'
         params = node['parameters'][0]
@@ -230,3 +243,10 @@ def test_standalone_launch_requires_safety_without_navigation(monkeypatch):
         assert params['angle_max'] == math.pi
         assert params['min_height'] == -0.25
         assert params['max_height'] == 1.05
+        assert params['transform_tolerance'] == 0.05
+        assert params['angle_increment'] == 0.0087
+        assert params['scan_time'] == 0.1
+        assert params['range_min'] == 0.30
+        assert params['range_max'] == 60.0
+        assert params['use_inf'] is True
+        assert params['inf_epsilon'] == 1.0
