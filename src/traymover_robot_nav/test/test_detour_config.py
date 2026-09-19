@@ -25,9 +25,16 @@ def test_collision_monitor_only_changes_input_topic():
     assert detour == baseline
 
 
-def test_global_dynamic_observations_are_separate_from_static_map():
-    baseline = config('nav2_params_lidar_realsense_obstacle.yaml')
+def test_option18_uses_option10_nav_params_plus_obstacle_layers_only():
+    baseline = config('nav2_params.yaml')
     detour = config('nav2_params_lidar_realsense_detour.yaml')
+
+    local_map = detour['local_costmap']['local_costmap']['ros__parameters']
+    assert local_map['plugins'] == ['obstacle_layer', 'inflation_layer']
+    local_dynamic = local_map.pop('obstacle_layer')
+    assert local_dynamic['observation_sources'] == 'lidar_scan realsense_scan'
+    local_map['plugins'].remove('obstacle_layer')
+
     global_map = detour['global_costmap']['global_costmap']['ros__parameters']
     assert global_map['plugins'] == ['static_layer', 'obstacle_layer', 'inflation_layer']
     dynamic = global_map.pop('obstacle_layer')
@@ -100,11 +107,19 @@ def test_option18_launch_chain_and_existing_menu_routes():
     assert '17) action_test_auto_estop ;;' in text
     assert '18) action_start_nav_wait_detour ;;' in text
     body = text.split('action_start_nav_wait_detour() {', 1)[1].split('\n}', 1)[0]
-    assert body.index('Select PCD') < body.index('Launch RViz')
+    assert body.index('Select PCD') < body.index('Enable ground-plane fitting')
+    assert body.index('cleanup_static_tf.py') < body.index('Generating runtime 2D nav map')
+    assert '--z-reference "${z_reference}"' in body
+    assert 'NAV_PGM_Z_MIN' in body
+    assert 'NAV_OBSTACLE_PGM_Z_MIN' not in body
     assert body.index('Launch RViz') < body.index('prompt_wait_detour_settings')
-    assert '--z-reference absolute' in body
+    assert 'prompt_ndt_height_boost' in body
     assert 'auto_estop_enabled:=${DETOUR_AUTO_ESTOP_ENABLED}' in body
     assert 'action_start_auto_estop' not in body
+    assert '_option18.' in body
+    assert 'run_nav_logged.sh' in body
+    assert 'auto_correction_enabled:=true' in body
+    assert 'height_boost_enabled:=${NDT_HEIGHT_BOOST_ENABLED}' in body
     assert 'traymover_nav_lidar_realsense_detour.launch.py' in body
 
 
@@ -117,6 +132,43 @@ def load_launch(monkeypatch):
     monkeypatch.setattr(module, 'get_package_share_directory',
                         lambda name: str(PKG.parent / name))
     return module
+
+
+def test_obstacle_launch_forwards_option10_localization_controls(monkeypatch):
+    pytest.importorskip('launch_ros')
+    module_path = PKG / 'launch' / 'traymover_nav_lidar_realsense_obstacle.launch.py'
+    spec = importlib.util.spec_from_file_location('test_obstacle_launch', module_path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    monkeypatch.setattr(module, 'get_package_share_directory', lambda name: str(PKG))
+
+    from launch import LaunchContext
+    from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+    from launch.utilities import perform_substitutions
+
+    description = module.generate_launch_description()
+    context = LaunchContext()
+    for action in description.entities:
+        if isinstance(action, DeclareLaunchArgument):
+            action.execute(context)
+    context.launch_configurations.update(
+        height_boost_enabled='true',
+        height_boost_min_z='2.75',
+        auto_correction_enabled='true',
+    )
+
+    localization = None
+    for action in description.entities:
+        if not isinstance(action, IncludeLaunchDescription):
+            continue
+        location = action.launch_description_source._LaunchDescriptionSource__location
+        if Path(perform_substitutions(context, location)).name == 'lidar_localization.launch.py':
+            localization = dict(action.launch_arguments)
+            break
+    assert localization is not None
+    assert localization['height_boost_enabled'].perform(context) == 'true'
+    assert localization['height_boost_min_z'].perform(context) == '2.75'
+    assert localization['auto_correction_enabled'].perform(context) == 'true'
 
 
 @pytest.mark.parametrize('auto,detour,expected', [
@@ -183,6 +235,9 @@ def test_launch_dependency_single_camera_and_scoped_action_proxy(
     assert obstacle['start_realsense_driver'] == 'false'
     assert obstacle['bringup_hardware'] == 'false'
     assert obstacle['launch_rviz'] == 'false'  # RViz public goal action stays outside remap scope.
+    assert obstacle['height_boost_enabled'].perform(context) == 'false'
+    assert obstacle['height_boost_min_z'].perform(context) == '2.0'
+    assert obstacle['auto_correction_enabled'].perform(context) == 'false'
     assert includes['base_serial.launch.py']['auto_estop_enabled'] == auto
     if auto == 'true':
         assert includes['traymover_auto_estop.launch.py']['start_realsense_driver'] == 'false'

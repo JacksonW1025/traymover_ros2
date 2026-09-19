@@ -1,217 +1,67 @@
-# Option 19 — 无地图、小范围 Guided Detour 测试
+# 选项 19：单键直线绕障测试
 
-实现位于 `integration/nav-safety-reports-20260917` 工作树，基于已有 Option 18。
-Option 19 测试局部 Detour 与 EStop-safe recovery；不是完整导航或物理制动认证。
-全部默认值都是 **initial test values，未经实车安全验证**。
+选项 19 用于验证一个简单的无地图绕障过程：底盘沿启动时的直线低速前进，检测到前方持续障碍后选择较空的一侧绕过，随后使用 STM32 轮式里程计回到原直线并停车。不启动 Nav2，也不需要地图。
 
-## 构建和启动
+## 使用方法
 
-本次实际开发目录：
+从工作区根目录执行：
 
 ```bash
-cd /tmp/traymover-integrated-20260917-2b46r7et/workspace
-source /opt/ros/humble/setup.bash
-source /home/wheeltec/traymover_ros2/install/setup.bash
-colcon --log-base /tmp/traymover-guided-log build \
-  --build-base /tmp/traymover-guided-build --install-base install --symlink-install \
-  --packages-select traymover_robot_nav traymover_robot_safety turn_on_traymover_robot
-source install/setup.bash
 bash scripts/traymover.sh
 ```
 
-选择 `19) Guided EStop-safe Detour Test (No Map / No Nav2)`。
-启动选项只问 `Launch sensor visualization/RViz? [Y/n]`。
-传感器与安全节点日志写入工作树的 `logs/`；引导器在当前终端前台运行。
-可用时另开现有 manual EStop keyboard；RViz 使用现有 EStopPanel。
-无图形终端时，引导器全程支持 `!` 然后 Enter 请求手动 EStop；`q`+Enter / Ctrl+C
-停止当前测试。运动中输入会被消费，不能提前授权下一步。键盘/EStop 操作者应始终在机器人侧面。
-
-不需要 PCD、PGM/YAML 地图、Navigation Goal、NDT 或 FAST-LIO prior map。
-启动前先正常停止其他导航/遥控会话；若有竞争速度发布者，本测试的 preflight 会拒绝 ARM。
-测试不会为了启动而自动终止其他会话。
-
-## 软件链与共享逻辑
+选择：
 
 ```text
-LiDAR raw cloud -> /scan (full 360°, shared evidence) -+
-RealSense -> depthimage_to_laserscan -> /scan_realsense +-> shared Detour Core
-IMU /imu/data_raw ----------------------------------+
-RealSense depth -> automatic EStop -> driver states -+
-
-foreground guided runner -> shared core -> /cmd_vel_detour_test
-    -> Collision Monitor -> /cmd_vel -> driver EStop/watchdog -> chassis
+19) Single-button Straight-line Detour Test (No Map / No Nav2)
 ```
 
-`detour_core.py` 是原 Option 18 `detour_gate.py` 的核心，原导入路径保留兼容。
-生产 supervisor 和 guided core 共享 Scene 障碍判断、左右空间候选、覆盖检查、WAIT、
-clear confirmation、状态机 tick、EStop hold/discard、guard、转向控制、sensor freshness、
-phase timeout 和恢复入口。`detour_obstacle.py` 共享时间戳、四元数和完整 3D scan-to-ray
-变换，包括相机光轴深度约束。`detour_motion.py` 的 guided policy 只替换反馈/授权策略：
-IMU yaw 转向、时间受限直行、显式逐动作授权和 session limits。
-
-生产直行保留定位位移反馈；测试直行用时间反馈。二者共用同一状态机、Guard、超时和
-中断路径；不能声称测试模式验证了生产定位位移精度。测试 observation 不伪造导航目标或
-localization_healthy，不订阅 wheel odometry、map pose 或 navigation action。
-
-LiDAR 仅运行一份完整周向投影 `/scan`，检测和周向检查共享同一缓存及采集时间戳，
-不再重复投影或补偿。保留生产旋转空间验证，未知/缺失 LiDAR rays 不当作自由空间。
-仅在显式指定独立输入时使用 `perimeter_scan_topic`；默认 `/scan`。
-缓存扫描依据采集时 IMU yaw 转到当前 heading，并扣除保守的命令运动余量；该余量不是实测距离。
-固定 TF 使用 URDF 的 `base_link`，RViz 和测试 CM 的 fixed/odom frame 均为 `base_link`。
-没有伪造 `odom`、`map` 或里程计。
-
-只启动底盘、IMU、URDF/TF、LiDAR、RealSense、深度扫描、automatic EStop、CM 生命周期管理、
-可选 RViz。CM 是 `nav2_collision_monitor` 软件包中的安全节点；不启动 Nav2 navigation stack、
-map_server、planner_server、controller_server 或 bt_navigator。
-
-测试 CM 保留 Option 18 的 stop/slow polygon 和 observation sources，仅改输入话题、无地图
-frame 和 `stop_pub_timeout=1200 s`（覆盖默认 900 s 会话），使持续零输出可以做 freshness 检查。
-安装的 Humble CM 对 stale source 本身不保证 fail-closed；共享 Core/ROS adapter 负责扫描超时
-立即发零，driver watchdog 继续作为后备。
-
-## 逐步使用示例
-
-| 阶段 | 操作及结果 | 运动 |
-|---|---|---|
-| 0 Preflight | 自动检查 driver serial heartbeat、IMU、两种 scan、周向 scan、TF、EStop request/state/reason、driver auto 参数、CM ACTIVE/输出及速度发布者。任一 critical FAIL 禁止运动 | 无 |
-| ARM | 清理平地和测试侧约 1 m 空间，操作者准备手动 EStop，输入严格大写 `ARM`；其他输入结束 | 无 |
-| 1 Detection | 纸箱放在前方约 1.0–1.1 m，Enter；显示 nearest range、支持点数、confirmation frames、左右/中心数据；最多三次 | 无 |
-| 2 WAIT/Clear | 留住纸箱，Enter，观察 NORMAL→WAITING；测试 WAIT=2 s，生产=5 s；移走纸箱后 Enter，观察 CLEARING→NORMAL | 无 |
-| 3 Side | 再放纸箱并留出明显一侧空间，Enter；显示左右 clearance 和 LEFT/RIGHT/UNKNOWN；只有人工确认 `y` 才允许继续，最多重摆一次 | 无 |
-| 4 TURN | 阅读方向/角度，站在占用范围外，Enter；IMU 控制转向后 ZERO→SETTLE→OBSERVE | 第一次运动，仅转向 |
-| 5 STRAIGHT | 当前朝向重新扫描；Guard 不允许则停止/重摆/跳过；另一次 Enter 只执行极短直行，之后重新停止观察 | 独立低速直行 |
-| 6 Guard | 用纸箱建立较近障碍，Enter，最多 0.5 s、0.02 m/s；Guard 可直接拒绝起步；若 Auto EStop 先介入记 WARN | 极短或零 |
-| 7 Auto EStop | 清理前方后 Enter，以剩余 session budget 为准极慢前进；从侧面移入纸箱，禁止从机器人上方/下方伸手；超时自动停止 | 最多 5 s，通常因累计预算更短 |
-| 8 Recovery | 移走纸箱后 Enter；EStop 清除、fresh settle/clear 后只到 READY，旧动作丢弃，显示当前重新选边 | 无 |
-| 可选 | 全部核心检查 PASS 后可回答 `y`，基于当前扫描额外执行一次单独确认的 TURN；默认 N | 仅一个 TURN |
-| 9 Report | Enter 打印 preliminary assessment，保存 JSON | 无 |
-
-终端示例（数值只是交互格式示例，不是实车测量）：
+传感器和安全节点启动后，终端只需要一次操作：
 
 ```text
-[Stage 1/8] FRONT OBSTACLE DETECTION
-Robot motion: NONE.
-Place a cardboard box approximately 1.0–1.1 m in front of the robot.
-Press Enter when ready.
-  nearest_range_m: 1.06
-  supporting_points: 18
-  confirmation_frames: 2
-Front obstacle detection: PASS
-
-[Stage 2/8] WAIT / CLEAR RECOVERY
-Robot motion: NONE. Testing NORMAL -> WAITING.
-TEST wait = 2.0 sec; PRODUCTION default = 5.0 sec.
-Press Enter to observe WAITING.
-WAIT transition: PASS
-Now remove the obstacle. Robot motion remains disabled.
-Press Enter after the area is clear.
-Obstacle clear recovery: PASS
+准备好后按 Enter：
 ```
 
-如果正中纸箱让 25° 方向仍被机器人宽度覆盖，选边可能 UNKNOWN；重新摆放纸箱或结束，
-不能降低 Guard/Auto EStop 距离。若空间不足，停止后人工重新摆机器人，禁止自动倒车。
+按 Enter 后：
 
-Stage 7 的 Guard 始终有效，可能先于 Auto EStop 阻止运动。程序允许继续观察静止 EStop
-与释放，但没有真实“运动中被 Auto EStop 打断”的证据时，该项和完整旧动作丢弃验证保持
-INCOMPLETE。这不会被改写成 PASS。无需人员站在运动机器人正前方。
+1. 记录当前 `/odom` 位姿，定义原始直线路径。
+2. 以 `0.05 m/s` 沿该直线前进。
+3. 测试者从侧面走到底盘正前方约 `1.2–1.8 m` 并保持静止；尚未完成实车标定时，应先用纸箱完成同样测试。
+4. 第一个障碍持续 `0.20 s` 后，底盘固定选择右侧，不进行左右候选或周边净空判断。
+5. 执行固定动作：“右转、斜向离开、恢复原方向并越过、左转斜回原直线、恢复原航向”。
+6. 使用轮式里程计检查横向误差不超过 `0.10 m`、航向误差不超过 `5°`，通过后才显示完成并停车。
 
-## Preflight 退出码与扫描诊断
+无需输入 `on`、`ARM`、`yes`，也没有分阶段确认和参数问答。输入 `!` 后回车会请求手动急停，`Ctrl+C` 会停止测试。
 
-`[ros2run]: Process exited with failure 1` 表示测试结果不是完整 PASS，不能单凭这行判定程序崩溃。
-先看终端末尾 `Stop reason` 和 `Preflight failure`，或 JSON 的 `stop_reason`、
-`sensor_preflight`。输入不是严格大写 `ARM`、输入 `q` 或关闭输入，也会结束会话而不运动。
+## 运行链路
 
-扫描预检现在记录原始 frame、beam 数量、有效距离/NaN/+inf/-inf/超范围数量、采集与接收年龄、
-接受的射线数、等待 IMU/TF 的原因和转换旋转。`zero accepted rays (unknown space)` 与
-`accepted acquisition stale` 是不同故障；新鲜时间戳不代表有有效的障碍观测。
+运动命令仍经过：
 
-RealSense 的扫描使用中央10行，范围0.20–10.0m。较大图像 ROI 的 Auto EStop FREE 不能证明这条
-扫描带有足够观测；大量 NaN 或中央视野缺失时测试保持停止。不要把 NaN 当作自由空间，
-也不要通过缩小 EStop 距离或放宽 freshness 来获得 PASS。传感器项通过后，还要等待
-`Detour core readiness` 通过，避免在共享 Core 尚未完成启动故障恢复时要求 ARM。
+```text
+Option 19 core -> /cmd_vel -> chassis driver -> chassis
+```
 
-前台等待键盘时持续处理 ROS 回调；观察条件按20Hz检查。较早扫描等待 IMU/TF 时不再挡住
-后面可用的新扫描，但所有缓存仍保留原采集时间，过期数据不会变成新鲜数据。菜单输入关闭
-后直接退出，不再循环打印菜单。
+选项 19 只启动 RealSense 深度相机和底盘编码器里程计，不启动 LiDAR、Auto EStop、Collision Monitor、IMU、地图或 Nav2。深度相机只负责触发第一个前方障碍；触发后固定向右绕，不再检查左右候选走廊、旋转周边或每段前方净空。按 Enter 后立即提出启动请求，收到深度扫描和轮式里程计后直接前进。
 
-2026-09-17 相机单独采样确认：中央扫描带有大量有效的3.5–6m深度，原3m转换上限将其
-过滤成NaN。对照转换最后一帧的有效点数为3m上限9点、10m上限586点。因此只将Option19
-的转换上限改为10m，保留真实有限远距离；零深度/NaN仍保持未知。10m是数据接受上限，
-不是相机测距可靠性认证。原Option16/18配置、0.80m Auto EStop、0.95m Guard、中央覆盖
-及freshness检查均不变。采样记录位于 `logs/depth_probe_20260917_175327.json`。
+底盘驱动自身的手动/物理急停入口和速度命令看门狗保持不变。输入 `!` 后回车会请求现有手动急停服务。
 
-输入 `ARM` 后不会以某个瞬时快照立即结束：程序保持零速，最多等待10秒，要求所有检查
-连续通过 `clear_confirm_sec`（默认1秒），然后才设置本会话的 ARM。任何失败都重新开始
-稳定计时，传感器/服务的 freshness 门槛和共享 Core 的 HOLD/FAULT 恢复要求不变；不会
-手动重置 Core 来跳过故障。期间 `q`/Ctrl+C 可退出，`!` 请求手动 EStop。
-恢复后继续静止观察阶段，TURN/STRAIGHT 仍各需单独确认。无法稳定则记录
-`arm_preflight_initial`、`arm_preflight`、`arm_health_events`，终端末尾打印实际 ARM 失败项，
-避免拿启动时的 PASS 快照解释后来的 ARM 失败。
+绕行动作不使用倒车。遇到第一个障碍前，程序持续用实际编码器轨迹更新参考直线，避免启动时的里程计跳变导致误停；检测到障碍后参考直线固定。绕行结束后若未回到上述位置/航向容差内，会进入 `FAULT_HOLD` 并停车，不会错误报告“已经回线”。
 
-底盘串口轮询可能在同一轮中先发布 motor feedback、再发布 motor status，两条
-`/battery_state` 使用相同的采集时间戳。guided adapter 忽略这种相同时间戳的重复消息，
-不刷新 freshness；报告显示忽略计数。时间戳倒退/无效仍报错，只有重复消息而没有新的
-时间戳时仍按原超时停车。driver、EStop 和 watchdog 本身不作修改。
+## 初始参数
 
-## 初始限制
+配置文件为 `src/traymover_robot_nav/config/guided_detour_test.yaml`：
 
-| 参数 | 默认 |
-|---|---|
-| trigger / guard / Auto EStop | 1.10 / 0.95 / 0.80 m，Auto 阈值未改 |
-| test WAIT / production WAIT | 2 / 5 s |
-| TURN | 25°，最大 0.15 rad/s，5° tolerance，硬超时 5 s |
-| TURN assessment | ≤5° PASS，5–10° WARN，>10°/超时/故障 FAIL；阈值配置化 |
-| STRAIGHT | 0.03 m/s，1.5 s 命令时长，硬上限 2 s |
-| guard probe | 0.02 m/s，0.5 s |
-| EStop probe | 0.02 m/s，最多 5 s，同时受剩余累计预算约束 |
-| stopped settling | 至少 0.5 s，随后要求新鲜扫描 |
-| scan / depth scan / IMU timeout | 1.0 / 1.0 / 0.5 s |
-| session forward command | ≤5 s；不等于实测行驶时间/距离 |
-| accumulated rotation | ≤90°（IMU yaw 变化与请求预算检查） |
-| session duration | 900 s，等待用户也计时 |
-| software control deadline | 0.25 s；调度超限停车，driver watchdog 仍是后备 |
+| 参数 | 默认值 | 作用 |
+| --- | ---: | --- |
+| `forward_speed` | `0.05 m/s` | 等待障碍时的直行速度 |
+| `detour_trigger_distance_m` | `2.00 m` | 深度相机前方障碍触发距离 |
+| `detour_max_linear_speed` | `0.08 m/s` | 绕行直线段上限 |
+| `detour_max_angular_speed` | `0.25 rad/s` | 绕行转向上限 |
+| `detour_turn_angle_deg` | `45°` | 初始侧向绕出角度 |
+| `detour_first_leg_m` | `1.20 m` | 侧向绕出距离 |
+| `detour_forward_leg_m` | `1.00 m` | 越过障碍及回线后前进距离 |
+| `return_forward_m` | `0.80 m` | 计算回线目标时的前向余量 |
+| `line_tolerance_m` | `0.10 m` | 回到原直线的横向容差 |
+| `heading_tolerance_deg` | `5°` | 恢复原航向的容差 |
 
-每个 primitive 只有纯转向或纯向前，绝不同时转/走，绝不倒车。
-0.03×1.5=0.045 m 仅是理论命令积分；日志记录 commanded motion duration，不记录“确实走了 4.5 cm”。
-用户可在独立 YAML 中降低运动参数；高于代码保守上限的参数会被拒绝。
-
-## 报告与判定
-
-每次 runner 启动在 `logs/detour_test_<UTC timestamp>.json` 建立唯一记录；ARM 前验证可写。
-记录 commit SHA、实际脚本 SHA256、完整参数、preflight freshness、各阶段、障碍范围/点数/选边、IMU delta/error、
-命令时长/速度、Guard/EStop/timeout/fault、累计运动与中断原因，不默认写 rosbag。
-`t_auto_request`、`t_auto_state`、`t_aggregate_estop`、`t_output_zero` 是本进程单调时钟收到消息
-的时间；不能推导物理制动时间，也不能把当前 EStop 与早先的零输出配对。
-
-- **FAIL**：critical preflight 缺失、运动中 sensor/IMU/CM/driver 故障、超时或异常、EStop 后非零、旧动作无授权恢复、TURN 无法受限等。
-- **INCOMPLETE**：用户退出、跳过、无可确认安全侧、未实际打断活动 primitive、剩余测试未运行。它优先于 WARN，但低于 FAIL。
-- **PASS WITH WARNING**：必需测试都完成，存在 Guard/EStop 竞争、可接受转角偏差、重摆后选边等 WARN。
-- **PASS**：全部必需检查都有通过证据。
-
-SIGINT/SIGTERM/exception/EOF 时尽最大努力重复发零后退出；不自动清除 EStop。
-前台结束后 shell 只清理本 session 拥有的后台进程。强制进程杀死/系统故障不能依赖 Python
-清理保证停车，既有 driver watchdog 保持原状。
-
-最终终端和 JSON 始终包含以下边界；只完成的 PASS 项有对应证据：
-
-This test provides preliminary validation of:
-
-- local obstacle detection
-- wait/clear state handling
-- simple detour side selection
-- low-speed turn primitive
-- low-speed short forward primitive
-- detour guard behavior
-- Auto EStop interruption
-- post-EStop re-evaluation
-
-This test DOES NOT validate:
-
-- global Nav2 replanning
-- map-based detour
-- full obstacle bypass
-- original navigation goal recovery
-- airport-scale operation
-- physical stopping distance
-
-还未验证 global costmap persistence、完整 Nav2 detour、机场真实环境及任何实车 stopping distance。
+这些仍是初始调试值。软件只能依据编码器里程计和传感器验证回线误差，无法替代轮径、轮距、编码器比例和实际制动距离的实车标定。首次测试应保持低速、平地、足够侧向空间，并确保物理急停可立即使用。

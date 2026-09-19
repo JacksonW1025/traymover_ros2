@@ -1,4 +1,4 @@
-"""Guided mode simulations exercise the same production FSM and motion guard."""
+"""Option 19 single-button, line-return behavior without ROS hardware."""
 from dataclasses import replace
 import math
 from pathlib import Path
@@ -6,387 +6,191 @@ import sys
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
-from detour_core import DetourGate, Ray, Scan, Scene, Velocity  # noqa: E402
-from detour_motion import GuidedConfig, GuidedDetourCore, GuidedObservation  # noqa: E402
 
-ZERO = Velocity()
+SCRIPTS = Path(__file__).resolve().parents[1] / 'scripts'
+sys.path.insert(0, str(SCRIPTS))
 
-
-def observation(now, yaw=0.0, box=None, front=4.0, **updates):
-    rays = []
-    for deg in range(-180, 180, 2):
-        distance = front if abs(deg) <= 6 else 4.0
-        if box == 'right' and -18 <= deg <= -8:
-            distance = 1.06
-        if box == 'left' and 8 <= deg <= 18:
-            distance = 1.06
-        rays.append(Ray(0, 0, math.radians(deg), distance))
-    scan = Scan(now, tuple(rays))
-    depth = Scan(now, tuple(ray for ray in rays if abs(ray.angle) <= math.radians(40)))
-    args = dict(lidar=scan, realsense=depth, perimeter=scan,
-                imu_yaw=yaw, imu_stamp=now, tf_healthy=True, estop_fresh=True,
-                auto_reason='NONE', collision_monitor_fresh=True, driver_fresh=True)
-    args.update(updates)
-    return GuidedObservation(**args)
+from detour_core import Pose, Ray, Scan, Velocity  # noqa: E402
+from detour_motion import LineReturnConfig, LineReturnCore, LineReturnObservation  # noqa: E402
 
 
-class Sim:
-    def __init__(self, **config):
-        self.core = GuidedDetourCore(GuidedConfig(**config))
-        self.now = 1.0
-        self.yaw = 0.0
-        self.kwargs = {}
-        self.obs = observation(self.now)
-        for _ in range(12):
-            assert self.tick() == ZERO
-        assert self.core.arm(self.now)
-
-    def tick(self, dt=0.1, **updates):
-        self.now = round(self.now + dt, 8)
-        self.obs = observation(self.now, self.yaw, **dict(self.kwargs, **updates))
-        return self.core.tick(self.now, self.obs)
-
-    def until(self, state, maximum=100):
-        for _ in range(maximum):
-            if self.core.state == state:
-                return
-            assert self.tick() == ZERO
-        assert self.core.state == state, (self.core.state, self.core.reason)
-
-    def turn(self, side='LEFT'):
-        self.kwargs['box'] = 'right' if side == 'LEFT' else 'left'
-        self.tick()
-        self.until('READY')
-        for _ in range(8):
-            self.tick()
-        assert self.core.request_turn(self.now, self.obs, side), self.core.reason
-        self.kwargs.clear()
-
-    def straight(self, **kwargs):
-        assert self.core.request_straight(self.now, self.obs, **kwargs), self.core.reason
-        assert self.tick().linear_x > 0
+def scan(stamp, obstacle=False, obstacle_distance=1.05):
+    rays = [Ray(0.0, 0.0, math.radians(degree),
+                obstacle_distance if obstacle and abs(degree) <= 10 else 5.0,
+                obstacle and abs(degree) <= 10,
+                obstacle_distance if obstacle and abs(degree) <= 10 else None)
+            for degree in range(-180, 181, 5)]
+    return Scan(stamp, tuple(rays))
 
 
-def test_guided_is_shared_production_core_with_no_nav_or_localization_claim():
-    sim = Sim()
-    assert isinstance(sim.core, DetourGate)
-    assert sim.obs.pose is None and not sim.obs.nav_goal_active
-    assert not sim.obs.localization_healthy
-    assert sim.core.config.detour_guard_distance_m == 0.95
-    assert sim.core.config.test_wait_sec == 2.0
-    assert DetourGate().config.wait_before_detour_sec == 5.0
+def observation(stamp, pose, obstacle=False, obstacle_distance=1.05):
+    lidar = scan(stamp, obstacle, obstacle_distance)
+    depth = scan(stamp, obstacle, obstacle_distance)
+    return LineReturnObservation(
+        pose=pose, lidar=lidar, realsense=depth, perimeter=lidar,
+        aggregate_estop=False, manual_estop=False, auto_estop=False,
+        auto_reason='NONE', estop_fresh=True, tf_healthy=True,
+        localization_healthy=True, odom_stamp=stamp,
+    )
 
 
-@pytest.mark.parametrize('updates', [
-    {'imu_stamp': None}, {'lidar': None}, {'realsense': None},
-    {'auto_reason': 'STARTUP'}, {'estop_fresh': False},
-    {'collision_monitor_fresh': False}, {'driver_fresh': False},
-    {'health_fault': 'unexpected cmd_vel publisher'}, {'tf_healthy': False},
-])
-def test_preflight_fail_never_arms_or_moves(updates):
-    core = GuidedDetourCore()
-    obs = observation(1.0, **updates)
-    assert core.tick(1.0, obs) == ZERO
-    assert not core.arm(1.0)
-    assert not core.request_straight(1.0, obs)
-    assert core.state == 'FAULT_HOLD'
+def test_start_is_one_shot_and_clear_path_moves_straight():
+    config = LineReturnConfig(obstacle_confirm_frames=1)
+    core = LineReturnCore(config)
+    obs = observation(1.0, Pose(2.0, -1.0, 0.3))
+
+    assert core.tick(1.0, obs) == Velocity()
+    assert core.start(1.0, obs)
+    assert not core.start(1.0, obs)
+    assert core.tick(1.05, observation(1.05, obs.pose)).linear_x == config.forward_speed
+    assert core.original_line == obs.pose
 
 
-def test_front_obstacle_frames_wait_and_clear_without_motion():
-    sim = Sim()
-    sim.kwargs['front'] = 1.06
-    assert sim.tick() == ZERO
-    details = sim.core.obstacle_details(sim.obs)
-    assert details['detected'] and details['supporting_points'] >= 4
-    assert details['nearest_range_m'] == pytest.approx(1.06)
-    assert sim.tick() == ZERO
-    assert sim.core.state == 'WAITING'
-    sim.kwargs.clear()
-    sim.until('CLEARING')
-    sim.until('NORMAL')
-    assert sim.core._active_motion is None
+def test_option19_does_not_require_production_three_angle_depth_coverage():
+    core = LineReturnCore(LineReturnConfig())
+    pose = Pose(0.0, 0.0, 0.0)
+    obs = observation(1.0, pose)
+    narrow_depth = Scan(1.0, (Ray(0.45, 0.0, 0.3, 3.0, True, 2.8),))
+    obs = replace(obs, realsense=narrow_depth)
+
+    assert core.start(1.0, obs)
+    assert core.tick(1.1, replace(obs, odom_stamp=1.1,
+                                  lidar=scan(1.1), perimeter=scan(1.1),
+                                  realsense=replace(narrow_depth, stamp=1.1))).linear_x > 0.0
 
 
-@pytest.mark.parametrize('box,expected', [('left', 'RIGHT'), ('right', 'LEFT')])
-def test_shared_side_choice_waits_for_explicit_permit(box, expected):
-    sim = Sim()
-    sim.kwargs['box'] = box
-    sim.until('READY')
-    assert sim.core.side == expected
-    assert sim.core.choose_side(sim.obs).side == expected
-    for _ in range(100):
-        assert sim.tick() == ZERO
-    assert sim.core.state == 'READY'
+def test_persistent_front_obstacle_stops_before_planning_detour():
+    config = LineReturnConfig(obstacle_confirm_frames=1)
+    core = LineReturnCore(config)
+    start = Pose(0.0, 0.0, 0.0)
+    assert core.start(1.0, observation(1.0, start))
+
+    command = core.tick(1.1, observation(1.1, start, obstacle=True))
+
+    assert command == Velocity()
+    assert core.state == 'WAITING'
+    assert core.original_line == start
 
 
-def test_centered_box_cannot_be_certified_clear_at_25_degree_turn():
-    obs = observation(1.0, front=1.06)
-    core = GuidedDetourCore()
-    assert Scene(obs, core.config).obstacle()[0]
-    assert core.choose_side(obs) is None
+def test_option19_always_chooses_fixed_right_detour_without_corridor_check():
+    config = LineReturnConfig(detour_turn_angle_deg=45.0, detour_first_leg_m=1.2)
+    core = LineReturnCore(config)
+    pose = Pose(0.0, 0.0, 0.2)
+    obs = observation(1.0, pose, obstacle=True)
+
+    candidate = core._select_candidate(None, obs)
+
+    assert candidate.side == 'RIGHT'
+    assert candidate.target_yaw == pytest.approx(0.2 - math.pi / 4.0)
+    assert candidate.first_leg_m == 1.2
+    assert core._phase_guard_blocked(None) is False
+    assert core._rotation_clear(None) is True
 
 
-def test_turn_uses_imu_and_stops_settles_observes_without_next_phase():
-    sim = Sim()
-    sim.turn()
-    for _ in range(45):
-        command = sim.tick()
-        assert command.linear_x == 0
-        assert abs(command.angular_z) <= 0.15
-        sim.yaw += command.angular_z * 0.1
-        if sim.core.state == 'SETTLING':
+def test_forward_motion_tracks_encoder_drift_until_first_obstacle():
+    config = LineReturnConfig(line_tolerance_m=0.10)
+    core = LineReturnCore(config)
+    start = Pose(0.0, 0.0, 0.0)
+    assert core.start(1.0, observation(1.0, start))
+    current = Pose(0.2, 0.11, math.radians(6.0))
+
+    command = core.tick(1.1, observation(1.1, current))
+
+    assert command.linear_x == config.forward_speed
+    assert core.state == 'NORMAL'
+    assert core.original_line == current
+
+
+def test_return_plan_targets_the_recorded_original_line():
+    config = LineReturnConfig(return_forward_m=0.8)
+    core = LineReturnCore(config)
+    origin = Pose(1.0, 2.0, math.radians(30.0))
+    assert core.start(1.0, observation(1.0, origin))
+    side_pose = Pose(
+        origin.x + 1.5 * math.cos(origin.yaw) - 0.7 * math.sin(origin.yaw),
+        origin.y + 1.5 * math.sin(origin.yaw) + 0.7 * math.cos(origin.yaw),
+        origin.yaw,
+    )
+
+    core.begin_return(2.0, observation(2.0, side_pose))
+    target = core.return_target
+    forward, lateral = core.line_coordinates(target)
+
+    assert forward > 1.5
+    assert lateral == pytest.approx(0.0, abs=1e-9)
+    assert core.leg == 'RETURN'
+    assert core._candidate.first_leg_m > 0.7
+
+
+def test_completion_requires_measured_line_and_heading_tolerance():
+    config = LineReturnConfig(line_tolerance_m=0.10, heading_tolerance_deg=5.0)
+    core = LineReturnCore(config)
+    origin = Pose(0.0, 0.0, 0.0)
+    assert core.start(1.0, observation(1.0, origin))
+
+    assert core.verify_return(Pose(3.0, 0.08, math.radians(4.0)))
+    assert not core.verify_return(Pose(3.0, 0.12, 0.0))
+    assert not core.verify_return(Pose(3.0, 0.0, math.radians(6.0)))
+
+
+def test_estop_always_overrides_single_button_motion():
+    core = LineReturnCore(LineReturnConfig())
+    pose = Pose(0.0, 0.0, 0.0)
+    clear = observation(1.0, pose)
+    assert core.start(1.0, clear)
+    stopped = LineReturnObservation(**{
+        **clear.__dict__, 'aggregate_estop': True, 'auto_estop': True,
+        'auto_reason': 'NEAR_OBSTACLE',
+    })
+
+    assert core.tick(1.1, stopped) == Velocity()
+    assert core.state == 'HOLD_ESTOP'
+
+
+def test_complete_maneuver_returns_to_original_line_before_success():
+    config = LineReturnConfig(
+        obstacle_confirm_frames=1,
+        wait_before_detour_sec=0.05,
+        clear_confirm_sec=0.05,
+        stop_settle_time_sec=0.05,
+        pose_stability_time_sec=0.05,
+        detour_first_leg_m=1.2,
+        detour_forward_leg_m=1.0,
+    )
+    core = LineReturnCore(config)
+    now = 1.0
+    pose = Pose(0.0, 0.0, 0.0)
+    assert core.start(now, observation(now, pose))
+    now += 0.1
+    core.tick(now, observation(now, pose, obstacle=True, obstacle_distance=0.55))
+
+    for unused in range(200):
+        now += 0.1
+        state = core.state
+        obs = observation(now, pose, state in ('WAITING', 'PLAN_DETOUR', 'TURN_1'),
+                          obstacle_distance=0.55)
+
+        if state.startswith('TURN'):
+            target = (core._candidate.target_yaw if state == 'TURN_1'
+                      else core._origin_yaw)
+            pose = Pose(pose.x, pose.y, target)
+            obs = observation(now, pose, state == 'TURN_1', obstacle_distance=0.55)
+        elif state.startswith('STRAIGHT') and core._phase_distance is not None:
+            start = core._phase_start
+            distance = core._phase_distance
+            pose = Pose(
+                start.x + distance * math.cos(start.yaw),
+                start.y + distance * math.sin(start.yaw),
+                start.yaw,
+            )
+            obs = observation(now, pose)
+
+        core.tick(now, obs)
+        if core.state == 'COMPLETE':
             break
-    assert sim.core.state == 'SETTLING'
-    assert sim.core.last_motion['completed']
-    assert abs(sim.core.last_motion['yaw_error_deg']) <= 5
-    assert not sim.core.request_straight(sim.now, sim.obs)
-    sim.until('READY')
-    for _ in range(20):
-        assert sim.tick() == ZERO
-    assert sim.core.phase == 'NONE'
 
-
-def test_turn_timeout_is_latched_and_no_new_request_can_clear_it():
-    sim = Sim()
-    sim.turn()
-    for _ in range(55):
-        sim.tick()
-    assert sim.core.state == 'FAULT_HOLD'
-    assert sim.core.last_motion['timeout']
-    assert sim.core.old_primitive_discarded
-    for _ in range(30):
-        assert sim.tick() == ZERO
-    assert not sim.core.restart_observation(sim.now, sim.obs)
-    assert not sim.core.request_turn(sim.now, sim.obs, 'LEFT')
-
-
-@pytest.mark.parametrize('updates', [
-    {'imu_stamp': -100.0}, {'lidar': None}, {'realsense': None},
-    {'estop_fresh': False}, {'collision_monitor_fresh': False},
-])
-def test_sensor_failure_during_motion_zero_latches_and_discards(updates):
-    sim = Sim()
-    sim.straight()
-    assert sim.tick(**updates) == ZERO
-    assert sim.core.state == 'FAULT_HOLD'
-    assert sim.core.old_primitive_discarded
-    assert sim.core.last_motion['fault']
-    for _ in range(40):
-        assert sim.tick() == ZERO
-    assert not sim.core.request_straight(sim.now, sim.obs)
-
-
-def test_timed_straight_reports_command_duration_without_distance():
-    sim = Sim()
-    sim.straight()
-    while sim.core.state == 'STRAIGHT_1':
-        command = sim.tick()
-        assert command.angular_z == 0 and 0 <= command.linear_x <= 0.03
-    assert sim.core.state == 'SETTLING'
-    result = sim.core.last_motion
-    assert result['completed']
-    assert result['command_duration_sec'] <= 1.5
-    assert result['duration_sec'] == pytest.approx(1.5)
-    assert not any('distance' in key for key in result)
-    sim.until('READY')
-    assert sim.tick() == ZERO
-
-
-def test_short_straight_exact_hard_deadline_completes_then_zero():
-    sim = Sim()
-    sim.straight(duration=2.0)
-    for _ in range(20):
-        sim.tick()
-    assert sim.core.last_motion['completed']
-    assert sim.core.state == 'SETTLING'
-    assert sim.core._last_command == ZERO
-
-
-def test_straight_hard_timeout_stops_even_if_completion_target_is_corrupted():
-    sim = Sim()
-    sim.straight(duration=2.0)
-    sim.core._straight_duration = 100.0  # Fault injection: cannot bypass hard timeout.
-    for _ in range(18):
-        sim.tick()
-    assert sim.tick(dt=0.1) == ZERO
-    assert sim.core.state == 'FAULT_HOLD'
-    assert sim.core.last_motion['timeout']
-
-
-def test_guard_uses_shared_precedence_and_discards_active_command():
-    sim = Sim()
-    sim.straight(kind='GUARD_TEST', duration=1.0)
-    assert sim.tick(front=0.93) == ZERO
-    assert sim.core.last_motion['guard']
-    assert sim.core.old_primitive_discarded
-    assert sim.core._candidate is None
-    assert sim.core.state == 'PLAN_DETOUR'
-
-
-@pytest.mark.parametrize('manual', [False, True])
-def test_estop_release_discards_old_primitive_and_recovers_only_ready(manual):
-    sim = Sim()
-    sim.straight(kind='ESTOP_TRIGGER_TEST', duration=5.0)
-    assert sim.tick(aggregate_estop=True, auto_estop=not manual,
-                    manual_estop=manual, auto_reason='NEAR_OBSTACLE') == ZERO
-    assert sim.core.state == 'HOLD_ESTOP'
-    assert sim.core.last_motion['estop']
-    assert sim.core.last_motion['estop_source'] == ('MANUAL' if manual else 'AUTO')
-    assert 'EStop' in sim.core.last_motion['estop_reason']
-    assert sim.core.old_primitive_discarded
-    old_duration = sim.core.last_motion['command_duration_sec']
-    for _ in range(10):
-        assert sim.tick(aggregate_estop=True, auto_estop=True,
-                        auto_reason='NEAR_OBSTACLE') == ZERO
-    sim.until('READY')
-    for _ in range(80):
-        assert sim.tick() == ZERO
-    assert sim.core._candidate is None or sim.core.phase == 'NONE'
-    assert sim.core.last_motion['command_duration_sec'] == old_duration
-    assert sim.core.old_primitive_discarded
-
-
-def test_hold_without_started_primitive_does_not_claim_discard_validation():
-    sim = Sim()
-    assert sim.tick(auto_estop=True, aggregate_estop=True) == ZERO
-    assert not sim.core.old_primitive_discarded
-
-
-def test_abort_ctrl_c_remains_zero_and_does_not_release_estop():
-    sim = Sim()
-    sim.straight()
-    assert sim.core.abort(sim.now, 'SIGINT') == ZERO
-    assert sim.core.state == 'ABORTED'
-    assert sim.core.old_primitive_discarded
-    assert sim.core.last_motion['interrupted']
-    assert sim.core.last_motion['fault'] is None
-    for _ in range(20):
-        assert sim.tick(auto_estop=True, aggregate_estop=True) == ZERO
-    assert not sim.core.armed
-
-
-def test_forward_session_budget_caps_remaining_estop_duration():
-    sim = Sim(max_total_forward_command_sec=2.0)
-    sim.straight()
-    while sim.core.state == 'STRAIGHT_1':
-        sim.tick()
-    sim.until('READY')
-    remaining = 2.0 - sim.core.total_forward_command_sec
-    assert sim.core.request_straight(sim.now, sim.obs, kind='ESTOP_TRIGGER_TEST')
-    assert sim.core._straight_duration == pytest.approx(
-        remaining - sim.core.config.control_timeout_sec)
-    for _ in range(15):
-        sim.tick()
-    assert sim.core.total_forward_command_sec <= 2.0 + 1e-8
-    assert not sim.core.request_straight(sim.now, sim.obs)
-    assert sim.core.state == 'ABORTED'
-
-
-def test_rotation_budget_reserves_requested_turn_and_rejects_extra():
-    sim = Sim(max_total_rotation_deg=20.0)
-    sim.kwargs['box'] = 'right'
-    sim.until('READY')
-    for _ in range(8):
-        sim.tick()
-    assert not sim.core.request_turn(sim.now, sim.obs, 'LEFT')
-    assert sim.core.state == 'ABORTED'
-
-
-def test_total_session_timeout_includes_operator_waits():
-    sim = Sim(max_test_duration_sec=2.0)
-    for _ in range(20):
-        assert sim.tick() == ZERO
-    assert sim.core.state == 'ABORTED'
-    assert sim.core.expired
-
-
-def test_control_timer_stall_aborts_active_motion():
-    sim = Sim()
-    sim.straight()
-    assert sim.tick(dt=0.5) == ZERO
-    assert sim.core.state == 'ABORTED'
-    assert sim.core.last_motion['timeout']
-
-
-@pytest.mark.parametrize('values', [
-    {'enable_auto_estop': False}, {'test_turn_speed': 0.3},
-    {'test_turn_timeout_sec': 6.0}, {'max_total_forward_command_sec': 6.0},
-    {'max_total_rotation_deg': 91}, {'test_straight_duration': -1.0},
-    {'imu_timeout_sec': math.nan}, {'detour_guard_distance_m': 0.4},
-    {'stop_settle_sec': 0.1}, {'test_turn_tolerance_deg': 25},
-])
-def test_conservative_config_cannot_relax_initial_safety_caps(values):
-    with pytest.raises(ValueError):
-        GuidedConfig(**values)
-
-
-@pytest.mark.parametrize('speed,duration', [(-0.03, 1), (0.1, 1), (0.03, 3), (math.nan, 1)])
-def test_invalid_reverse_or_unbounded_straight_rejected(speed, duration):
-    sim = Sim()
-    with pytest.raises(ValueError):
-        sim.core.request_straight(sim.now, sim.obs, speed=speed, duration=duration)
-
-
-def test_observation_ready_clears_after_operator_wait_without_blind_motion():
-    sim = Sim()
-    sim.kwargs['box'] = 'right'
-    sim.until('READY')
-    for _ in range(40):
-        assert sim.tick() == ZERO
-    sim.kwargs.clear()
-    sim.until('CLEARING')
-    sim.until('NORMAL')
-    assert sim.core.last_motion == {}
-
-
-def test_restart_observation_preserves_arm_and_cumulative_limits():
-    sim = Sim()
-    sim.core.total_forward_command_sec = 1.2
-    sim.core.total_rotation_deg = 20.0
-    assert sim.core.restart_observation(sim.now, sim.obs)
-    assert sim.core.armed
-    assert sim.core.total_forward_command_sec == 1.2
-    assert sim.core.total_rotation_deg == 20.0
-
-
-def test_recovery_needs_scans_acquired_after_release_settling():
-    sim = Sim()
-    sim.straight()
-    sim.tick(aggregate_estop=True, auto_estop=True)
-    released_at = sim.now
-    for _ in range(7):
-        stale = observation(released_at)
-        assert sim.tick(lidar=stale.lidar, realsense=stale.realsense,
-                        perimeter=stale.perimeter) == ZERO
-        assert sim.core.state == 'HOLD_ESTOP'
-    sim.until('READY')
-    assert sim.core.old_primitive_discarded
-
-
-def test_turn_lost_perimeter_geometry_stops_without_forward_fallback():
-    sim = Sim()
-    sim.turn()
-    sim.tick()
-    partial = replace(sim.obs.perimeter, rays=tuple(
-        ray for ray in sim.obs.perimeter.rays if abs(ray.angle) < math.pi / 2))
-    assert sim.tick(perimeter=replace(partial, stamp=sim.now + 0.1)) == ZERO
-    assert sim.core.state == 'BLOCKED'
-    assert sim.core.old_primitive_discarded
-
-
-def test_normal_straight_deadline_with_small_scheduler_jitter_completes():
-    sim = Sim()
-    sim.straight(duration=2.0)
-    for _ in range(18):
-        sim.tick()
-    assert sim.tick(dt=0.11) == ZERO
-    assert sim.core.state == 'SETTLING'
-    assert sim.core.last_motion['completed']
-    assert not sim.core.last_motion['timeout']
-
-
-def test_straight_disabled_parameter_is_respected():
-    sim = Sim(allow_straight_motion=False)
-    assert not sim.core.request_straight(sim.now, sim.obs)
-    assert sim.tick() == ZERO
+    assert core.state == 'COMPLETE', core.reason
+    assert core.verify_return(pose)
+    unused_forward, lateral = core.line_coordinates(pose)
+    assert lateral == pytest.approx(0.0, abs=config.line_tolerance_m)
+    assert pose.yaw == pytest.approx(0.0, abs=math.radians(config.heading_tolerance_deg))

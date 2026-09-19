@@ -348,6 +348,15 @@ class DetourGate:
     def _idle_velocity(self, now, obs):
         return self._nav_velocity(now, obs)
 
+    def _forward_coverage_ready(self, scene):
+        return scene.forward_depth_observed()
+
+    def _phase_guard_blocked(self, scene):
+        return scene.clearance() <= self.config.detour_guard_distance_m
+
+    def _rotation_clear(self, scene):
+        return scene.rotation_clear()
+
     def _begin_clear_recovery(self, now):
         self._transition('RECOVER_TO_NAV', now, 'temporary obstacle cleared')
 
@@ -446,11 +455,11 @@ class DetourGate:
             self._discard()
             self._transition('BLOCKED', now, 'straight motion disabled for staged testing')
             return
-        if scene.clearance() <= self.config.detour_guard_distance_m:
+        if self._phase_guard_blocked(scene):
             self._discard()
             self._transition('PLAN_DETOUR', now, 'forward guard prevents next phase; re-observing')
             return
-        if phase.startswith('TURN') and not scene.rotation_clear():
+        if phase.startswith('TURN') and not self._rotation_clear(scene):
             self._discard()
             self._transition('BLOCKED', now, 'rotation footprint clearance unknown/blocked')
             return
@@ -505,7 +514,7 @@ class DetourGate:
             return Velocity()
         self._update_stability(now, self._pose(obs))
         scene = Scene(obs, cfg)
-        if not scene.forward_depth_observed():
+        if not self._forward_coverage_ready(scene):
             return self._hold('FAULT_HOLD', now, obs, 'current-heading RealSense coverage unknown')
         obstacle, distance = scene.obstacle()
         front_clear = scene.clearance() > cfg.detour_trigger_distance_m
@@ -562,7 +571,7 @@ class DetourGate:
                 self._start_phase(self._pending_phase, now, obs, scene)
             return Velocity()
         if self.state == 'RECOVER_TO_NAV':
-            if scene.clearance() <= cfg.detour_guard_distance_m:
+            if self._phase_guard_blocked(scene):
                 self._discard()
                 self._transition('PLAN_DETOUR', now, 'new obstacle prevents handback')
             elif self._confirmed(now, self._settled(now, obs)):
@@ -571,7 +580,7 @@ class DetourGate:
                                'awaiting Nav2 goal handback')
             return Velocity()
         if self.state in self.PHASES:
-            if scene.clearance() <= cfg.detour_guard_distance_m:
+            if self._phase_guard_blocked(scene):
                 self.saved_interruption = {'phase': self.phase, 'pose': self._pose(obs),
                                            'side': self.side, 'reason': 'guard', 'stamp': now}
                 self._discard()
@@ -586,7 +595,7 @@ class DetourGate:
                 self._latched_fault = self.state + ' timeout; new goal/reset required'
                 return self._hold('FAULT_HOLD', now, obs, self._latched_fault)
             if turning:
-                if not scene.rotation_clear():
+                if not self._rotation_clear(scene):
                     self._discard()
                     self._transition('BLOCKED', now, 'rotation footprint clearance lost')
                     return Velocity()

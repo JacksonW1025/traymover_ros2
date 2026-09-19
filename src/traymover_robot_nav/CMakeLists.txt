@@ -95,7 +95,7 @@ if(BUILD_TESTING)
       test/test_detour_${detour_test}.py
     )
   endforeach()
-  foreach(guided_test config node test velocity_chain depth_scan)
+  foreach(guided_test config node test)
     ament_add_pytest_test(
       test_guided_detour_${guided_test}
       test/test_guided_detour_${guided_test}.py

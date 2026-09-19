@@ -1,4 +1,4 @@
-# Nav2 parameters for traymover.
+# Nav2 parameters for traymover option 10.
 # Adapted from traymover_robot_nav2/param/traymover_params/param_traymover_diff.yaml with:
 #   - AMCL section removed (lidar_localization_ros2 provides map -> base_link)
 #   - base_footprint -> base_link everywhere (URDF root is base_link)
@@ -59,8 +59,10 @@ controller_server:
 
     FollowPath:
       plugin: "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController"
-      desired_linear_vel: 0.14
-      min_approach_linear_velocity: 0.06
+      # Option 10 linear speeds are 2.5x the original 0.14 / 0.06 m/s
+      # baseline. Keep rotate-to-heading angular speed unchanged below.
+      desired_linear_vel: 0.35
+      min_approach_linear_velocity: 0.15
       approach_velocity_scaling_dist: 0.6
       # Lookahead: how far ahead along the path RPP aims. Smaller = tighter
       # tracking (oscillation risk); larger = smoother but cuts corners.
@@ -83,7 +85,7 @@ controller_server:
       # in follow mode; retain curvature-based linear speed regulation with
       # the shorter lookahead so tighter tracking still slows down at bends.
       regulated_linear_scaling_min_radius: 3.20
-      regulated_linear_scaling_min_speed: 0.035
+      regulated_linear_scaling_min_speed: 0.0875
       use_cost_regulated_linear_velocity_scaling: false
       use_collision_detection: false
       transform_tolerance: 0.6

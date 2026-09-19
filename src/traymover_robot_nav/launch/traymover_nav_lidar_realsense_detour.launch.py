@@ -1,4 +1,4 @@
-"""Option 18: EStop-safe wait detour around the unchanged Option 16 stack.
+"""Option 18: option 10 navigation with EStop-safe obstacle detouring.
 
 Initial tuning values only; no hardware validation is implied. Collision Monitor
 remains downstream and the chassis driver's EStop gate remains authoritative.
@@ -162,6 +162,7 @@ def _launch_nodes(context):
             'use_sim_time', 'autostart', 'map', 'pcd_path', 'launch_rviz',
             'rviz_config', 'bt_xml', 'through_poses_bt_xml',
             'realsense_depth_topic', 'realsense_info_topic', 'realsense_output_frame',
+            'height_boost_enabled', 'height_boost_min_z', 'auto_correction_enabled',
         )
     }
     navigation_args.update({
@@ -225,6 +226,9 @@ def generate_launch_description():
             nav_share, 'config', 'collision_monitor_lidar_realsense_detour.yaml'),
         'map': os.path.join(nav_share, 'map', 'traymover_2d.yaml'),
         'pcd_path': default_pcd,
+        'height_boost_enabled': 'false',
+        'height_boost_min_z': '2.0',
+        'auto_correction_enabled': 'false',
         'rviz_config': os.path.join(nav_share, 'rviz', 'traymover_nav.rviz'),
         'bt_xml': os.path.join(nav_share, 'behavior_trees', 'simple_navigate_to_pose.xml'),
         'through_poses_bt_xml': os.path.join(

@@ -152,6 +152,9 @@ def generate_launch_description():
             'use_sim_time': use_sim_time,
             'pcd_path': pcd_path,
             'cloud_topic': '/point_cloud_localization',
+            'height_boost_enabled': LaunchConfiguration('height_boost_enabled'),
+            'height_boost_min_z': LaunchConfiguration('height_boost_min_z'),
+            'auto_correction_enabled': LaunchConfiguration('auto_correction_enabled'),
             'max_map_odom_update_translation': '0.50',
             'max_map_odom_update_rotation': '0.25',
         }.items(),
@@ -244,6 +247,15 @@ def generate_launch_description():
         DeclareLaunchArgument('params_file', default_value=default_params),
         DeclareLaunchArgument('collision_params_file', default_value=default_collision_params),
         DeclareLaunchArgument('map', default_value=default_map),
+        DeclareLaunchArgument(
+            'auto_correction_enabled', default_value='false',
+            description='Enable the same bounded NDT correction used by option 10.'),
+        DeclareLaunchArgument(
+            'height_boost_enabled', default_value='false',
+            description='Add one NDT source copy for high structures.'),
+        DeclareLaunchArgument(
+            'height_boost_min_z', default_value='2.0',
+            description='Height threshold in base_link metres.'),
         DeclareLaunchArgument(
             'bringup_hardware', default_value='false',
             description='Also start base_serial + traymover_lidar.'),

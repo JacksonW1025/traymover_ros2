@@ -38,6 +38,8 @@ source install/setup.bash
 | `13` | Intersect multiple FAST-LIO PCDs | 多次建图结果做体素多数投票，保留跨 session 稳定出现的点。 |
 | `14` | Start 3D point-cloud navigation | 3D 点云导航实验：FAST-LIO + NDT + CMU `terrain_analysis/local_planner`，不走 2D PGM。 |
 | `15` | Start navigation with speed mode | 选项 `10` 的扩展版，启动流程相同，但可选择 Nav2 速度配置。 |
+| `18` | Navigation with LiDAR + RealSense + EStop-safe Wait Detour | 完整沿用选项 `10` 的地图、定位、Nav2 与诊断逻辑，并在前方持续有障碍时执行受 EStop 和 Collision Monitor 保护的等待绕行。 |
+| `19` | Single-button Straight-line Detour Test | 按一次 Enter 后低速直行，仅用 RealSense 检测第一个前方障碍，固定向右绕行并通过轮式里程计回到原直线路径。 |
 
 ## 常用流程
 
@@ -92,7 +94,7 @@ src/traymover_robot_slam/FAST_LIO/rosbag
 2. 等待 NDT 定位收敛，RobotModel 和点云地图对齐。
 3. 使用 `2D Goal Pose` 发送导航目标。
 
-默认慢速 Nav2 配置文件：
+选项 `10` 的 Nav2 配置文件：
 
 ```text
 src/traymover_robot_nav/config/nav2_params.yaml
@@ -100,18 +102,18 @@ src/traymover_robot_nav/config/nav2_params.yaml
 
 ### 速度模式 Nav2 导航
 
-选择 `15`。该选项不修改选项 `10` 的默认慢速配置，只是在同一套启动流程上增加速度模式选择：
+选择 `15`。该选项使用同一套启动流程，并提供固定的 Nav2 速度配置：
 
 | 速度模式 | Nav2 参数文件 | 速度变化 |
 | --- | --- | --- |
-| `0` | `nav2_params.yaml` | 与选项 `10` 完全相同的默认慢速导航。 |
-| `1` | `nav2_params_linear_2x.yaml` | 线速度为当前慢速的 2 倍，原地转向速度不变。 |
-| `2` | `nav2_params_linear_2_5x_turn_2x.yaml` | 线速度为当前慢速的 2.5 倍，原地转向速度为当前慢速的 2 倍。 |
+| `0` | `nav2_params.yaml` | 与选项 `10` 相同：线速度 0.35 m/s，原地转向 0.45 rad/s。 |
+| `1` | `nav2_params_linear_2x.yaml` | 线速度 0.28 m/s，原地转向 0.45 rad/s。 |
+| `2` | `nav2_params_linear_2_5x_turn_2x.yaml` | 线速度 0.35 m/s，原地转向 0.90 rad/s。 |
 
-当前慢速基准为：
+选项 `10` 当前速度为：
 
 ```text
-desired_linear_vel: 0.14
+desired_linear_vel: 0.35
 rotate_to_heading_angular_vel: 0.45
 ```
 
@@ -127,7 +129,7 @@ rotate_to_heading_angular_vel: 0.45
 | --- | --- |
 | `scripts/traymover.sh` | 主启动脚本和菜单入口。 |
 | `src/traymover_robot_nav/launch/traymover_nav.launch.py` | 2D Nav2 导航主 launch，选项 `10` 和 `15` 使用。 |
-| `src/traymover_robot_nav/config/nav2_params.yaml` | 选项 `10` 和选项 `15` 模式 `0` 的默认慢速 Nav2 参数。 |
+| `src/traymover_robot_nav/config/nav2_params.yaml` | 选项 `10` 和选项 `15` 模式 `0` 的 Nav2 参数。 |
 | `src/traymover_robot_nav/config/nav2_params_linear_2x.yaml` | 选项 `15` 模式 `1` 的 2 倍线速度参数。 |
 | `src/traymover_robot_nav/config/nav2_params_linear_2_5x_turn_2x.yaml` | 选项 `15` 模式 `2` 的 2.5 倍线速度、2 倍转向速度参数。 |
 | `src/traymover_robot_nav/config/localization.yaml` | FAST-LIO + NDT 定位参数，包括 `ndt_align_interval_s`。 |

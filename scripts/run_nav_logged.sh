@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run option 10's navigation command with passive live NDT/FAST-LIO diagnostics.
+# Run a navigation command with passive live NDT/FAST-LIO diagnostics.
 # ROS and workspace setup are sourced by traymover.sh's terminal wrapper.
 set -Eeuo pipefail
 

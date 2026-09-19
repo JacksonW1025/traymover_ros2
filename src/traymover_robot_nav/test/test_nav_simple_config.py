@@ -179,6 +179,16 @@ def test_nav2_option10_has_no_dynamic_obstacle_stop_chain():
     assert 'default_nav_through_poses_bt_xml' in bt_params
 
 
+def test_option10_uses_2_5x_linear_speed_without_changing_turn_speed():
+    params = load_unique_yaml(PKG_ROOT / 'config' / 'nav2_params.yaml')
+    follow_path = params['controller_server']['ros__parameters']['FollowPath']
+
+    assert_close(follow_path['desired_linear_vel'], 0.14 * 2.5)
+    assert_close(follow_path['min_approach_linear_velocity'], 0.06 * 2.5)
+    assert_close(follow_path['regulated_linear_scaling_min_speed'], 0.035 * 2.5)
+    assert_close(follow_path['rotate_to_heading_angular_vel'], 0.45)
+
+
 def test_option10_launch_does_not_route_through_collision_monitor():
     launch_text = (PKG_ROOT / 'launch' / 'traymover_nav.launch.py').read_text(
         encoding='utf-8'
@@ -196,7 +206,7 @@ def test_option10_launch_does_not_route_through_collision_monitor():
     assert "'waypoint_follower'" not in launch_text
 
 
-def test_option16_obstacle_nav_uses_option10_controller_with_local_obstacles():
+def test_option16_obstacle_nav_keeps_conservative_speed_with_local_obstacles():
     baseline = load_unique_yaml(PKG_ROOT / 'config' / 'nav2_params.yaml')
     params = load_unique_yaml(
         PKG_ROOT / 'config' / 'nav2_params_lidar_realsense_obstacle.yaml'
@@ -208,7 +218,21 @@ def test_option16_obstacle_nav_uses_option10_controller_with_local_obstacles():
     global_costmap = params['global_costmap']['global_costmap']['ros__parameters']
     obstacle_layer = local_costmap['obstacle_layer']
 
-    assert controller['FollowPath'] == baseline_controller['FollowPath']
+    baseline_follow_path = copy.deepcopy(baseline_controller['FollowPath'])
+    obstacle_follow_path = copy.deepcopy(controller['FollowPath'])
+    linear_speed_keys = (
+        'desired_linear_vel',
+        'min_approach_linear_velocity',
+        'regulated_linear_scaling_min_speed',
+    )
+    for key in linear_speed_keys:
+        baseline_follow_path.pop(key)
+        obstacle_follow_path.pop(key)
+
+    assert obstacle_follow_path == baseline_follow_path
+    assert_close(controller['FollowPath']['desired_linear_vel'], 0.14)
+    assert_close(controller['FollowPath']['min_approach_linear_velocity'], 0.06)
+    assert_close(controller['FollowPath']['regulated_linear_scaling_min_speed'], 0.035)
     assert controller['progress_checker'] == baseline_controller['progress_checker']
     assert controller['controller_plugins'] == baseline_controller['controller_plugins']
     assert local_costmap['plugins'] == ['obstacle_layer', 'inflation_layer']
@@ -412,11 +436,11 @@ def test_nav2_tolerates_short_tf_jitter_without_recoveries():
     assert bt_params['transform_tolerance'] >= 0.6
     assert controller_params['failure_tolerance'] >= 2.0
     assert controller_params['general_goal_checker']['yaw_goal_tolerance'] <= 0.30
-    assert follow_path['desired_linear_vel'] <= 0.14
+    assert follow_path['desired_linear_vel'] <= 0.35
     assert follow_path['use_rotate_to_heading'] is True
     assert follow_path['allow_reversing'] is False
     assert follow_path['regulated_linear_scaling_min_radius'] >= 3.0
-    assert follow_path['regulated_linear_scaling_min_speed'] <= 0.04
+    assert follow_path['regulated_linear_scaling_min_speed'] <= 0.09
     assert follow_path['transform_tolerance'] >= 0.6
     assert progress_checker['plugin'] == 'traymover_robot_nav::YawProgressChecker'
     assert progress_checker['required_movement_angle'] >= 0.15
@@ -424,8 +448,8 @@ def test_nav2_tolerates_short_tf_jitter_without_recoveries():
     assert global_costmap['transform_tolerance'] >= 0.6
 
 
-def test_option15_fast_nav_configs_only_change_requested_speed_values():
-    slow = load_unique_yaml(PKG_ROOT / 'config' / 'nav2_params.yaml')
+def test_navigation_speed_profiles_only_change_requested_speed_values():
+    option10 = load_unique_yaml(PKG_ROOT / 'config' / 'nav2_params.yaml')
     linear_2x = load_unique_yaml(PKG_ROOT / 'config' / 'nav2_params_linear_2x.yaml')
     linear_2_5x_turn_2x = load_unique_yaml(
         PKG_ROOT / 'config' / 'nav2_params_linear_2_5x_turn_2x.yaml'
@@ -448,46 +472,27 @@ def test_option15_fast_nav_configs_only_change_requested_speed_values():
             clone_follow_path[key] = '<speed-mode-value>'
         return clone
 
-    assert without_speed_values(linear_2x) == without_speed_values(slow)
-    assert without_speed_values(linear_2_5x_turn_2x) == without_speed_values(slow)
+    assert without_speed_values(linear_2x) == without_speed_values(option10)
+    assert without_speed_values(linear_2_5x_turn_2x) == without_speed_values(option10)
 
-    slow_follow_path = follow_path(slow)
+    option10_follow_path = follow_path(option10)
     linear_2x_follow_path = follow_path(linear_2x)
     linear_2_5x_turn_2x_follow_path = follow_path(linear_2_5x_turn_2x)
 
-    assert_close(
-        linear_2x_follow_path['desired_linear_vel'],
-        slow_follow_path['desired_linear_vel'] * 2.0,
-    )
-    assert_close(
-        linear_2x_follow_path['min_approach_linear_velocity'],
-        slow_follow_path['min_approach_linear_velocity'] * 2.0,
-    )
-    assert_close(
-        linear_2x_follow_path['regulated_linear_scaling_min_speed'],
-        slow_follow_path['regulated_linear_scaling_min_speed'] * 2.0,
-    )
-    assert_close(
-        linear_2x_follow_path['rotate_to_heading_angular_vel'],
-        slow_follow_path['rotate_to_heading_angular_vel'],
-    )
+    assert_close(option10_follow_path['desired_linear_vel'], 0.35)
+    assert_close(option10_follow_path['min_approach_linear_velocity'], 0.15)
+    assert_close(option10_follow_path['regulated_linear_scaling_min_speed'], 0.0875)
+    assert_close(option10_follow_path['rotate_to_heading_angular_vel'], 0.45)
 
-    assert_close(
-        linear_2_5x_turn_2x_follow_path['desired_linear_vel'],
-        slow_follow_path['desired_linear_vel'] * 2.5,
-    )
-    assert_close(
-        linear_2_5x_turn_2x_follow_path['min_approach_linear_velocity'],
-        slow_follow_path['min_approach_linear_velocity'] * 2.5,
-    )
-    assert_close(
-        linear_2_5x_turn_2x_follow_path['regulated_linear_scaling_min_speed'],
-        slow_follow_path['regulated_linear_scaling_min_speed'] * 2.5,
-    )
-    assert_close(
-        linear_2_5x_turn_2x_follow_path['rotate_to_heading_angular_vel'],
-        slow_follow_path['rotate_to_heading_angular_vel'] * 2.0,
-    )
+    assert_close(linear_2x_follow_path['desired_linear_vel'], 0.28)
+    assert_close(linear_2x_follow_path['min_approach_linear_velocity'], 0.12)
+    assert_close(linear_2x_follow_path['regulated_linear_scaling_min_speed'], 0.070)
+    assert_close(linear_2x_follow_path['rotate_to_heading_angular_vel'], 0.45)
+
+    assert_close(linear_2_5x_turn_2x_follow_path['desired_linear_vel'], 0.35)
+    assert_close(linear_2_5x_turn_2x_follow_path['min_approach_linear_velocity'], 0.15)
+    assert_close(linear_2_5x_turn_2x_follow_path['regulated_linear_scaling_min_speed'], 0.0875)
+    assert_close(linear_2_5x_turn_2x_follow_path['rotate_to_heading_angular_vel'], 0.90)
 
 
 def test_option15_launcher_uses_dedicated_speed_configs_without_changing_option10_case():

@@ -15,12 +15,14 @@ From the workspace root, run `bash scripts/traymover.sh` and select:
 18) Navigation with LiDAR + RealSense + EStop-safe Wait Detour
 ```
 
-The prompts select a PCD and RViz, then ask `Enable automatic EStop? [Y/n]:`.
-With automatic EStop enabled, the next prompt is
+The prompts follow Option 10: select a PCD, choose whether to fit the ground
+plane for the runtime 2D map, and choose whether to start RViz. Option 18 then
+asks `Enable automatic EStop? [Y/n]:`. With automatic EStop enabled, the next prompt is
 `Enable wait-and-detour? [Y/n]:`. Disabling automatic EStop forces detour off
 and skips the detour prompt. Pressing Enter throughout selects Auto EStop ON,
 detour ON, a 5.0 s wait, 1.10 m trigger, 0.95 m guard, 0.08 m/s translation,
-and 0.25 rad/s rotation. Existing menu options 0–17 retain their numbering.
+and 0.25 rad/s rotation. The final NDT high-structure prompt is also identical
+to Option 10. Existing menu options 0–17 retain their numbering.
 
 Trigger/guard checks retain a conservative camera axial-depth metric in addition
 to transformed obstacle geometry: the camera sits 0.45 m ahead of `base_link`,
@@ -36,10 +38,11 @@ The supervisor does not change either Auto EStop threshold.
 | OFF | OFF | Nav2 pass-through with manual/aggregate driver protection |
 | OFF | requested ON | Detour is forced OFF, including direct launch use |
 
-The menu generates a runtime 2D map from the selected PCD using the existing
-Option 16 projection settings, starts the chassis and LiDAR, and invokes the
-new launch. For a direct launch, replace both example paths with a matching
-PCD and map YAML:
+The menu uses Option 10's runtime-map projection, static-TF cleanup, NDT height
+weighting, bounded automatic NDT correction, and per-run diagnostic logging.
+Logs are stored under `logs/nav/<UTC time>_option18.<suffix>/`. It then starts
+the chassis and LiDAR and invokes the detour launch. For a direct launch,
+replace both example paths with a matching PCD and map YAML:
 
 ```bash
 source /opt/ros/humble/setup.bash
@@ -48,6 +51,7 @@ ros2 launch traymover_robot_nav traymover_nav_lidar_realsense_detour.launch.py \
   pcd_path:=/absolute/path/map.pcd \
   map:=/absolute/path/map.yaml \
   bringup_hardware:=true launch_rviz:=true \
+  auto_correction_enabled:=true \
   enable_auto_estop:=true enable_detour:=true
 ```
 
@@ -227,6 +231,11 @@ Option 18 installs independent
 `config/collision_monitor_lidar_realsense_detour.yaml`. The Collision Monitor
 polygons match Option 16; only its input topic changes to `cmd_vel_detour`.
 The output remains `cmd_vel`.
+
+All planner, controller, behavior-tree, static-map, and localization-related
+Nav2 parameters in the Option 18 file match Option 10's `nav2_params.yaml`.
+Option 18 only adds LiDAR/RealSense obstacle layers to the local and global
+costmaps; regression tests enforce that boundary.
 
 The global costmap adds a dynamic obstacle layer for `/scan` and
 `/scan_realsense`, with marking and raytrace clearing enabled and a default

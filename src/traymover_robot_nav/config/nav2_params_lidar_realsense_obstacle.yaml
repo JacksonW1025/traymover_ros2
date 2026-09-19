@@ -1,7 +1,8 @@
 # Nav2 parameters for option 16: option 10 baseline + thin dynamic obstacle input.
-# Keep localization, planner, BT, and controller behavior aligned with
-# nav2_params.yaml. The only intentional navigation change is local_costmap
-# obstacle input from high LiDAR /scan and waist-height RealSense /scan_realsense.
+# Keep localization, planner, BT, and controller geometry aligned with
+# nav2_params.yaml. This safety-oriented mode retains its original conservative
+# linear speeds while option 10 runs at 2.5x speed. Its other intentional
+# change is local-costmap obstacle input from LiDAR and RealSense scans.
 
 bt_navigator:
   ros__parameters:
@@ -67,8 +68,8 @@ controller_server:
       use_regulated_linear_velocity_scaling: true
       regulated_linear_scaling_min_radius: 3.20
       regulated_linear_scaling_min_speed: 0.035
-      # Keep the option 10 controller; obstacle response comes from
-      # local_costmap + collision_monitor in this first dynamic-obstacle pass.
+      # Keep the original conservative speed for this obstacle-aware mode;
+      # obstacle response comes from local_costmap + collision_monitor.
       use_cost_regulated_linear_velocity_scaling: false
       use_collision_detection: false
       transform_tolerance: 0.6
