@@ -38,8 +38,8 @@ def generate_launch_description():
     )
 
     lifecycle_mgr = Node(
-        package='nav2_lifecycle_manager',
-        executable='lifecycle_manager',
+        package=LaunchConfiguration('lifecycle_manager_package'),
+        executable=LaunchConfiguration('lifecycle_manager_executable'),
         name='lifecycle_manager_collision_monitor',
         output='screen',
         parameters=[{
@@ -51,6 +51,8 @@ def generate_launch_description():
 
     return LaunchDescription([
         DeclareLaunchArgument('use_sim_time', default_value='false'),
+        DeclareLaunchArgument('lifecycle_manager_package', default_value='nav2_lifecycle_manager'),
+        DeclareLaunchArgument('lifecycle_manager_executable', default_value='lifecycle_manager'),
         DeclareLaunchArgument('params_file', default_value=default_params),
         collision_monitor,
         lifecycle_mgr,

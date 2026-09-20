@@ -123,7 +123,7 @@ def generate_launch_description():
             'nav_cloud_topic': '/point_cloud_nav',
             'scan_topic': '/scan',
             'target_frame': 'base_link',
-            'publish_scan': 'false',
+            'publish_scan': LaunchConfiguration('publish_scan'),
         }.items(),
     )
 
@@ -175,8 +175,8 @@ def generate_launch_description():
         parameters=[configured_params],
     )
     lifecycle_mgr = Node(
-        package='nav2_lifecycle_manager',
-        executable='lifecycle_manager',
+        package=LaunchConfiguration('lifecycle_manager_package'),
+        executable=LaunchConfiguration('lifecycle_manager_executable'),
         name='lifecycle_manager_navigation',
         output='screen',
         parameters=[{
@@ -198,6 +198,11 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument('use_sim_time', default_value='false'),
         DeclareLaunchArgument('autostart', default_value='true'),
+        DeclareLaunchArgument('lifecycle_manager_package', default_value='nav2_lifecycle_manager'),
+        DeclareLaunchArgument('lifecycle_manager_executable', default_value='lifecycle_manager'),
+        DeclareLaunchArgument(
+            'publish_scan', default_value='false',
+            description='Publish obstacle scan for additive navigation modes.'),
         DeclareLaunchArgument('params_file', default_value=default_params),
         DeclareLaunchArgument('map', default_value=default_map),
         DeclareLaunchArgument(
@@ -211,7 +216,8 @@ def generate_launch_description():
             description='Height threshold in base_link metres, not ground or map height.'),
         DeclareLaunchArgument(
             'bringup_hardware', default_value='false',
-            description='Also start base_serial + traymover_lidar (true for one-command real-hardware test).'),
+            description=('Also start base_serial + traymover_lidar '
+                         '(true for one-command real-hardware test).')),
         DeclareLaunchArgument(
             'launch_rviz', default_value='false',
             description='Also start RViz with the navigation profile.'),

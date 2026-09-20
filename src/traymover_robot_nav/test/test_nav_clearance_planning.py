@@ -8,7 +8,8 @@ import shutil
 import subprocess
 
 import pytest
-import yaml
+
+from test_nav_clearance_config import load
 
 
 PKG_ROOT = Path(__file__).resolve().parents[1]
@@ -43,7 +44,7 @@ def navfn_harness(tmp_path_factory):
 
 
 def _configuration(path):
-    params = yaml.safe_load(path.read_text())
+    params = load(path)
     costmap = params['global_costmap']['global_costmap']['ros__parameters']
     planner = params['planner_server']['ros__parameters']['GridBased']
     assert planner['plugin'] == 'nav2_navfn_planner/NavfnPlanner'

@@ -722,6 +722,8 @@ PY
 }
 
 action_start_nav() {
+    # Option 18 calls this same baseline; its branches only add the detour chain.
+    local nav_option="${1:-10}" nav_auto_estop_enabled
     # Autonomous navigation bringup. Prompts the user to:
     #   1) pick a PCD map from FAST_LIO/PCD/ (the prior map for lidar_localization_ros2)
     #   2) choose ground-plane fitting, then regenerate a matching PGM/YAML
@@ -831,37 +833,47 @@ action_start_nav() {
     else
         rviz_arg="launch_rviz:=false"
     fi
-    prompt_auto_estop
+    if [ "${nav_option}" = 18 ]; then
+        prompt_wait_detour_settings || return 1
+        nav_auto_estop_enabled="${DETOUR_AUTO_ESTOP_ENABLED}"
+    else
+        prompt_auto_estop
+        nav_auto_estop_enabled="${AUTO_ESTOP_ENABLED}"
+    fi
 
     local NDT_HEIGHT_BOOST_ENABLED NDT_HEIGHT_BOOST_MIN_Z
     prompt_ndt_height_boost || return 1
 
-    # Scope every option-10 run to its own logs, including launch stdout and
+    # Scope every navigation run to its own logs, including launch stdout and
     # passive monitors. No localization parameter is changed by the collectors.
     local nav_log_root nav_run_dir logged_nav_cmd
     nav_log_root="${TRAYMOVER_NAV_LOG_ROOT:-${WORKSPACE_DIR}/logs/nav}"
     mkdir -p "${nav_log_root}" || return 1
     nav_log_root="$(cd "${nav_log_root}" && pwd)" || return 1
-    nav_run_dir="$(mktemp -d "${nav_log_root}/$(date -u +%Y%m%dT%H%M%SZ)_option10.XXXXXX")" || return 1
+    nav_run_dir="$(mktemp -d "${nav_log_root}/$(date -u +%Y%m%dT%H%M%SZ)_option${nav_option}.XXXXXX")" || return 1
     local ROS_LOG_DIR_DEFAULT="${nav_run_dir}/ros"
     mkdir -p "${ROS_LOG_DIR_DEFAULT}" || return 1
-    printf 'mode=live_option10\npcd=%s\nmap=%s\nz_reference=%s\nuse_sim_time=false\n' \
-        "${pcd_path}" "${runtime_map_yaml}" "${z_reference}" > "${nav_run_dir}/run_info.txt"
+    printf 'mode=live_option%s\npcd=%s\nmap=%s\nz_reference=%s\nuse_sim_time=false\n' \
+        "${nav_option}" "${pcd_path}" "${runtime_map_yaml}" "${z_reference}" > "${nav_run_dir}/run_info.txt"
     printf 'height_boost_enabled=%s\nheight_boost_min_z=%s\nheight_boost_frame=base_link\nheight_boost_extra_copies=1\n' \
         "${NDT_HEIGHT_BOOST_ENABLED}" "${NDT_HEIGHT_BOOST_MIN_Z}" >> "${nav_run_dir}/run_info.txt"
     printf 'auto_correction_enabled=true\n' >> "${nav_run_dir}/run_info.txt"
     cp -- "${runtime_map_yaml}" "${nav_run_dir}/map.yaml"
     git -C "${WORKSPACE_DIR}" rev-parse HEAD > "${nav_run_dir}/software_commit.txt" 2>/dev/null || true
     git -C "${WORKSPACE_DIR}" status --short > "${nav_run_dir}/software_status.txt" 2>/dev/null || true
-    echo "[traymover] Option 10 logs: ${nav_run_dir}"
+    echo "[traymover] Option ${nav_option} logs: ${nav_run_dir}"
 
     echo "[traymover] Starting chassis + IMU (base_serial) ..."
     spawn_in_terminal "traymover: chassis_serial" \
-        "ros2 launch turn_on_traymover_robot base_serial.launch.py odom_source_mode:=none auto_estop_enabled:=${AUTO_ESTOP_ENABLED}"
+        "ros2 launch turn_on_traymover_robot base_serial.launch.py odom_source_mode:=none auto_estop_enabled:=${nav_auto_estop_enabled}"
     action_start_estop_keyboard
-    action_start_auto_estop
+    # The detour launch owns one camera and the Auto EStop node. Baseline
+    # navigation retains its existing optional standalone Auto EStop launch.
+    if [ "${nav_option}" != 18 ]; then
+        action_start_auto_estop
+    fi
 
-    echo "[traymover] Starting LiDAR driver (Nav2 is not using scan-based avoidance) ..."
+    echo "[traymover] Starting LiDAR driver ..."
     spawn_in_terminal "traymover: lidar" \
         "ros2 launch turn_on_traymover_robot traymover_lidar.launch.py enable_scan_bridge:=false"
 
@@ -871,13 +883,23 @@ action_start_nav() {
 
     echo "[traymover] Starting nav stack with pcd_path=${pcd_path} map=${runtime_map_yaml} ..."
     echo "[traymover] NDT automatic correction enabled (bounded, multi-frame confirmation for larger corrections)."
+    local nav_launch="traymover_nav.launch.py" nav_title="traymover: nav_stack"
+    local -a nav_args=("${rviz_arg}" "pcd_path:=${pcd_path}" "map:=${runtime_map_yaml}"
+        "height_boost_enabled:=${NDT_HEIGHT_BOOST_ENABLED}"
+        "height_boost_min_z:=${NDT_HEIGHT_BOOST_MIN_Z}" "auto_correction_enabled:=true")
+    if [ "${nav_option}" = 18 ]; then
+        nav_launch="traymover_nav_lidar_realsense_detour.launch.py"
+        nav_title="traymover: wait_detour_nav_stack"
+        nav_args+=("enable_auto_estop:=${DETOUR_AUTO_ESTOP_ENABLED}"
+            "enable_detour:=${DETOUR_ENABLED}" "wait_before_detour_sec:=${DETOUR_WAIT_SEC}"
+            "detour_trigger_distance_m:=${DETOUR_TRIGGER_M}"
+            "detour_guard_distance_m:=${DETOUR_GUARD_M}"
+            "detour_max_linear_speed:=${DETOUR_LINEAR_SPEED}"
+            "detour_max_angular_speed:=${DETOUR_ANGULAR_SPEED}")
+    fi
     printf -v logged_nav_cmd '%q ' bash "${SCRIPT_DIR}/run_nav_logged.sh" "${nav_run_dir}" \
-        ros2 launch traymover_robot_nav traymover_nav.launch.py "${rviz_arg}" \
-        "pcd_path:=${pcd_path}" "map:=${runtime_map_yaml}" \
-        "height_boost_enabled:=${NDT_HEIGHT_BOOST_ENABLED}" \
-        "height_boost_min_z:=${NDT_HEIGHT_BOOST_MIN_Z}" \
-        "auto_correction_enabled:=true"
-    spawn_in_terminal "traymover: nav_stack" "${logged_nav_cmd}"
+        ros2 launch traymover_robot_nav "${nav_launch}" "${nav_args[@]}"
+    spawn_in_terminal "${nav_title}" "${logged_nav_cmd}"
 
     cat <<EOF
 [traymover] Nav stack starting. Next steps once lifecycle activates (~10-20 s):
@@ -891,6 +913,19 @@ action_start_nav() {
     ros2 action list | grep navigate_to_pose
     ros2 topic echo --once /cmd_vel
 EOF
+    if [ "${nav_option}" = 18 ]; then
+        cat <<EOF
+[traymover] Wait detour speed chain:
+  Nav2 -> /cmd_vel_nav -> detour supervisor -> /cmd_vel_detour
+  -> Collision Monitor -> /cmd_vel -> driver aggregate EStop gate -> chassis
+[traymover] Auto EStop=${DETOUR_AUTO_ESTOP_ENABLED}; detour=${DETOUR_ENABLED}
+  Distances and speeds require hardware validation before normal operation.
+  Detour health checks:
+    ros2 topic echo /traymover_detour/state
+    ros2 topic echo /traymover_detour/reason
+    ros2 topic echo /traymover_estop/auto_reason
+EOF
+    fi
 }
 
 action_start_nav_lidar_realsense_obstacle() {
@@ -1032,9 +1067,9 @@ prompt_wait_detour_settings() {
     local auto_opt detour_opt
     DETOUR_AUTO_ESTOP_ENABLED="true"
     DETOUR_ENABLED="true"
-    DETOUR_WAIT_SEC="5.0"
-    DETOUR_TRIGGER_M="1.10"
-    DETOUR_GUARD_M="0.95"
+    DETOUR_WAIT_SEC="1.0"
+    DETOUR_TRIGGER_M="1.00"
+    DETOUR_GUARD_M="0.90"
     DETOUR_LINEAR_SPEED="0.08"
     DETOUR_ANGULAR_SPEED="0.25"
     read -r -p "Enable automatic EStop? [Y/n]: " auto_opt
@@ -1050,14 +1085,14 @@ prompt_wait_detour_settings() {
         DETOUR_ENABLED="false"
         return 0
     fi
-    read -r -p "Wait before detour [default: 5.0 s]: " DETOUR_WAIT_SEC
-    read -r -p "Detour trigger distance [default: 1.10 m]: " DETOUR_TRIGGER_M
-    read -r -p "Detour guard distance [default: 0.95 m]: " DETOUR_GUARD_M
+    read -r -p "Wait before detour [default: 1.0 s]: " DETOUR_WAIT_SEC
+    read -r -p "Detour trigger distance [default: 1.00 m]: " DETOUR_TRIGGER_M
+    read -r -p "Detour guard distance [default: 0.90 m]: " DETOUR_GUARD_M
     read -r -p "Detour linear speed [default: 0.08 m/s]: " DETOUR_LINEAR_SPEED
     read -r -p "Detour angular speed [default: 0.25 rad/s]: " DETOUR_ANGULAR_SPEED
-    DETOUR_WAIT_SEC="${DETOUR_WAIT_SEC:-5.0}"
-    DETOUR_TRIGGER_M="${DETOUR_TRIGGER_M:-1.10}"
-    DETOUR_GUARD_M="${DETOUR_GUARD_M:-0.95}"
+    DETOUR_WAIT_SEC="${DETOUR_WAIT_SEC:-1.0}"
+    DETOUR_TRIGGER_M="${DETOUR_TRIGGER_M:-1.00}"
+    DETOUR_GUARD_M="${DETOUR_GUARD_M:-0.90}"
     DETOUR_LINEAR_SPEED="${DETOUR_LINEAR_SPEED:-0.08}"
     DETOUR_ANGULAR_SPEED="${DETOUR_ANGULAR_SPEED:-0.25}"
     # Validate before interpolating any input into a spawned shell command.
@@ -1086,159 +1121,7 @@ PY_VALIDATE
 }
 
 action_start_nav_wait_detour() {
-    # Use the complete Option 10 map/localization/navigation flow, then add the
-    # Option 18 obstacle sensors, detour supervisor, and downstream safety gate.
-    if [ ! -d "${FASTLIO_PCD_DIR}" ]; then
-        echo "[traymover] FAST-LIO PCD directory missing: ${FASTLIO_PCD_DIR}"
-        echo "[traymover] Record a map first (options 6 + 7)."
-        return 1
-    fi
-
-    local -a pcds=()
-    while IFS= read -r -d '' f; do
-        pcds+=("$f")
-    done < <(find "${FASTLIO_PCD_DIR}" -maxdepth 1 -name '*.pcd' -type f -print0 2>/dev/null \
-             | xargs -0 -I{} stat --format='%Y %n' {} 2>/dev/null \
-             | sort -rn | cut -d' ' -f2- | tr '\n' '\0')
-
-    if [ ${#pcds[@]} -eq 0 ]; then
-        echo "[traymover] No .pcd files in ${FASTLIO_PCD_DIR}. Save a map first (option 7)."
-        return 1
-    fi
-
-    echo "Available PCD maps in ${FASTLIO_PCD_DIR} (newest first):"
-    local i size
-    for i in "${!pcds[@]}"; do
-        size="$(du -h "${pcds[i]}" 2>/dev/null | awk '{print $1}')"
-        printf "  [%d] %s  (%s)\n" "$((i+1))" "$(basename "${pcds[i]}")" "${size:-?}"
-    done
-
-    local pick pcd_path
-    read -r -p "Select PCD number [default: 1 = newest]: " pick
-    pick="${pick:-1}"
-    if ! [[ "${pick}" =~ ^[0-9]+$ ]] || [ "${pick}" -lt 1 ] || [ "${pick}" -gt "${#pcds[@]}" ]; then
-        echo "[traymover] Invalid selection: ${pick}"
-        return 1
-    fi
-    pcd_path="${pcds[$((pick-1))]}"
-    echo "[traymover] Selected: ${pcd_path}"
-
-    local ground_fit_opt z_reference="floor"
-    while true; do
-        if ! read -r -p "Enable ground-plane fitting for 2D map? [y/N]: " ground_fit_opt; then
-            echo "[traymover] Input ended. Aborting nav startup."
-            return 1
-        fi
-        case "${ground_fit_opt,,}" in
-            y|yes) z_reference="plane"; break ;;
-            n|no|"") break ;;
-            *) echo "[traymover] Please enter y or n (Enter = n)." ;;
-        esac
-    done
-    echo "[traymover] Ground reference for this run: ${z_reference}"
-
-    mkdir -p "${NAV_RUNTIME_DIR}"
-    local runtime_name runtime_prefix runtime_map_yaml
-    runtime_name="$(basename "${pcd_path}" .pcd)"
-    runtime_prefix="${NAV_RUNTIME_DIR}/${runtime_name}_2d"
-    runtime_map_yaml="${runtime_prefix}.yaml"
-
-    set +u
-    mkdir -p "${ROS_LOG_DIR_DEFAULT}"
-    export ROS_LOG_DIR="${ROS_LOG_DIR_DEFAULT}"
-    # shellcheck disable=SC1090
-    source "${ROS_DISTRO_SETUP}"
-    if [ -f "${WS_SETUP}" ]; then
-        # shellcheck disable=SC1090
-        source "${WS_SETUP}"
-    fi
-    set -u
-
-    python3 "${SCRIPT_DIR}/cleanup_static_tf.py" || return 1
-    echo "[traymover] Generating runtime 2D nav map from selected PCD ..."
-    if ! python3 "${NAV_SCRIPTS_DIR}/pcd2pgm.py" \
-            --pcd "${pcd_path}" \
-            --out "${runtime_prefix}" \
-            --z-reference "${z_reference}" \
-            --z-min "${NAV_PGM_Z_MIN}" \
-            --z-max "${NAV_PGM_Z_MAX}" \
-            --min-points "${NAV_PGM_MIN_POINTS}" \
-            --dilate "${NAV_PGM_DILATE}" \
-            --min-region-cells "${NAV_PGM_MIN_REGION_CELLS}"; then
-        echo "[traymover] pcd2pgm failed. Aborting nav startup."
-        return 1
-    fi
-    if [ ! -f "${runtime_map_yaml}" ]; then
-        echo "[traymover] Expected runtime map YAML missing: ${runtime_map_yaml}"
-        return 1
-    fi
-    echo "[traymover] Runtime map YAML: ${runtime_map_yaml}"
-    echo "[traymover] Runtime map params: reference=${z_reference}, height=[${NAV_PGM_Z_MIN}, ${NAV_PGM_Z_MAX}] m, min_points=${NAV_PGM_MIN_POINTS}, dilate=${NAV_PGM_DILATE}, min_region_cells=${NAV_PGM_MIN_REGION_CELLS}"
-
-    local rviz_opt rviz_arg
-    read -r -p "Launch RViz? [Y/n]: " rviz_opt
-    if [[ "${rviz_opt:-Y}" =~ ^[Nn] ]]; then
-        rviz_arg="launch_rviz:=false"
-    else
-        rviz_arg="launch_rviz:=true"
-    fi
-    prompt_wait_detour_settings || return 1
-
-    local NDT_HEIGHT_BOOST_ENABLED NDT_HEIGHT_BOOST_MIN_Z
-    prompt_ndt_height_boost || return 1
-
-    local nav_log_root nav_run_dir logged_nav_cmd
-    nav_log_root="${TRAYMOVER_NAV_LOG_ROOT:-${WORKSPACE_DIR}/logs/nav}"
-    mkdir -p "${nav_log_root}" || return 1
-    nav_log_root="$(cd "${nav_log_root}" && pwd)" || return 1
-    nav_run_dir="$(mktemp -d "${nav_log_root}/$(date -u +%Y%m%dT%H%M%SZ)_option18.XXXXXX")" || return 1
-    local ROS_LOG_DIR_DEFAULT="${nav_run_dir}/ros"
-    mkdir -p "${ROS_LOG_DIR_DEFAULT}" || return 1
-    printf 'mode=live_option18\npcd=%s\nmap=%s\nz_reference=%s\nuse_sim_time=false\n' \
-        "${pcd_path}" "${runtime_map_yaml}" "${z_reference}" > "${nav_run_dir}/run_info.txt"
-    printf 'height_boost_enabled=%s\nheight_boost_min_z=%s\nheight_boost_frame=base_link\nheight_boost_extra_copies=1\n' \
-        "${NDT_HEIGHT_BOOST_ENABLED}" "${NDT_HEIGHT_BOOST_MIN_Z}" >> "${nav_run_dir}/run_info.txt"
-    printf 'auto_correction_enabled=true\n' >> "${nav_run_dir}/run_info.txt"
-    cp -- "${runtime_map_yaml}" "${nav_run_dir}/map.yaml"
-    git -C "${WORKSPACE_DIR}" rev-parse HEAD > "${nav_run_dir}/software_commit.txt" 2>/dev/null || true
-    git -C "${WORKSPACE_DIR}" status --short > "${nav_run_dir}/software_status.txt" 2>/dev/null || true
-    echo "[traymover] Option 18 logs: ${nav_run_dir}"
-
-    echo "[traymover] Option 18 distances and speeds are initial tuning values, not hardware-validated safety limits."
-    echo "[traymover] Starting chassis + IMU with automatic EStop=${DETOUR_AUTO_ESTOP_ENABLED} ..."
-    spawn_in_terminal "traymover: chassis_serial" \
-        "ros2 launch turn_on_traymover_robot base_serial.launch.py odom_source_mode:=none auto_estop_enabled:=${DETOUR_AUTO_ESTOP_ENABLED}"
-    action_start_estop_keyboard
-    spawn_in_terminal "traymover: lidar" \
-        "ros2 launch turn_on_traymover_robot traymover_lidar.launch.py enable_scan_bridge:=false"
-    sleep 6
-    # Main detour launch owns the single RealSense driver and the Auto EStop
-    # launch (start_realsense_driver=false there).
-    printf -v logged_nav_cmd '%q ' bash "${SCRIPT_DIR}/run_nav_logged.sh" "${nav_run_dir}" \
-        ros2 launch traymover_robot_nav traymover_nav_lidar_realsense_detour.launch.py "${rviz_arg}" \
-        "pcd_path:=${pcd_path}" "map:=${runtime_map_yaml}" \
-        "height_boost_enabled:=${NDT_HEIGHT_BOOST_ENABLED}" \
-        "height_boost_min_z:=${NDT_HEIGHT_BOOST_MIN_Z}" \
-        "auto_correction_enabled:=true" \
-        "enable_auto_estop:=${DETOUR_AUTO_ESTOP_ENABLED}" "enable_detour:=${DETOUR_ENABLED}" \
-        "wait_before_detour_sec:=${DETOUR_WAIT_SEC}" \
-        "detour_trigger_distance_m:=${DETOUR_TRIGGER_M}" \
-        "detour_guard_distance_m:=${DETOUR_GUARD_M}" \
-        "detour_max_linear_speed:=${DETOUR_LINEAR_SPEED}" \
-        "detour_max_angular_speed:=${DETOUR_ANGULAR_SPEED}"
-    spawn_in_terminal "traymover: wait_detour_nav_stack" "${logged_nav_cmd}"
-    cat <<EOF
-[traymover] Wait detour navigation starting. Expected speed chain:
-  Nav2 -> /cmd_vel_nav -> detour supervisor -> /cmd_vel_detour
-  -> Collision Monitor -> /cmd_vel -> driver aggregate EStop gate -> chassis
-[traymover] Auto EStop=${DETOUR_AUTO_ESTOP_ENABLED}; detour=${DETOUR_ENABLED}
-  NDT + FAST-LIO analysis logs: ${nav_run_dir}
-  Health checks:
-    ros2 topic echo /traymover_detour/state
-    ros2 topic echo /traymover_detour/reason
-    ros2 topic echo /traymover_estop/auto_reason
-    ./scripts/check_localization.sh
-EOF
+    action_start_nav 18
 }
 
 

@@ -199,7 +199,8 @@ def test_option10_launch_does_not_route_through_collision_monitor():
     assert '/local_planner_path' not in launch_text
     assert '/fastlio_path' not in launch_text
     assert '/pcl_path' not in launch_text
-    assert "'publish_scan': 'false'" in launch_text
+    assert "'publish_scan': LaunchConfiguration('publish_scan')" in launch_text
+    assert "'publish_scan', default_value='false'" in launch_text
     assert "'max_map_odom_update_translation': '0.50'" in launch_text
     assert "'max_map_odom_update_rotation': '0.25'" in launch_text
     assert "'behavior_server'" not in launch_text
@@ -321,9 +322,9 @@ def test_navigation_options_offer_automatic_estop_after_rviz_prompt():
     assert 'AUTO_ESTOP_ENABLED="false"' in launcher_text
     assert launcher_text.count('prompt_auto_estop') == 5  # definition + four calls
     assert launcher_text.count('action_start_auto_estop') == 5
-    assert launcher_text.count('auto_estop_enabled:=${AUTO_ESTOP_ENABLED}') == 4
+    assert launcher_text.count('auto_estop_enabled:=${AUTO_ESTOP_ENABLED}') == 3
+    assert launcher_text.count('auto_estop_enabled:=${nav_auto_estop_enabled}') == 1
     assert 'traymover_auto_estop.launch.py' in launcher_text
-
 
 
 def test_option16_declares_depthimage_to_laserscan_dependency():
@@ -339,7 +340,8 @@ def test_lidar_localization_does_not_claim_nav2_map_topic_as_pointcloud():
     ).read_text(encoding='utf-8')
 
     assert '"ndt_map"' in localization_source
-    assert 'create_subscription<sensor_msgs::msg::PointCloud2>(\n    "map"' not in localization_source
+    assert ('create_subscription<sensor_msgs::msg::PointCloud2>(\n    "map"'
+            not in localization_source)
 
 
 def test_option14_isolates_cmu_path_from_localization_diagnostics():

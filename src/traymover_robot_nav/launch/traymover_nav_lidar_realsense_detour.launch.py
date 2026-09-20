@@ -6,6 +6,9 @@ remains downstream and the chassis driver's EStop gate remains authoritative.
 import math
 import os
 from pathlib import Path
+import tempfile
+
+import yaml
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
@@ -16,34 +19,58 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node, SetRemap
 from launch_ros.parameter_descriptions import ParameterValue
-from nav2_common.launch import RewrittenYaml
 
 
 # Shared with the pure gate. Numeric values are deliberately exposed for tuning.
 FLOAT_DEFAULTS = {
-    'wait_before_detour_sec': '5.0',
-    'detour_trigger_distance_m': '1.10',
-    'detour_guard_distance_m': '0.95',
+    'wait_before_detour_sec': '1.0',
+    'detour_trigger_distance_m': '1.00',
+    'detour_guard_distance_m': '0.90',
     'detour_max_linear_speed': '0.08',
     'detour_max_angular_speed': '0.25',
-    'clear_confirm_sec': '1.0',
-    'stop_settle_time_sec': '0.5',
-    'detour_target_clearance_m': '1.15',
+    'clear_confirm_sec': '0.4',
+    'stop_settle_time_sec': '0.25',
+    'detour_target_clearance_m': '1.10',
     'detour_turn_angle_deg': '45.0',
-    'detour_first_leg_m': '0.8',
+    'simple_obstacle_half_width_m': '0.35',
+    'detour_first_leg_m': '2.2',
     'detour_forward_leg_m': '1.0',
-    'scan_timeout_sec': '1.0',
-    'realsense_timeout_sec': '1.0',
+    'scan_timeout_sec': '2.0',
+    'realsense_timeout_sec': '1.5',
     'cmd_vel_timeout_sec': '0.5',
     'turn_phase_timeout_sec': '12.0',
-    'straight_phase_timeout_sec': '25.0',
-    'tf_timeout_sec': '1.0',
+    'straight_phase_timeout_sec': '60.0',
+    'tf_timeout_sec': '1.5',
     # NDT aligns every 2 seconds; TF alone is not localization evidence.
     'localization_timeout_sec': '5.0',
     'estop_timeout_sec': '1.0',
     'supervisor_rate_hz': '20.0',
 }
-INT_DEFAULTS = {'obstacle_confirm_frames': '2', 'min_obstacle_points': '4'}
+INT_DEFAULTS = {'obstacle_confirm_frames': '3', 'min_obstacle_points': '8'}
+
+# Scoped to option 18; leave standalone Auto EStop / other menu modes unchanged.
+AUTO_ESTOP_OVERRIDES = {
+    'depth_timeout_sec': '1.5',
+    'min_near_pixel_fraction': '0.02',
+    'min_near_tile_count': '4',
+    'obstacle_frame_count': '3',
+    'min_valid_fraction': '0.25',
+    'severe_invalid_fraction': '0.10',
+    'low_valid_frame_count': '4',
+    'clear_frame_count': '12',
+}
+
+
+def _navigation_remappings():
+    # This Humble installation remaps action transports, not action basenames.
+    # All three services and both topics must agree on the private backend.
+    remaps = [
+        (f'/{action}/_action/{endpoint}', f'/{action}_detour_backend/_action/{endpoint}')
+        for action in ('navigate_to_pose', 'navigate_through_poses')
+        for endpoint in ('send_goal', 'get_result', 'cancel_goal', 'feedback', 'status')
+    ]
+    return remaps + [('/goal_pose', '/goal_pose_detour_backend_unused'),
+                     ('/cmd_vel', '/cmd_vel_nav')]
 
 
 def _enabled(context, name):
@@ -62,7 +89,7 @@ def _validate_numeric_arguments(context):
     for name, value in values.items():
         if not math.isfinite(value) or value <= 0.0:
             raise ValueError(f'{name} must be finite and positive')
-    for name in INT_DEFAULTS:
+    for name in (*INT_DEFAULTS, 'realsense_scan_height'):
         value = float(LaunchConfiguration(name).perform(context))
         if not math.isfinite(value) or value < 1 or value != int(value):
             raise ValueError(f'{name} must be a positive integer')
@@ -76,8 +103,37 @@ def _validate_numeric_arguments(context):
         raise ValueError('detour turn angle must be within 5 to 75 degrees')
 
 
+def _navigation_params(context):
+    """Default to exactly option 10; sensor costmap layers are an explicit opt-in."""
+    if not _enabled(context, 'enable_dynamic_costmaps'):
+        return LaunchConfiguration('params_file').perform(context)
+    with open(LaunchConfiguration('params_file').perform(context), encoding='utf-8') as stream:
+        params = yaml.safe_load(stream)
+    with open(LaunchConfiguration('obstacle_params_file').perform(context),
+              encoding='utf-8') as stream:
+        obstacles = yaml.safe_load(stream)
+    persistence = float(LaunchConfiguration('dynamic_obstacle_persistence_sec').perform(context))
+    for name in ('local_costmap', 'global_costmap'):
+        costmap = params[name][name]['ros__parameters']
+        layer = obstacles[name][name]['ros__parameters']['obstacle_layer']
+        for source in layer['observation_sources'].split():
+            if 'observation_persistence' in layer[source]:
+                layer[source]['observation_persistence'] = persistence
+        costmap['obstacle_layer'] = layer
+        if 'obstacle_layer' not in costmap['plugins']:
+            index = (costmap['plugins'].index('inflation_layer')
+                     if 'inflation_layer' in costmap['plugins'] else len(costmap['plugins']))
+            costmap['plugins'].insert(index, 'obstacle_layer')
+    # Like Nav2's RewrittenYaml, materialize parameters for the included launch.
+    with tempfile.NamedTemporaryFile(mode='w', prefix='traymover_detour_',
+                                     suffix='.yaml', delete=False) as stream:
+        yaml.safe_dump(params, stream, sort_keys=False)
+        return stream.name
+
+
 def _launch_nodes(context):
     _validate_numeric_arguments(context)
+    configured_path = _navigation_params(context)
     nav_share = get_package_share_directory('traymover_robot_nav')
     bringup_share = get_package_share_directory('turn_on_traymover_robot')
     safety_share = get_package_share_directory('traymover_robot_safety')
@@ -111,6 +167,7 @@ def _launch_nodes(context):
     if auto_enabled:
         actions.append(GroupAction(scoped=True, actions=[include(
             safety_share, 'traymover_auto_estop.launch.py', {
+                **AUTO_ESTOP_OVERRIDES,
                 'start_realsense_driver': 'false',
                 'depth_topic': LaunchConfiguration('realsense_depth_topic'),
             })]))
@@ -126,7 +183,7 @@ def _launch_nodes(context):
     ])
 
     if detour_enabled:
-        # The unchanged Option 16 scan covers 270 degrees. Rotation checks
+        # The navigation scan covers 270 degrees. Rotation checks
         # need independent, observed evidence for the missing rear sector.
         # Unknown/no-return bins never certify free space in the supervisor.
         actions.append(Node(
@@ -149,37 +206,49 @@ def _launch_nodes(context):
             }],
         ))
 
-    configured_params = RewrittenYaml(
-        source_file=LaunchConfiguration('params_file'),
-        param_rewrites={
-            'observation_persistence': LaunchConfiguration('dynamic_obstacle_persistence_sec'),
-        }, convert_types=True)
-    # Materialize the rewritten file before passing it as an include argument.
-    # Option 16 then performs its usual map/BT/use_sim_time rewrite.
-    configured_path = configured_params.perform(context)
     navigation_args = {
         name: LaunchConfiguration(name) for name in (
             'use_sim_time', 'autostart', 'map', 'pcd_path', 'launch_rviz',
             'rviz_config', 'bt_xml', 'through_poses_bt_xml',
-            'realsense_depth_topic', 'realsense_info_topic', 'realsense_output_frame',
             'height_boost_enabled', 'height_boost_min_z', 'auto_correction_enabled',
         )
     }
     navigation_args.update({
         'params_file': configured_path,
-        'collision_params_file': LaunchConfiguration('collision_params_file'),
         'bringup_hardware': 'false',
-        'use_realsense': 'true',
-        'start_realsense_driver': 'false',
-        'realsense_scan_topic': '/scan_realsense',
+        'publish_scan': 'true',
+        'lifecycle_manager_package': 'traymover_robot_nav',
+        'lifecycle_manager_executable': 'option18_lifecycle_manager',
     })
     # Keep RViz on the public proxy action; SetRemap affects ROS Nodes in the
     # nested stack, so launch RViz separately outside this group.
     navigation_args['launch_rviz'] = 'false'
     actions.append(GroupAction(scoped=True, actions=[
-        SetRemap(src='/navigate_to_pose', dst='/navigate_to_pose_detour_backend'),
-        include(nav_share, 'traymover_nav_lidar_realsense_obstacle.launch.py', navigation_args),
+        *(SetRemap(src=src, dst=dst) for src, dst in _navigation_remappings()),
+        include(nav_share, 'traymover_nav.launch.py', navigation_args),
     ]))
+    actions.append(Node(
+        package='depthimage_to_laserscan', executable='depthimage_to_laserscan_node',
+        name='traymover_realsense_depth_to_laserscan', output='screen',
+        remappings=[
+            ('depth', LaunchConfiguration('realsense_depth_topic')),
+            ('depth_camera_info', LaunchConfiguration('realsense_info_topic')),
+            ('scan', '/scan_realsense'),
+        ],
+        parameters=[{
+            'scan_height': ParameterValue(
+                LaunchConfiguration('realsense_scan_height'), value_type=int),
+            'range_min': 0.20, 'range_max': 3.0,
+            'output_frame': LaunchConfiguration('realsense_output_frame'),
+            'use_sim_time': ParameterValue(LaunchConfiguration('use_sim_time'), value_type=bool),
+        }],
+    ))
+    actions.append(include(nav_share, 'collision_monitor.launch.py', {
+        'use_sim_time': LaunchConfiguration('use_sim_time'),
+        'params_file': LaunchConfiguration('collision_params_file'),
+        'lifecycle_manager_package': 'traymover_robot_nav',
+        'lifecycle_manager_executable': 'option18_lifecycle_manager',
+    }))
     actions.append(Node(
         package='rviz2', executable='rviz2', name='rviz2',
         arguments=['-d', LaunchConfiguration('rviz_config')],
@@ -196,6 +265,7 @@ def _launch_nodes(context):
     supervisor_params.update({
         'enable_auto_estop': auto_enabled,
         'enable_detour': detour_enabled,
+        'simple_detour': _enabled(context, 'simple_detour'),
         'allow_straight_motion': _enabled(context, 'allow_straight_motion'),
         'use_sim_time': ParameterValue(LaunchConfiguration('use_sim_time'), value_type=bool),
         'pose_frame': LaunchConfiguration('pose_frame'),
@@ -215,12 +285,14 @@ def generate_launch_description():
     default_pcd = str(candidates[0] if candidates else pcd_dir / 'traymover.pcd')
     defaults = {
         'enable_auto_estop': 'true', 'enable_detour': 'true',
+        'simple_detour': 'true', 'enable_dynamic_costmaps': 'false',
         'allow_straight_motion': 'true',
         'use_sim_time': 'false', 'autostart': 'true',
         'bringup_hardware': 'false', 'launch_rviz': 'false',
         'start_realsense_driver': 'true',
         'dynamic_obstacle_persistence_sec': '5.0',
-        'params_file': os.path.join(
+        'params_file': os.path.join(nav_share, 'config', 'nav2_params.yaml'),
+        'obstacle_params_file': os.path.join(
             nav_share, 'config', 'nav2_params_lidar_realsense_detour.yaml'),
         'collision_params_file': os.path.join(
             nav_share, 'config', 'collision_monitor_lidar_realsense_detour.yaml'),
@@ -236,6 +308,7 @@ def generate_launch_description():
         'realsense_depth_topic': '/camera/camera/depth/image_rect_raw',
         'realsense_info_topic': '/camera/camera/depth/camera_info',
         'realsense_output_frame': 'camera_depth_frame',
+        'realsense_scan_height': '320',
         'pose_frame': 'odom', 'localization_topic': '/pcl_pose',
         **FLOAT_DEFAULTS, **INT_DEFAULTS,
     }

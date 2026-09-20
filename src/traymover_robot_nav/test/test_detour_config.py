@@ -17,17 +17,28 @@ def config(name):
     return yaml.safe_load((PKG / 'config' / name).read_text())
 
 
-def test_collision_monitor_only_changes_input_topic():
-    baseline = config('collision_monitor_lidar_realsense.yaml')
-    detour = config('collision_monitor_lidar_realsense_detour.yaml')
-    assert detour['collision_monitor']['ros__parameters']['cmd_vel_in_topic'] == 'cmd_vel_detour'
-    detour['collision_monitor']['ros__parameters']['cmd_vel_in_topic'] = 'cmd_vel_nav'
-    assert detour == baseline
+def test_collision_monitor_camera_stop_preserves_near_protection():
+    baseline = config('collision_monitor_lidar_realsense.yaml')[
+        'collision_monitor']['ros__parameters']
+    detour = config('collision_monitor_lidar_realsense_detour.yaml')[
+        'collision_monitor']['ros__parameters']
+    assert detour['cmd_vel_in_topic'] == 'cmd_vel_detour'
+    assert detour['odom_frame_id'] == 'base_link'
+    assert detour['polygons'] == ['PolygonStop']
+    assert detour['observation_sources'] == ['realsense_scan']
+    assert detour['PolygonStop'] == baseline['PolygonStop']
+    assert detour['realsense_scan'] == baseline['realsense_scan']
+    assert detour['source_timeout'] == 1.5
+    assert detour['cmd_vel_out_topic'] == baseline['cmd_vel_out_topic']
+    assert 'PolygonSlow' not in detour and 'lidar_scan' not in detour
 
 
-def test_option18_uses_option10_nav_params_plus_obstacle_layers_only():
+def test_option18_uses_option10_nav_params_plus_obstacle_layers_only(monkeypatch):
     baseline = config('nav2_params.yaml')
-    detour = config('nav2_params_lidar_realsense_detour.yaml')
+    module = load_launch(monkeypatch)
+    context = launch_context(module)
+    context.launch_configurations['enable_dynamic_costmaps'] = 'true'
+    detour = yaml.safe_load(Path(module._navigation_params(context)).read_text())
 
     local_map = detour['local_costmap']['local_costmap']['ros__parameters']
     assert local_map['plugins'] == ['obstacle_layer', 'inflation_layer']
@@ -66,7 +77,7 @@ printf 'REMAINDER:%s\\n' "${remainder:-}"
 def test_enter_defaults_enable_auto_and_detour():
     result = run_prompts('\n' * 7)
     assert result.returncode == 0, result.stderr
-    assert 'RESULT:true,true,5.0,1.10,0.95,0.08,0.25' in result.stdout
+    assert 'RESULT:true,true,1.0,1.00,0.90,0.08,0.25' in result.stdout
 
 
 def test_auto_disabled_does_not_prompt_or_consume_detour_answer():
@@ -107,6 +118,8 @@ def test_option18_launch_chain_and_existing_menu_routes():
     assert '17) action_test_auto_estop ;;' in text
     assert '18) action_start_nav_wait_detour ;;' in text
     body = text.split('action_start_nav_wait_detour() {', 1)[1].split('\n}', 1)[0]
+    assert 'action_start_nav 18' in body
+    body = text.split('action_start_nav() {', 1)[1].split('\n}', 1)[0]
     assert body.index('Select PCD') < body.index('Enable ground-plane fitting')
     assert body.index('cleanup_static_tf.py') < body.index('Generating runtime 2D nav map')
     assert '--z-reference "${z_reference}"' in body
@@ -114,9 +127,8 @@ def test_option18_launch_chain_and_existing_menu_routes():
     assert 'NAV_OBSTACLE_PGM_Z_MIN' not in body
     assert body.index('Launch RViz') < body.index('prompt_wait_detour_settings')
     assert 'prompt_ndt_height_boost' in body
-    assert 'auto_estop_enabled:=${DETOUR_AUTO_ESTOP_ENABLED}' in body
-    assert 'action_start_auto_estop' not in body
-    assert '_option18.' in body
+    assert 'auto_estop_enabled:=${nav_auto_estop_enabled}' in body
+    assert '_option${nav_option}.' in body
     assert 'run_nav_logged.sh' in body
     assert 'auto_correction_enabled:=true' in body
     assert 'height_boost_enabled:=${NDT_HEIGHT_BOOST_ENABLED}' in body
@@ -221,9 +233,15 @@ def test_launch_dependency_single_camera_and_scoped_action_proxy(
         members = action.get_sub_entities() if isinstance(action, GroupAction) else [action]
         nested.extend(m for m in members if isinstance(m, IncludeLaunchDescription))
         remaps.extend(m for m in members if isinstance(m, SetRemap))
-    assert len(remaps) == 1
-    assert perform_substitutions(context, remaps[0].src) == '/navigate_to_pose'
-    assert perform_substitutions(context, remaps[0].dst) == '/navigate_to_pose_detour_backend'
+    expected_remaps = {
+        f'/{action}/_action/{endpoint}': f'/{action}_detour_backend/_action/{endpoint}'
+        for action in ('navigate_to_pose', 'navigate_through_poses')
+        for endpoint in ('send_goal', 'get_result', 'cancel_goal', 'feedback', 'status')
+    }
+    expected_remaps.update({'/goal_pose': '/goal_pose_detour_backend_unused',
+                           '/cmd_vel': '/cmd_vel_nav'})
+    assert {perform_substitutions(context, item.src):
+            perform_substitutions(context, item.dst) for item in remaps} == expected_remaps
 
     includes = {}
     for item in nested:
@@ -231,8 +249,12 @@ def test_launch_dependency_single_camera_and_scoped_action_proxy(
         name = Path(perform_substitutions(context, location)).name
         includes[name] = dict(item.launch_arguments)
     assert list(includes).count('rs_launch.py') == 1
-    obstacle = includes['traymover_nav_lidar_realsense_obstacle.launch.py']
-    assert obstacle['start_realsense_driver'] == 'false'
+    assert 'traymover_nav_lidar_realsense_obstacle.launch.py' not in includes
+    obstacle = includes['traymover_nav.launch.py']
+    assert obstacle['publish_scan'] == 'true'
+    assert includes['collision_monitor.launch.py']['params_file'].perform(context).endswith(
+        'collision_monitor_lidar_realsense_detour.yaml')
+    assert sum(n['executable'] == 'depthimage_to_laserscan_node' for n in captured_nodes) == 1
     assert obstacle['bringup_hardware'] == 'false'
     assert obstacle['launch_rviz'] == 'false'  # RViz public goal action stays outside remap scope.
     assert obstacle['height_boost_enabled'].perform(context) == 'false'
@@ -240,12 +262,37 @@ def test_launch_dependency_single_camera_and_scoped_action_proxy(
     assert obstacle['auto_correction_enabled'].perform(context) == 'false'
     assert includes['base_serial.launch.py']['auto_estop_enabled'] == auto
     if auto == 'true':
-        assert includes['traymover_auto_estop.launch.py']['start_realsense_driver'] == 'false'
+        estop = includes['traymover_auto_estop.launch.py']
+        assert estop['start_realsense_driver'] == 'false'
+        assert estop['depth_timeout_sec'] == '1.5'
+        assert estop['min_near_pixel_fraction'] == '0.02'
+        assert estop['min_near_tile_count'] == '4'
+        assert estop['obstacle_frame_count'] == '3'
+        assert estop['low_valid_frame_count'] == '4'
+        assert estop['clear_frame_count'] == '12'
+        assert estop['min_valid_fraction'] == '0.25'
+        assert estop['severe_invalid_fraction'] == '0.10'
     else:
         assert 'traymover_auto_estop.launch.py' not in includes
     rewritten = yaml.safe_load(Path(obstacle['params_file']).read_text())
-    global_map = rewritten['global_costmap']['global_costmap']['ros__parameters']
-    assert global_map['obstacle_layer']['lidar_scan']['observation_persistence'] == 5.0
+    assert rewritten == config('nav2_params.yaml')
+    assert params['simple_detour'] is True
+    assert params['wait_before_detour_sec'].evaluate(context) == 1.0
+    assert params['detour_trigger_distance_m'].evaluate(context) == 1.0
+    assert params['detour_guard_distance_m'].evaluate(context) == 0.9
+    assert params['simple_obstacle_half_width_m'].evaluate(context) == 0.35
+    assert params['obstacle_confirm_frames'].evaluate(context) == 3
+    assert params['min_obstacle_points'].evaluate(context) == 8
+    assert params['detour_first_leg_m'].evaluate(context) == 2.2
+    assert params['detour_turn_angle_deg'].evaluate(context) == 45.0
+    assert params['straight_phase_timeout_sec'].evaluate(context) == 60.0
+    assert params['scan_timeout_sec'].evaluate(context) == 2.0
+    assert params['realsense_timeout_sec'].evaluate(context) == 1.5
+    assert obstacle['lifecycle_manager_executable'] == 'option18_lifecycle_manager'
+    assert includes['collision_monitor.launch.py']['lifecycle_manager_executable'] == (
+        'option18_lifecycle_manager')
+    depth = next(n for n in captured_nodes if n['executable'] == 'depthimage_to_laserscan_node')
+    assert depth['parameters'][0]['scan_height'].evaluate(context) == 320
 
 
 @pytest.mark.parametrize('name,value', [
@@ -274,3 +321,88 @@ def test_launch_rejects_invalid_values_before_creating_nodes(monkeypatch, name, 
     with pytest.raises(ValueError):
         module._launch_nodes(context)
     assert captured_nodes == []
+
+
+def launch_context(module):
+    from launch import LaunchContext
+    from launch.actions import DeclareLaunchArgument
+
+    context = LaunchContext()
+    for action in module.generate_launch_description().entities:
+        if isinstance(action, DeclareLaunchArgument):
+            action.execute(context)
+    return context
+
+
+def test_option18_inherits_future_baseline_changes_without_copying(monkeypatch, tmp_path):
+    module = load_launch(monkeypatch)
+    context = launch_context(module)
+    baseline = config('nav2_params.yaml')
+    baseline['controller_server']['ros__parameters']['FollowPath']['desired_linear_vel'] = 0.27
+    baseline['bt_navigator']['ros__parameters']['future_parameter'] = 'inherited'
+    baseline['local_costmap']['local_costmap']['ros__parameters']['resolution'] = 0.07
+    path = tmp_path / 'custom_nav2.yaml'
+    path.write_text(yaml.safe_dump(baseline))
+    context.launch_configurations.update(
+        params_file=str(path), dynamic_obstacle_persistence_sec='2.5',
+        enable_dynamic_costmaps='true')
+    actual = yaml.safe_load(Path(module._navigation_params(context)).read_text())
+    for name in ('local_costmap', 'global_costmap'):
+        costmap = actual[name][name]['ros__parameters']
+        layer = costmap.pop('obstacle_layer')
+        costmap['plugins'].remove('obstacle_layer')
+        if name == 'global_costmap':
+            assert all(layer[source]['observation_persistence'] == 2.5
+                       for source in layer['observation_sources'].split())
+    assert actual == baseline
+    assert yaml.safe_load(path.read_text()) == baseline
+
+
+def test_option18_overlay_contains_no_copied_navigation_settings():
+    overlay = config('nav2_params_lidar_realsense_detour.yaml')
+    assert set(overlay) == {'local_costmap', 'global_costmap'}
+    for name in overlay:
+        assert set(overlay[name][name]['ros__parameters']) == {'obstacle_layer'}
+
+
+def test_option18_default_uses_exact_option10_parameter_file(monkeypatch):
+    module = load_launch(monkeypatch)
+    context = launch_context(module)
+    path = module._navigation_params(context)
+    assert Path(path) == PKG / 'config' / 'nav2_params.yaml'
+    assert context.launch_configurations['enable_dynamic_costmaps'] == 'false'
+    assert context.launch_configurations['simple_detour'] == 'true'
+
+
+def test_actual_option18_defaults_require_eight_camera_points_in_three_frames(monkeypatch):
+    import sys
+    from dataclasses import fields
+
+    sys.path.insert(0, str(PKG / 'scripts'))
+    from detour_core import Config, DetourGate, Observation, Ray, Scan, Velocity
+
+    module = load_launch(monkeypatch)
+    context = launch_context(module)
+    captured = []
+    monkeypatch.setattr(module, 'Node', lambda **kwargs: captured.append(kwargs) or kwargs)
+    module._launch_nodes(context)
+    parameters = next(node['parameters'][0] for node in captured
+                      if node['executable'] == 'detour_supervisor.py')
+    names = {field.name for field in fields(Config)}
+    settings = {name: value.evaluate(context) if hasattr(value, 'evaluate') else value
+                for name, value in parameters.items() if name in names}
+    gate = DetourGate(Config(**settings))
+    for frame, count in enumerate([7, 7, 7, 8, 8, 8], 1):
+        rays = tuple(Ray(0.45, 0.0, math.radians((i - 4) * 0.1), 0.95,
+                         safety_distance_m=0.95) for i in range(count))
+        observation = Observation(
+            realsense=Scan(float(frame), rays), nav_cmd=Velocity(0.35, 0.0),
+            nav_cmd_stamp=float(frame), nav_goal_active=True,
+            auto_reason='NONE', estop_fresh=True)
+        command = gate.tick(float(frame), observation)
+        if frame < 6:
+            assert gate.state == 'NORMAL'
+            assert command is observation.nav_cmd
+        else:
+            assert gate.state == 'WAITING'
+            assert command == Velocity()

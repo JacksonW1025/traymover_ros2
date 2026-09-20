@@ -1,9 +1,9 @@
 # Option 18: EStop-safe Wait Detour
 
-Option 18 adds a conservative, discrete detour supervisor to the existing
-LiDAR + RealSense navigation stack. It waits for temporary obstacles, selects
-an observed left or right route for persistent obstacles, and returns control
-to Nav2. Every distance, speed, timeout, and clearance below is an **initial
+Option 18 runs Option 10's shared menu startup and `traymover_nav.launch.py`,
+then adds a fixed camera-triggered detour: turn right 45 degrees, advance
+2.2 metres, and re-submit the original goal to Nav2. A newly confirmed camera
+obstacle restarts the same fixed cycle from the current pose. Every distance, speed, timeout, and clearance below is an **initial
 tuning value, not a hardware-validated safety limit**. Software checks and
 synthetic ROS tests do not establish real-world stopping distance or coverage.
 
@@ -20,7 +20,7 @@ plane for the runtime 2D map, and choose whether to start RViz. Option 18 then
 asks `Enable automatic EStop? [Y/n]:`. With automatic EStop enabled, the next prompt is
 `Enable wait-and-detour? [Y/n]:`. Disabling automatic EStop forces detour off
 and skips the detour prompt. Pressing Enter throughout selects Auto EStop ON,
-detour ON, a 5.0 s wait, 1.10 m trigger, 0.95 m guard, 0.08 m/s translation,
+detour ON, a 1.0 s wait, 1.00 m trigger, 0.90 m guard, 0.08 m/s translation,
 and 0.25 rad/s rotation. The final NDT high-structure prompt is also identical
 to Option 10. Existing menu options 0–17 retain their numbering.
 
@@ -58,12 +58,14 @@ ros2 launch traymover_robot_nav traymover_nav_lidar_realsense_detour.launch.py \
 `bringup_hardware` defaults to `false`: the menu already starts the chassis
 and LiDAR. When starting the chassis separately, its `auto_estop_enabled`
 parameter must match `enable_auto_estop` on this launch. Set it to `true` only when this launch must start those components.
-The main detour launch owns one RealSense driver by default. Its nested
-navigation and Auto EStop launches receive `start_realsense_driver:=false`.
+The main detour launch owns one RealSense driver and one depth-to-scan converter
+by default. Auto EStop receives `start_realsense_driver:=false`; the shared
+Option 10 navigation launch does not start a camera.
 If supplying an already-running camera, explicitly pass
 `start_realsense_driver:=false` to the main launch as well. The same depth
 stream serves Auto EStop and depth-to-scan conversion; the resulting scan is
-shared by both costmaps, Collision Monitor, and the supervisor.
+shared by Collision Monitor and the supervisor. Dynamic costmap layers are
+disabled by default so Nav2 uses exactly Option 10's navigation parameters.
 
 ## Authority and velocity chain
 
@@ -80,6 +82,34 @@ Nav2 /cmd_vel_nav
   -> serial driver's aggregate EStop gate
   -> chassis
 ```
+
+The default `simple_detour:=true` is a fixed test routine:
+
+1. A confirmed camera obstacle triggers a stop, then a measured **right 45° turn**.
+2. Once the camera sees a clear forward heading, advance a measured **2.2 m** at
+   **0.08 m/s**. The distance is not cropped using LiDAR or predicted corridor clearance.
+3. If the camera confirms another obstacle during the maneuver, stop and restart
+   **right 45° + a fresh 2.2 m** from the current pose. This is an iterative state
+   machine; no direction scoring, turn-count cap or recursive call stack is used.
+4. After completing the advance, when the front is clear, cancel the old backend,
+   wait for its terminal result, and re-submit the original goal for a new path
+   from the displaced pose. The public navigation goal remains the same.
+
+Camera confirmation remains 8 supporting rays within the forward ±0.35 m
+corridor and 1.00 m range in 3 fresh frames. Old/cached frames cannot trigger
+repeated cycles. Mandatory camera/odometry faults and actual manual/auto EStop
+stop motion. Only camera-observed close obstacles inhibit the fixed turn; LiDAR and perimeter
+scan points do not veto simple-mode rotation or translation. Normal odometry is
+still required to measure the angle and distance. A sensor interruption without a new obstacle
+preserves the interrupted turn target or remaining forward distance.
+
+Small lateral/reverse odometry deviations no longer latch the simple straight
+phase; bounded heading correction continues toward the measured target. Gross
+heading/pose failures and expired odometry still stop the maneuver.
+
+The default forward watchdog is **60 s**, longer than the nominal 27.5 s needed
+for 2.2 m at 0.08 m/s. Distance completion uses odometry, never elapsed time.
+`simple_detour:=false` retains the older strict policy described below.
 
 The driver retains its final `manual_estop_active OR auto_estop_active` gate
 and command watchdog. The supervisor never writes `/traymover_estop/set` or
@@ -109,9 +139,17 @@ the Bool evaluator and its publication flow remain unchanged.
 In `NORMAL`, confirmed front obstacles enter `WAITING` and immediately
 assert zero. Clear observations held for `clear_confirm_sec` return through
 `RECOVER_TO_NAV` to Nav2. Otherwise the configured wait leads to
-`PLAN_DETOUR`, provided EStop, scans, TF, and localization are healthy.
+`PLAN_DETOUR`, provided EStop, required scans and odometry are healthy.
+Strict mode additionally checks localization freshness.
 
-Planning evaluates both left and right candidates, checks the turn sweep,
+Simple mode always uses RIGHT; its sequence is
+`TURN_1 -> PHASE_SETTLE -> STRAIGHT_1 -> RECOVER_TO_NAV`. A new confirmed
+camera obstacle returns to `PHASE_SETTLE` before starting another RIGHT cycle.
+Sensor/EStop pauses do not count as a new obstacle by themselves. No forward
+progress is credited during a pause or turn. A confirmed new obstacle explicitly
+resets the advance target and deadline for the next full cycle.
+
+Strict-mode planning evaluates both left and right candidates, checks the turn sweep,
 LiDAR perimeter coverage, footprint clearance, and the proposed new
 heading, then favors the candidate with the longer permitted first leg and
 greater clearance. It does not always choose left. Missing beams and
@@ -119,18 +157,19 @@ unobserved sectors are unknown space, not permission to move. No acceptable
 candidate means `BLOCKED` with zero output. The blocked scene can be
 re-observed, but there is no blind forward probing.
 
-The maneuver is `TURN_1 -> STRAIGHT_1 -> TURN_2 -> STRAIGHT_2 ->
+The strict-mode maneuver is `TURN_1 -> STRAIGHT_1 -> TURN_2 -> STRAIGHT_2 ->
 RECOVER_TO_NAV`. `TURN_2` returns to the heading recorded at the current
 planning start. `PHASE_SETTLE` between phases asserts zero, waits, requires
 fresh scans acquired after settling, and validates the next phase.
-Straight distances are cropped against current observed clearance while
+Strict-mode straight distances are cropped against current observed clearance while
 reserving `detour_target_clearance_m`; the configured leg length is a cap.
 The planner presently checks scans directly, not local/global costmap cells.
 Costmaps continue to constrain Nav2 before and after the detour.
 
-During either motion phase, front clearance at or below the 0.95 m guard
-causes zero output and a fresh plan from the current pose. The configured
-relationship is `1.10 m trigger > 0.95 m guard > 0.80 m Auto EStop stop`;
+In fixed mode, a confirmed camera obstacle stops the advance and starts another
+right-turn cycle. Immediate close-camera protection and Auto EStop remain active.
+The legacy strict-mode distance ordering remains
+`trigger > guard > 0.80 m Auto EStop stop`;
 the existing Auto EStop release threshold remains 1.0 m. These different
 layers use different observations, so the distance ordering cannot
 guarantee that the guard will always precede Auto EStop.
@@ -141,7 +180,9 @@ diagnostics, while the old maneuver is discarded. Release requires both
 automatic and aggregate EStop to be clear, valid state heartbeats, healthy
 sensors/localization/TF, fresh post-settle observations, and a stable clear
 confirmation period. The supervisor then replans from the current pose,
-returns to Nav2 if the path is clear, or stays blocked. It never resumes an
+reassesses the interrupted simple turn/forward episode or stays blocked. A
+completed forward segment requests a new Nav2 plan; ordinary temporary holds
+without a started maneuver may return directly to Nav2. It never resumes an
 old straight leg's remaining distance after either kind of EStop.
 
 Depth faults, stale/malformed scans, unknown Auto EStop reasons, stale EStop
@@ -159,9 +200,14 @@ not establish physical braking completion or motor-stop feedback.
 
 ## Pose, timestamps, and sensor coverage
 
-The default `pose_frame:=odom` uses FAST-LIO's `odom -> base_link` TF for
+Pose discontinuity checks compare distinct TF header timestamps rather than
+20 Hz supervisor poll times. Re-reading one low-rate TF sample cannot shrink
+the next sample's allowed motion interval. Truly stale TF, backwards/inconsistent
+samples and excessive jumps still hold autonomous motion.
+
+In both modes the default `pose_frame:=odom` uses FAST-LIO's `odom -> base_link` TF for
 yaw and straight displacement. Wheel encoders and wheel odometry are not
-required. The existing `map -> odom` localization correction is also checked.
+required. In strict mode, the existing `map -> odom` localization correction is also checked.
 `/pcl_pose` must carry fresh, advancing `PoseWithCovarianceStamped` samples
 in `map`; current TF alone is not sufficient localization evidence.
 `localization_timeout_sec:=5.0` accommodates the existing
@@ -169,8 +215,11 @@ in `map`; current TF alone is not sufficient localization evidence.
 a freshness budget, not a change to NDT's update interval or a localization
 accuracy guarantee.
 
-Scans are transformed at acquisition time into odom and expressed again
-relative to the current robot pose. Header times must be valid and advance;
+Strict-mode scans are transformed at acquisition time into odom and expressed
+again relative to the current robot pose. Simple mode first accepts the scan
+using the static sensor-to-base transform, independently of delayed odometry.
+When acquisition-time odometry is available it still compensates cached rays;
+otherwise it uses the fresh local scan with its original age limit. Header times must be valid and advance;
 old queued scans do not become fresh merely by arriving late. Deadlines
 and zero-output timers use a steady clock, including when ROS time pauses.
 
@@ -186,10 +235,11 @@ unobserved. Option 18 therefore adds an independent full-360-degree projector
 from `/point_cloud_raw` to `/scan_detour_perimeter` when detour is enabled.
 This extra stream supplies observed rear/perimeter evidence for rotation;
 it does not change the existing navigation scan. Its freshness and TF are
-checked alongside the other scans. Missing bins and projected `+inf`
+checked in strict mode alongside the other scans. Missing bins and projected `+inf`
 values remain **unknown** in the supervisor: only valid finite observations
 are admitted. A blank stream can produce `FAULT_HOLD`, and insufficient
-angular coverage can produce `BLOCKED`. Neither case permits a blind turn.
+angular coverage can produce `BLOCKED` in strict mode. Simple mode skips the
+full-perimeter coverage prerequisite and vetoes rotation on observed near hits.
 
 The LiDAR is mounted high and may miss boxes, stools, cables, children,
 and low carts. RealSense adds nearby low-obstacle observations but has
@@ -202,15 +252,28 @@ do not weaken those checks merely to make a demonstration proceed.
 
 ## Original navigation goal
 
-Clients, including RViz, use the public `/navigate_to_pose` action provided
-by the supervisor's goal proxy. Nav2's matching action is remapped to
-`/navigate_to_pose_detour_backend`. This mode's goal-preservation contract
-covers `NavigateToPose`; multi-goal/waypoint actions are not proxied.
+Clients use the public `/navigate_to_pose` and `/navigate_through_poses` actions
+provided by one shared goal proxy. Their Nav2 backends have all five action transport endpoints remapped to
+`/navigate_to_pose_detour_backend` and `/navigate_through_poses_detour_backend`.
+The supervisor logs topic-goal acceptance and final success/cancel/abort status.
+RViz's existing **2D Goal Pose** tool still publishes `/goal_pose`; the supervisor
+forwards it through the same public action proxy. The original Nav2 topic
+subscription is remapped so topic goals cannot bypass motion authorization.
+Both action types share cancellation and replacement ownership: a new goal
+cannot move the robot until the preceding backend terminates.
 
-Nav2 keeps running during a velocity pause. The proxy retains the original
+Nav2 keeps running during a velocity pause. After a completed simple-mode
+forward segment, the supervisor requests an explicit backend restart: cancel
+the old backend, wait for its terminal result, and resend the original goal or
+remaining route. The public client keeps the same goal. Motion stays gated until
+the replacement is accepted and a fresh Nav2 velocity arrives. Map-frame retry
+goal stamps are reset to latest-transform semantics; coordinates remain unchanged.
+
+ The proxy retains the original
 request, including its behavior-tree selection. If Nav2 aborts while the
 supervisor is paused, the external goal remains pending; successful
-handback permits one resend of that preserved request for that pause.
+handback permits one resend for that pause. For through-poses goals, feedback
+tracks the remaining suffix so a retry does not revisit completed poses.
 A normal-navigation abort is returned to the client. The proxy does not
 retry indefinitely or persist goals across a supervisor process restart.
 
@@ -224,20 +287,51 @@ still inhibits motion. A late acceptance is canceled, never treated as
 permission to move. Resolve the backend condition before submitting a new
 goal; a timeout is not a safe automatic reset.
 
+## Startup readiness
+
+Option 18 uses `option18_lifecycle_manager` for navigation and Collision Monitor.
+It first activates the map server so RViz can display the map. Before activating
+the planner, it waits for the `map -> base_link` localization transform. This
+operator-controlled wait has no deadline and does not consume service retries;
+after **2D Pose Estimate** and successful NDT alignment, activation continues
+automatically. Stopping the launch also stops this wait. The waiting message is
+`Waiting for initial localization (map -> base_link)`.
+
+For actual node service failures, it checks the real state before retrying and
+retains bounded retries. It uses the bond formed callback to avoid the installed
+bondcpp state polling race. Native Nav2 bond monitoring remains enabled after
+startup. Look for `Managed nodes are active; lifecycle bond monitoring enabled`
+from both managers before sending a goal. A failed startup is explicitly logged.
+Option 10 retains its original manager. External manual lifecycle service
+operations and automatic respawn still use the upstream manager implementation.
+
 ## Configuration
 
-Option 18 installs independent
-`config/nav2_params_lidar_realsense_detour.yaml` and
-`config/collision_monitor_lidar_realsense_detour.yaml`. The Collision Monitor
-polygons match Option 16; only its input topic changes to `cmd_vel_detour`.
-The output remains `cmd_vel`.
+Option 18 loads the exact same `config/nav2_params.yaml` as Option 10.
+`enable_dynamic_costmaps:=false` is the default. With an explicit `true`, it adds
+obstacle layers from `config/nav2_params_lidar_realsense_detour.yaml`. That file
+contains only obstacle-layer settings; it is no longer a standalone Nav2 config.
+`params_file` selects the baseline and `obstacle_params_file` selects this overlay.
+`config/collision_monitor_lidar_realsense_detour.yaml` configures Collision Monitor. Its
+near-stop polygon geometry matches Option 16. Its input is `cmd_vel_detour` and
+output is `cmd_vel`. Only `realsense_scan` is enabled in the final stop monitor;
+the independent LiDAR braking input and broad slowdown polygon are removed for
+this camera-led test mode. LiDAR and perimeter scans do not veto the fixed maneuver. They remain available
+for localization and the optional strict policy. Option 18 sets the fixed transform frame (`odom_frame_id`)
+to `base_link`, so current sensor scans use the static sensor extrinsics without
+requesting an unavailable future odom transform. This local snapshot does not
+compensate robot motion between scan acquisition and command time. The supervisor
+still stops on stale camera data and EStop in every state, and on invalid/stale odometry during autonomous maneuvers. Normal navigation no longer stops
+because of an optional LiDAR scan outage. The close camera-stop polygon remains
+an independent immediate stop, without waiting for detour confirmation.
 
-All planner, controller, behavior-tree, static-map, and localization-related
-Nav2 parameters in the Option 18 file match Option 10's `nav2_params.yaml`.
-Option 18 only adds LiDAR/RealSense obstacle layers to the local and global
-costmaps; regression tests enforce that boundary.
+Planner, controller, behavior trees, static map, localization, RViz and logging
+come from the shared Option 10 implementation. Changes to the baseline therefore
+apply to Option 18 automatically. The default adds only the velocity supervisor
+and Collision Monitor; planner/controller/static-map parameters are unchanged.
+Dynamic local/global obstacle layers are opt-in. Regression tests enforce both paths.
 
-The global costmap adds a dynamic obstacle layer for `/scan` and
+When enabled, the global costmap adds a dynamic obstacle layer for `/scan` and
 `/scan_realsense`, with marking and raytrace clearing enabled and a default
 5.0 s observation persistence. It does not write dynamic obstacles to the
 static map. Persistence is an observation-buffer duration, not a promise
@@ -249,23 +343,23 @@ These parameters are exposed by the main launch:
 
 | Parameter | Initial default | Purpose |
 | --- | --- | --- |
-| `wait_before_detour_sec` | 5.0 | Initial persistent-obstacle wait |
-| `detour_trigger_distance_m` | 1.10 | Early obstacle trigger |
-| `detour_guard_distance_m` | 0.95 | Stop/replan during maneuver |
-| `detour_target_clearance_m` | 1.15 | Desired range reserve when cropping legs |
+| `wait_before_detour_sec` | 1.0 | Initial persistent-obstacle wait |
+| `detour_trigger_distance_m` | 1.00 | Early obstacle trigger |
+| `detour_guard_distance_m` | 0.90 | Stop/replan during maneuver |
+| `detour_target_clearance_m` | 1.10 | Desired range reserve when cropping legs |
 | `detour_max_linear_speed` | 0.08 | Straight-phase m/s; maximum accepted 0.10 |
 | `detour_max_angular_speed` | 0.25 | Turn-phase rad/s; maximum accepted 0.30 |
-| `detour_turn_angle_deg` | 45.0 | Candidate turn; accepted range 5–75 degrees |
-| `detour_first_leg_m` / `detour_forward_leg_m` | 0.8 / 1.0 | Straight-leg caps |
-| `clear_confirm_sec` | 1.0 | Clear/health confirmation interval |
-| `stop_settle_time_sec` | 0.5 | Zero-command settling interval |
-| `scan_timeout_sec` / `realsense_timeout_sec` | 1.0 / 1.0 | Scan acquisition-age limits |
+| `detour_turn_angle_deg` | 45.0 | Each measured turn step; accepted range 5–75 degrees |
+| `detour_first_leg_m` / `detour_forward_leg_m` | 2.2 / 1.0 | Fixed forward target / strict-mode second leg |
+| `clear_confirm_sec` | 0.4 | Clear/health confirmation interval |
+| `stop_settle_time_sec` | 0.25 | Zero-command settling interval |
+| `scan_timeout_sec` / `realsense_timeout_sec` | 2.0 / 1.5 | Scan acquisition-age limits |
 | `cmd_vel_timeout_sec` | 0.5 | Nav2 command freshness |
-| `tf_timeout_sec` | 1.0 | Pose/correction TF age limit |
+| `tf_timeout_sec` | 1.5 | Pose/correction TF age limit |
 | `localization_timeout_sec` | 5.0 | `/pcl_pose` age limit |
 | `estop_timeout_sec` | 1.0 | EStop state/reason heartbeat age limit |
-| `turn_phase_timeout_sec` / `straight_phase_timeout_sec` | 12.0 / 25.0 | Latched maneuver timeouts |
-| `obstacle_confirm_frames` / `min_obstacle_points` | 2 / 4 | Trigger confirmation |
+| `turn_phase_timeout_sec` / `straight_phase_timeout_sec` | 12.0 / 60.0 | Latched maneuver timeouts |
+| `obstacle_confirm_frames` / `min_obstacle_points` | 3 / 8 | Trigger confirmation |
 | `dynamic_obstacle_persistence_sec` | 5.0 | Dynamic costmap observation persistence |
 | `allow_straight_motion` | true | Set false for staged turn-only testing |
 | `supervisor_rate_hz` | 20.0 | State evaluation/velocity output rate |
@@ -281,6 +375,21 @@ than exposed as main-launch arguments: `robot_radius_m=0.50`,
 `base_frame=base_link` and `map_frame=map`.
 `AUTO_ESTOP_STOP_DISTANCE_M=0.80` is a fixed supervisor consistency bound,
 not a configurable node parameter. It does not modify Auto EStop thresholds.
+
+## Option 18 Auto EStop debounce
+
+The standalone safety launch and other menu options retain their original defaults.
+Option 18 overrides only its included safety launch: depth timeout 1.5 s, minimum
+near area 2%, at least 4 near tiles, 3 obstacle frames, minimum valid fraction 25%,
+severe-invalid fraction 10%, 4 low-valid frames and 12 clear frames. Stop/release
+distances remain 0.80/1.00 m. Severe loss, invalid frames and sustained outage
+still stop. A low-valid reason before its Bool stop has been confirmed does not
+independently interrupt simple navigation while usable camera scans remain fresh.
+
+Recovery uses the same confirmed camera obstacle criterion as initial entry.
+LiDAR-only restricted clearance does not send a cleared navigation goal back into
+another turn. During an actual maneuver, camera health, odometry and immediate proximity
+protection continue to constrain motion.
 
 ## Required staged hardware validation
 
@@ -339,33 +448,20 @@ ros2 action list -t
 including holds; it is not a signal that motors are moving. The other
 detour status topics are Strings, published on change and periodically.
 
-Use separate generated directories when verifying the integration checkout.
-The implementation checkout used for this work is
-`/tmp/traymover-integrated-20260917-2b46r7et/workspace`; it is separate from
-the original IDE workspace. Run commands from the checkout being verified.
-The combined build uses `/tmp/traymover-detour-{build,install,log}`:
+Run from the current workspace after its dependencies have been built:
 
 ```bash
 source /opt/ros/humble/setup.bash
+source install/setup.bash
 bash -n scripts/traymover.sh
 git diff --check
-colcon --log-base /tmp/traymover-detour-log build \
-  --build-base /tmp/traymover-detour-build \
-  --install-base /tmp/traymover-detour-install \
-  --packages-select traymover_robot_nav traymover_robot_safety turn_on_traymover_robot
-source /tmp/traymover-detour-install/setup.bash
-colcon --log-base /tmp/traymover-detour-log test \
-  --build-base /tmp/traymover-detour-build \
-  --install-base /tmp/traymover-detour-install \
-  --packages-select traymover_robot_nav traymover_robot_safety turn_on_traymover_robot
-colcon test-result --test-result-base /tmp/traymover-detour-build --verbose
+colcon build --symlink-install --packages-select traymover_robot_nav
+colcon test --packages-select traymover_robot_nav
+colcon test-result --test-result-base build/traymover_robot_nav --verbose
 ```
 
-The safety slice has been built separately and verified with 10 existing
-depth-evaluator cases, 4 existing safety-configuration cases, and 7 new
-real-node synthetic-depth cases. The new cases cover transient-local
-STARTUP delivery, reason persistence, obstacle and sensor-fault reasons,
-Bool confirmation/hysteresis, and timeout recovery. That evidence does
-not by itself verify the complete navigation graph, full combined suite,
-or any hardware behavior; retain the combined run's actual logs and
-results separately.
+The suite covers shared menu startup, baseline parameter inheritance, launch
+remap scope, both navigation actions and RViz topic goals, existing detour
+state transitions, sensor faults, and the downstream Collision Monitor chain.
+It uses synthetic inputs and process-free launch expansion; it does not
+establish real-world obstacle coverage or stopping distance.

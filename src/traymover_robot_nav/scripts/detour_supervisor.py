@@ -54,6 +54,8 @@ class DetourSupervisor(Node):
         self.listener = TransformListener(self.tf, self)
         self.scans = {'lidar': None, 'realsense': None, 'perimeter': None}
         self.scan_headers = {}
+        self.scan_problems = {}
+        self.scan_diagnostic_at = {}
         self.pending_scans = {key: deque(maxlen=10) for key in self.scans}
         self.scan_acquisition_poses = {}
         self.scan_tf_ok = {key: False for key in self.scans}
@@ -103,6 +105,16 @@ class DetourSupervisor(Node):
             1.0 / self.extra['supervisor_rate_hz'], self.on_tick, clock=self.steady_clock)
         self.get_logger().info(
             '[detour] Initial tuning values; zero command asserted until inputs are healthy')
+        self.get_logger().info(
+            f'[detour] simple_mode={self.config.simple_detour} '
+            f'trigger={self.config.detour_trigger_distance_m:.2f}m '
+            f'right_turn={self.config.detour_turn_angle_deg:.1f}deg '
+            f'forward_target={self.config.detour_first_leg_m:.2f}m '
+            f'camera_half_width={self.config.simple_obstacle_half_width_m:.2f}m '
+            f'confirm_frames={self.config.obstacle_confirm_frames} '
+            f'min_points={self.config.min_obstacle_points} '
+            f'camera_timeout={self.config.realsense_timeout_sec:.2f}s '
+            f'lidar_timeout={self.config.scan_timeout_sec:.2f}s')
 
     def acquisition_time(self, stamp, now):
         stamped = stamp_seconds(stamp)
@@ -126,60 +138,106 @@ class DetourSupervisor(Node):
             self.pending_manual = True
         if key in ('auto', 'aggregate') and message.data:
             self.pending_auto = True
-        if key == 'reason' and message.data not in ('NONE', 'NEAR_OBSTACLE'):
+        # LOW_VALID_DEPTH is also a pre-confirmation diagnostic: the depth
+        # guard publishes it before its consecutive-frame EStop threshold.
+        unconfirmed_low_valid = (
+            self.config.simple_detour and key == 'reason' and
+            message.data == 'LOW_VALID_DEPTH' and
+            not (self.estop['auto'] or self.estop['aggregate'] or self.pending_auto))
+        depth_fault = (key == 'reason' and
+                       message.data not in ('NONE', 'NEAR_OBSTACLE') and
+                       not unconfirmed_low_valid)
+        if depth_fault:
             self.pending_depth_fault = message.data
-        if ((key != 'reason' and message.data) or
-                (key == 'reason' and message.data not in ('NONE', 'NEAR_OBSTACLE'))):
+        if (key != 'reason' and message.data) or depth_fault:
             self.output.publish(Twist())
+
+    def scan_problem(self, key, reason):
+        self.scan_problems[key] = reason
+        now = time.monotonic()
+        if now >= self.scan_diagnostic_at.get(key, 0.0):
+            self.get_logger().warning(f'[detour] {key} scan: {reason}')
+            self.scan_diagnostic_at[key] = now + 5.0
+
+    def scan_required(self, key):
+        """The fixed simple cycle requires camera data; strict mode requires all scans."""
+        if not self.config.enable_detour:
+            return False
+        if not self.config.simple_detour:
+            return True
+        return key == 'realsense'
 
     def on_scan(self, key, message):
         try:
             acquired, header = self.acquisition_time(message.header.stamp, time.monotonic())
+            if not message.header.frame_id:
+                raise ValueError('missing scan frame_id')
             if header <= self.scan_headers.get(key, float('-inf')):
                 raise ValueError('non-advancing scan stamp')
             self.scan_headers[key] = header
             self.pending_scans[key].append((message, acquired))
             self.consume_scans(key)
-        except ValueError:
+        except ValueError as error:
+            self.scan_problem(key, str(error))
             self.pending_scans[key].clear()
             self.scans[key], self.scan_tf_ok[key] = None, False
-            if self.config.enable_detour:
+            if self.scan_required(key):
                 self.output.publish(Twist())
 
     def consume_scans(self, key):
-        # TF may arrive after a scan in the executor. Retry exact-time lookups
-        # without blocking the control loop or substituting a latest transform.
-        # Last accepted data keeps its original acquisition age and expires.
+        # Static sensor extrinsics are enough to observe the local scene.
+        # Strict mode retains its scan-time odom requirement. Simple mode uses
+        # scan-time odom only when available for cached-ray compensation.
         pending = self.pending_scans[key]
         while pending:
             message, acquired = pending[0]
             limit = (self.config.realsense_timeout_sec if key == 'realsense'
                      else self.config.scan_timeout_sec)
-            if time.monotonic() - acquired > limit:
+            age = time.monotonic() - acquired
+            if age > limit:
+                self.scan_problem(key, f'stale acquisition: age={age:.2f}s limit={limit:.2f}s')
                 pending.popleft()
                 continue
+            target = (self.extra['base_frame'] if self.config.simple_detour
+                      else self.extra['pose_frame'])
             try:
                 transform = self.tf.lookup_transform(
-                    self.extra['pose_frame'], message.header.frame_id,
-                    Time.from_msg(message.header.stamp))
+                    target, message.header.frame_id, Time.from_msg(message.header.stamp))
+            except TransformException as error:
+                self.scan_problem(key, f'TF {target} <- {message.header.frame_id}: {error}')
+                break
+            base_at_scan = None
+            try:
                 base_at_scan = self.tf.lookup_transform(
                     self.extra['pose_frame'], self.extra['base_frame'],
                     Time.from_msg(message.header.stamp)).transform
-            except TransformException:
-                break
+            except TransformException as error:
+                if not self.config.simple_detour:
+                    self.scan_problem(key, f'TF odom pose at acquisition: {error}')
+                    break
             pending.popleft()
             try:
                 sensor_t = transform.transform.translation
-                base_t = base_at_scan.translation
-                self.scan_acquisition_poses[key] = (
-                    Pose(base_t.x, base_t.y, yaw(base_at_scan.rotation)),
-                    math.hypot(sensor_t.x - base_t.x, sensor_t.y - base_t.y))
-                self.scans[key] = scan_to_rays(
+                self.scan_acquisition_poses.pop(key, None)
+                if base_at_scan is not None:
+                    base_t = base_at_scan.translation
+                    if not all(math.isfinite(v) for v in (base_t.x, base_t.y, base_t.z)):
+                        raise ValueError('invalid scan acquisition pose')
+                    sensor_radius = (math.hypot(sensor_t.x, sensor_t.y)
+                                     if self.config.simple_detour else
+                                     math.hypot(sensor_t.x - base_t.x, sensor_t.y - base_t.y))
+                    self.scan_acquisition_poses[key] = (
+                        Pose(base_t.x, base_t.y, yaw(base_at_scan.rotation)), sensor_radius)
+                saved = scan_to_rays(
                     message, transform.transform, acquired, allow_infinite=(key == 'realsense'))
-                self.scan_tf_ok[key] = True
-            except ValueError:
+                if not saved.rays:
+                    raise ValueError('empty scan: no valid observed rays')
+                self.scans[key], self.scan_tf_ok[key] = saved, True
+                self.scan_problems.pop(key, None)
+            except ValueError as error:
+                self.scan_problem(key, str(error))
                 self.scans[key], self.scan_tf_ok[key] = None, False
-                if self.config.enable_detour:
+                if self.scan_required(key):
                     self.output.publish(Twist())
 
     def on_localization(self, message):
@@ -194,7 +252,7 @@ class DetourSupervisor(Node):
             self.localization_at, self.localization_header = acquired, header
         except ValueError:
             self.localization_at = float('-inf')
-            if self.config.enable_detour:
+            if self.config.enable_detour and not self.config.simple_detour:
                 self.output.publish(Twist())
 
     def on_goal_changed(self):
@@ -208,28 +266,36 @@ class DetourSupervisor(Node):
         try:
             transform = self.tf.lookup_transform(
                 self.extra['pose_frame'], self.extra['base_frame'], Time())
-            acquired, _ = self.acquisition_time(transform.header.stamp, now)
+            acquired, pose_header = self.acquisition_time(transform.header.stamp, now)
             t = transform.transform.translation
             pose = Pose(t.x, t.y, yaw(transform.transform.rotation))
             tf_ok = (now - acquired <= self.extra['tf_timeout_sec'] and
                      all(math.isfinite(v) for v in (t.x, t.y, t.z)))
-            map_transform = self.tf.lookup_transform(
-                self.extra['map_frame'], self.extra['pose_frame'], Time())
-            map_acquired, _ = self.acquisition_time(map_transform.header.stamp, now)
-            tf_ok = tf_ok and now - map_acquired <= self.extra['tf_timeout_sec']
+            if not self.config.simple_detour:
+                map_transform = self.tf.lookup_transform(
+                    self.extra['map_frame'], self.extra['pose_frame'], Time())
+                map_acquired, _ = self.acquisition_time(map_transform.header.stamp, now)
+                tf_ok = tf_ok and now - map_acquired <= self.extra['tf_timeout_sec']
         except (TransformException, ValueError):
             tf_ok = False
         if pose is not None and tf_ok:
             if self.last_pose_sample is not None:
-                old_time, old_pose = self.last_pose_sample
-                dt = now - old_time
+                old_header, old_pose = self.last_pose_sample
+                dt = pose_header - old_header
                 distance = math.hypot(pose.x - old_pose.x, pose.y - old_pose.y)
                 angle = abs(math.atan2(math.sin(pose.yaw - old_pose.yaw),
                                        math.cos(pose.yaw - old_pose.yaw)))
-                # Discontinuity rejection, not a claim of physical motion accuracy.
-                if distance > 0.10 + 0.5 * dt or angle > 0.15 + 1.0 * dt:
+                # Compare actual TF samples, not timer polls of the same sample.
+                # Repeated headers cannot refresh the baseline or hide a jump.
+                inconsistent_stamp = dt < 0 or (dt == 0 and (
+                    distance > 1e-9 or angle > 1e-9))
+                if (inconsistent_stamp or (dt > 0 and (
+                        distance > 0.10 + 0.5 * dt or angle > 0.15 + 1.0 * dt))):
                     self.pose_fault_until = now + self.config.clear_confirm_sec
-            self.last_pose_sample = (now, pose)
+                if dt > 0:
+                    self.last_pose_sample = (pose_header, pose)
+            else:
+                self.last_pose_sample = (pose_header, pose)
         tf_ok = tf_ok and now >= self.pose_fault_until
         estop_keys = ('aggregate', 'manual', 'auto')
         if self.config.enable_auto_estop:
@@ -240,15 +306,35 @@ class DetourSupervisor(Node):
             (now - self.estop_at[key] <= self.extra['estop_timeout_sec']
              if self.config.enable_auto_estop else math.isfinite(self.estop_at[key]))
             for key in estop_keys)
-        # Store acquisition rays in FAST-LIO odom, then express them at the
-        # current pose. Old scans must not rotate along with the robot.
+        # Compensate cached scans using their exact acquisition pose whenever
+        # available. Simple mode can also use fresh local scans without waiting
+        # for dynamic TF; their original acquisition age still expires.
 
         def current_scan(key):
             saved = self.scans[key]
-            if saved is None or pose is None:
+            if saved is None:
+                if key not in self.scan_problems:
+                    self.scan_problem(key, 'no scan received')
+                return None
+            limit = (self.config.realsense_timeout_sec if key == 'realsense'
+                     else self.config.scan_timeout_sec)
+            if now - saved.stamp > limit:
+                self.scan_problem(key, f'stale cached scan: age={now - saved.stamp:.2f}s '
+                                  f'limit={limit:.2f}s')
+            anchor = self.scan_acquisition_poses.get(key)
+            if self.config.simple_detour and (pose is None or anchor is None):
+                return saved
+            if pose is None or anchor is None:
                 return None
             c, s = math.cos(pose.yaw), math.sin(pose.yaw)
-            acquired_pose, sensor_radius = self.scan_acquisition_poses[key]
+            acquired_pose, sensor_radius = anchor
+            if self.config.simple_detour:
+                ca, sa = math.cos(acquired_pose.yaw), math.sin(acquired_pose.yaw)
+                saved = Scan(saved.stamp, tuple(Ray(
+                    acquired_pose.x + ca * ray.origin_x - sa * ray.origin_y,
+                    acquired_pose.y + sa * ray.origin_x + ca * ray.origin_y,
+                    acquired_pose.yaw + ray.angle, ray.distance, ray.hit,
+                    ray.safety_distance_m) for ray in saved.rays))
             rotation = abs(math.atan2(math.sin(pose.yaw - acquired_pose.yaw),
                                       math.cos(pose.yaw - acquired_pose.yaw)))
             # Reduce camera-depth clearance for any possible approach since
@@ -271,7 +357,7 @@ class DetourSupervisor(Node):
             aggregate_estop=self.estop['aggregate'], manual_estop=self.estop['manual'],
             auto_estop=self.estop['auto'], auto_reason=self.estop['reason'],
             estop_fresh=estop_fresh,
-            tf_healthy=tf_ok and all(self.scan_tf_ok.values()),
+            tf_healthy=tf_ok and (self.config.simple_detour or all(self.scan_tf_ok.values())),
             localization_healthy=(
                 now - self.localization_at <= self.extra['localization_timeout_sec']))
 
@@ -294,7 +380,8 @@ class DetourSupervisor(Node):
         if self.gate.state == 'RECOVER_TO_NAV' and self.gate.recovery_requested:
             if not self.handback_pending:
                 self.handback_pending = True
-                self.proxy.notify_handback()
+                self.proxy.notify_handback(
+                    force_replan=self.gate.force_replan_requested)
             if self.proxy.motion_authorized:
                 self.gate.acknowledge_recovery()
                 self.handback_pending = False

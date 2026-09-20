@@ -12,10 +12,12 @@ endif()
 find_package(ament_cmake REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(nav2_core REQUIRED)
+find_package(nav2_lifecycle_manager REQUIRED)
 find_package(pluginlib REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_lifecycle REQUIRED)
 find_package(rcl_interfaces REQUIRED)
+find_package(tf2_ros REQUIRED)
 
 set(dependencies
   geometry_msgs
@@ -30,6 +32,9 @@ add_library(${PROJECT_NAME}_progress_checker SHARED
   src/yaw_progress_checker.cpp
 )
 ament_target_dependencies(${PROJECT_NAME}_progress_checker ${dependencies})
+
+add_executable(option18_lifecycle_manager src/option18_lifecycle_manager.cpp)
+ament_target_dependencies(option18_lifecycle_manager nav2_lifecycle_manager tf2_ros)
 
 if(BUILD_TESTING)
   find_package(ament_cmake_pytest REQUIRED)
@@ -82,6 +87,35 @@ if(BUILD_TESTING)
     test/test_option10_logging.py
   )
   ament_add_pytest_test(
+    test_option18_menu
+    test/test_option18_menu.py
+  )
+  ament_add_pytest_test(
+    test_option18_launch_graph
+    test/test_option18_launch_graph.py
+  )
+  ament_add_pytest_test(
+    test_option18_action_endpoints
+    test/test_option18_action_endpoints.py
+  )
+  ament_add_pytest_test(
+    test_option18_navigation_smoke
+    test/test_option18_navigation_smoke.py
+    TIMEOUT 90
+  )
+  ament_add_pytest_test(
+    test_option18_lifecycle_manager
+    test/test_option18_lifecycle_manager.py
+    TIMEOUT 90
+  )
+  ament_add_pytest_test(test_simple_detour test/test_simple_detour.py)
+  ament_add_pytest_test(test_detour_forward_progress test/test_detour_forward_progress.py)
+  ament_add_pytest_test(
+    test_option18_depth_policy
+    test/test_option18_depth_policy.py
+    TIMEOUT 60
+  )
+  ament_add_pytest_test(
     test_ndt_height_launch
     test/test_ndt_height_launch.py
   )
@@ -120,6 +154,8 @@ install(
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin
 )
+
+install(TARGETS option18_lifecycle_manager DESTINATION lib/${PROJECT_NAME})
 
 ament_export_libraries(${PROJECT_NAME}_progress_checker)
 ament_export_dependencies(${dependencies})

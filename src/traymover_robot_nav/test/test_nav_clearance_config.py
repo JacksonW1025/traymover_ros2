@@ -1,5 +1,6 @@
 """Clearance policy shared by map-based navigation modes (no hardware)."""
 
+import importlib.util
 import math
 from pathlib import Path
 
@@ -14,6 +15,20 @@ LEGACY = (PKG.parent / 'traymover_robot_nav2' / 'param' /
 
 
 def load(path):
+    if path.name == 'nav2_params_lidar_realsense_detour.yaml':
+        # Option 18 is an overlay; exercise the actual runtime composition.
+        from launch import LaunchContext
+
+        launch_path = PKG / 'launch' / 'traymover_nav_lidar_realsense_detour.launch.py'
+        spec = importlib.util.spec_from_file_location('clearance_detour_launch', launch_path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        context = LaunchContext()
+        context.launch_configurations.update(
+            params_file=str(PKG / 'config' / 'nav2_params.yaml'),
+            obstacle_params_file=str(path), dynamic_obstacle_persistence_sec='5.0',
+            enable_dynamic_costmaps='true')
+        path = Path(module._navigation_params(context))
     return yaml.safe_load(path.read_text())
 
 
