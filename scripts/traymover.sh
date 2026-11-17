@@ -142,7 +142,7 @@ KILL_PATTERNS=(
     # These survive a killed launch process unless explicitly stopped. Option
     # 20 and option 10 assign different parents to base_link; stale static TF
     # would otherwise disconnect the next localization tree.
-    'lib/tf2_ros/static_transform_publisher .*__node:=(static_odom_to_camera_init|static_body_to_base_link|option20_raw_origin|option20_base_height|option20_scan_origin)([[:space:]]|$)'
+    'lib/tf2_ros/static_transform_publisher .*__node:=(static_odom_to_camera_init|static_body_to_base_link|option20_raw_origin|option20_base_height|option20_scan_origin|stm32_base_height)([[:space:]]|$)'
     'rviz2'
     'ekf_node'
     # traymover_robot_nav components
@@ -722,7 +722,7 @@ PY
 }
 
 action_start_nav() {
-    # Option 18 calls this same baseline; its branches only add the detour chain.
+    # Options 18 and 21 share map selection, conversion and Nav2 settings.
     local nav_option="${1:-10}" nav_auto_estop_enabled
     # Autonomous navigation bringup. Prompts the user to:
     #   1) pick a PCD map from FAST_LIO/PCD/ (the prior map for lidar_localization_ros2)
@@ -858,14 +858,23 @@ action_start_nav() {
     printf 'height_boost_enabled=%s\nheight_boost_min_z=%s\nheight_boost_frame=base_link\nheight_boost_extra_copies=1\n' \
         "${NDT_HEIGHT_BOOST_ENABLED}" "${NDT_HEIGHT_BOOST_MIN_Z}" >> "${nav_run_dir}/run_info.txt"
     printf 'auto_correction_enabled=true\n' >> "${nav_run_dir}/run_info.txt"
+    if [ "${nav_option}" = 21 ]; then
+        printf 'odometry_source=stm32_velocity\n' >> "${nav_run_dir}/run_info.txt"
+    fi
     cp -- "${runtime_map_yaml}" "${nav_run_dir}/map.yaml"
     git -C "${WORKSPACE_DIR}" rev-parse HEAD > "${nav_run_dir}/software_commit.txt" 2>/dev/null || true
     git -C "${WORKSPACE_DIR}" status --short > "${nav_run_dir}/software_status.txt" 2>/dev/null || true
     echo "[traymover] Option ${nav_option} logs: ${nav_run_dir}"
 
-    echo "[traymover] Starting chassis + IMU (base_serial) ..."
-    spawn_in_terminal "traymover: chassis_serial" \
-        "ros2 launch turn_on_traymover_robot base_serial.launch.py odom_source_mode:=none auto_estop_enabled:=${nav_auto_estop_enabled}"
+    if [ "${nav_option}" = 21 ]; then
+        echo "[traymover] Starting chassis with measured wheel odometry (no IMU estimator) ..."
+        spawn_in_terminal "traymover: chassis_serial" \
+            "ros2 launch turn_on_traymover_robot base_serial.launch.py use_imu:=false odom_source_mode:=stm32_velocity robot_config:='${WORKSPACE_DIR}/src/turn_on_traymover_robot/config/stm32_navigation.yaml' auto_estop_enabled:=${nav_auto_estop_enabled}"
+    else
+        echo "[traymover] Starting chassis + IMU (base_serial) ..."
+        spawn_in_terminal "traymover: chassis_serial" \
+            "ros2 launch turn_on_traymover_robot base_serial.launch.py odom_source_mode:=none auto_estop_enabled:=${nav_auto_estop_enabled}"
+    fi
     action_start_estop_keyboard
     # The detour launch owns one camera and the Auto EStop node. Baseline
     # navigation retains its existing optional standalone Auto EStop launch.
@@ -887,6 +896,12 @@ action_start_nav() {
     local -a nav_args=("${rviz_arg}" "pcd_path:=${pcd_path}" "map:=${runtime_map_yaml}"
         "height_boost_enabled:=${NDT_HEIGHT_BOOST_ENABLED}"
         "height_boost_min_z:=${NDT_HEIGHT_BOOST_MIN_Z}" "auto_correction_enabled:=true")
+    local odometry_label="FAST-LIO"
+    if [ "${nav_option}" = 21 ]; then
+        nav_launch="traymover_nav_stm32.launch.py"
+        nav_title="traymover: stm32_nav_stack"
+        odometry_label="STM32 feedback"
+    fi
     if [ "${nav_option}" = 18 ]; then
         nav_launch="traymover_nav_lidar_realsense_detour.launch.py"
         nav_title="traymover: wait_detour_nav_stack"
@@ -899,11 +914,14 @@ action_start_nav() {
     fi
     printf -v logged_nav_cmd '%q ' bash "${SCRIPT_DIR}/run_nav_logged.sh" "${nav_run_dir}" \
         ros2 launch traymover_robot_nav "${nav_launch}" "${nav_args[@]}"
+    if [ "${nav_option}" = 21 ]; then
+        logged_nav_cmd="TRAYMOVER_ODOMETRY_SOURCE=stm32 ${logged_nav_cmd}"
+    fi
     spawn_in_terminal "${nav_title}" "${logged_nav_cmd}"
 
     cat <<EOF
 [traymover] Nav stack starting. Next steps once lifecycle activates (~10-20 s):
-  NDT + FAST-LIO analysis logs: ${nav_run_dir}
+  NDT + ${odometry_label} analysis logs: ${nav_run_dir}
   1) In RViz click '2D Pose Estimate' and drag on the map at the robot's current spot.
   2) Wait for RobotModel to snap to pose and /pcl_pose to converge.
   3) Click '2D Goal Pose' to send a navigation goal.
@@ -1716,6 +1734,7 @@ print_menu() {
  18) Navigation with LiDAR + RealSense + EStop-safe Wait Detour
  19) Single-button Straight-line Detour Test (No Map / No Nav2)
  20) Conservative 2D AMCL navigation (3 height bands + LiDAR/IMU odom + depth safety + 3D RViz)
+ 21) Navigation with STM32 wheel feedback odometry (option 10 + NDT; no FAST-LIO)
   q) Quit
 ==============================
 EOF
@@ -1755,6 +1774,7 @@ main() {
             18) action_start_nav_wait_detour ;;
             19) action_start_guided_detour_test ;;
             20) action_start_option20 ;;
+            21) action_start_nav 21 ;;
             q|Q|quit|exit) echo "Bye."; exit 0 ;;
             "") ;;
             *) echo "Unknown option: ${choice}" ;;

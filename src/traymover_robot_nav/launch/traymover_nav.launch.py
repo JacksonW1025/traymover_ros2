@@ -1,5 +1,8 @@
 """Launch: Phase 2 full traymover autonomous navigation.
 
+The default source is FAST-LIO. traymover_nav_stm32.launch.py selects the
+option-21 wheel-feedback profile while keeping this Nav2/NDT baseline.
+
 Brings up the full runtime chain:
   0. (optional) hardware bringup — base_serial + traymover_lidar
      (set bringup_hardware:=true for one-command start; default false).
@@ -33,7 +36,7 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch_ros.actions import Node
 from launch_ros.descriptions import ParameterFile
 from nav2_common.launch import RewrittenYaml
@@ -80,6 +83,7 @@ def generate_launch_description():
     launch_rviz = LaunchConfiguration('launch_rviz')
     rviz_config = LaunchConfiguration('rviz_config')
     pcd_path = LaunchConfiguration('pcd_path')
+    odometry_source = LaunchConfiguration('odometry_source')
     bt_xml = LaunchConfiguration('bt_xml')
     through_poses_bt_xml = LaunchConfiguration('through_poses_bt_xml')
 
@@ -103,7 +107,11 @@ def generate_launch_description():
             os.path.join(bringup_share, 'launch', 'base_serial.launch.py')),
         condition=IfCondition(bringup_hardware),
         launch_arguments={
-            'odom_source_mode': 'none',
+            'odom_source_mode': PythonExpression([
+                "'stm32_velocity' if '", odometry_source, "' == 'stm32' else 'none'"]),
+            'robot_config': LaunchConfiguration('robot_config'),
+            'imu_serial_port': LaunchConfiguration('imu_serial_port'),
+            'use_imu': LaunchConfiguration('use_imu'),
         }.items(),
     )
     hw_lidar = IncludeLaunchDescription(
@@ -134,6 +142,7 @@ def generate_launch_description():
         launch_arguments={
             'use_sim_time': use_sim_time,
             'pcd_path': pcd_path,
+            'odometry_source': odometry_source,
             'cloud_topic': '/point_cloud_localization',
             'height_boost_enabled': LaunchConfiguration('height_boost_enabled'),
             'height_boost_min_z': LaunchConfiguration('height_boost_min_z'),
@@ -196,6 +205,12 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
+        DeclareLaunchArgument('odometry_source', default_value='fastlio',
+                              choices=['fastlio', 'stm32']),
+        DeclareLaunchArgument('robot_config', default_value=os.path.join(
+            bringup_share, 'config', 'traymover_robot.yaml')),
+        DeclareLaunchArgument('imu_serial_port', default_value='/dev/ttyCH343USB0'),
+        DeclareLaunchArgument('use_imu', default_value='true'),
         DeclareLaunchArgument('use_sim_time', default_value='false'),
         DeclareLaunchArgument('autostart', default_value='true'),
         DeclareLaunchArgument('lifecycle_manager_package', default_value='nav2_lifecycle_manager'),

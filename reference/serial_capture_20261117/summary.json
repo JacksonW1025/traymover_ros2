@@ -1,0 +1,106 @@
+[
+  {
+    "file": "reference/serial_capture_20261117/acm0_passive_115200.jsonl",
+    "tx_records": 0,
+    "rx_bytes": 65595,
+    "valid_frame_types_id_status": {},
+    "invalid_header_candidates": 0,
+    "discarded_bytes": 65593,
+    "trailing_bytes": 2,
+    "motor_data": {}
+  },
+  {
+    "file": "reference/serial_capture_20261117/usb0_data_query.jsonl",
+    "tx_records": 1200,
+    "rx_bytes": 48074,
+    "valid_frame_types_id_status": {
+      "03/80": 1,
+      "02/60": 1199
+    },
+    "invalid_header_candidates": 0,
+    "discarded_bytes": 74,
+    "trailing_bytes": 0,
+    "motor_data": {
+      "left_raw": {
+        "min": -9918,
+        "max": 11596,
+        "nonzero": 473
+      },
+      "right_raw": {
+        "min": -5951,
+        "max": 6561,
+        "nonzero": 449
+      },
+      "vx_raw": {
+        "min": -26,
+        "max": 26,
+        "nonzero": 192
+      },
+      "wz_raw": {
+        "min": -254,
+        "max": 156,
+        "nonzero": 422
+      }
+    }
+  },
+  {
+    "file": "reference/serial_capture_20261117/usb0_data_settle.jsonl",
+    "tx_records": 400,
+    "rx_bytes": 16076,
+    "valid_frame_types_id_status": {
+      "5e/80": 1,
+      "02/60": 399
+    },
+    "invalid_header_candidates": 0,
+    "discarded_bytes": 76,
+    "trailing_bytes": 0,
+    "motor_data": {
+      "left_raw": {
+        "min": -3509,
+        "max": 152,
+        "nonzero": 15
+      },
+      "right_raw": {
+        "min": -8392,
+        "max": 152,
+        "nonzero": 31
+      },
+      "vx_raw": {
+        "min": 0,
+        "max": 0,
+        "nonzero": 0
+      },
+      "wz_raw": {
+        "min": -39,
+        "max": 0,
+        "nonzero": 16
+      }
+    }
+  },
+  {
+    "file": "reference/serial_capture_20261117/usb0_passive_115200.jsonl",
+    "tx_records": 0,
+    "rx_bytes": 1257,
+    "valid_frame_types_id_status": {
+      "00/80": 1,
+      "04/80": 30
+    },
+    "invalid_header_candidates": 0,
+    "discarded_bytes": 17,
+    "trailing_bytes": 0,
+    "motor_data": {}
+  },
+  {
+    "file": "reference/serial_capture_20261117/usb0_status_query.jsonl",
+    "tx_records": 16,
+    "rx_bytes": 694,
+    "valid_frame_types_id_status": {
+      "00/80": 1,
+      "03/60": 16
+    },
+    "invalid_header_candidates": 0,
+    "discarded_bytes": 14,
+    "trailing_bytes": 0,
+    "motor_data": {}
+  }
+]

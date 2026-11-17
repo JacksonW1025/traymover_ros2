@@ -1,0 +1,255 @@
+[INFO] [1794902038.560802377] [lidar_localization]: Configuring
+[INFO] [1794902038.561546279] [lidar_localization]: initializeParameters
+[INFO] [1794902038.561750269] [lidar_localization]: map_voxel_leaf_size: 0.150 m
+[INFO] [1794902038.561868024] [lidar_localization]: auto_correction_enabled: 1; confirmations=3 absolute=2.50m/0.60rad step=0.15m/0.08rad improvement=0.010
+[INFO] [1794902038.561975859] [lidar_localization]: lock_planar: 0
+[INFO] [1794902038.562019665] [lidar_localization]: max_pose_jump_translation: 0.35 m
+[INFO] [1794902038.562064591] [lidar_localization]: max_pose_jump_rotation: 0.45 rad
+[INFO] [1794902038.562107917] [lidar_localization]: bootstrap jump limits: translation=2.50 m rotation=0.60 rad
+[INFO] [1794902038.562153387] [lidar_localization]: ndt_align_interval_s: 2.00 s
+[INFO] [1794902038.562197993] [lidar_localization]: tf_rebroadcast_rate_hz: 50.00 Hz
+[INFO] [1794902038.562246215] [lidar_localization]: map_odom_smoothing: 0.30
+[INFO] [1794902038.562289861] [lidar_localization]: max_map_odom_update_translation: 0.50 m
+[INFO] [1794902038.562332515] [lidar_localization]: max_map_odom_update_rotation: 0.25 rad
+[INFO] [1794902038.562374625] [lidar_localization]: global_frame_id: map
+[INFO] [1794902038.562428318] [lidar_localization]: odom_frame_id: odom
+[INFO] [1794902038.562471996] [lidar_localization]: base_frame_id: base_link
+[INFO] [1794902038.562511675] [lidar_localization]: enable_map_odom_tf: 1
+[INFO] [1794902038.562550329] [lidar_localization]: registration_method: NDT_OMP
+[INFO] [1794902038.562589303] [lidar_localization]: ndt_resolution: 0.500000
+[INFO] [1794902038.562632789] [lidar_localization]: ndt_step_size: 0.100000
+[INFO] [1794902038.562677075] [lidar_localization]: ndt_num_threads: 4
+[INFO] [1794902038.562716433] [lidar_localization]: adaptive_ndt_resolution: 1
+[INFO] [1794902038.562758927] [lidar_localization]: adaptive_ndt_max_resolution: 3.00 m
+[INFO] [1794902038.562801037] [lidar_localization]: adaptive_ndt_resolution_step: 0.10 m
+[INFO] [1794902038.562843691] [lidar_localization]: adaptive_ndt_min_usable_voxel_ratio: 0.010
+[INFO] [1794902038.562885993] [lidar_localization]: transform_epsilon: 0.001000
+[INFO] [1794902038.562928615] [lidar_localization]: voxel_leaf_size: 0.150000
+[INFO] [1794902038.562971525] [lidar_localization]: scan_max_range: 120.000000
+[INFO] [1794902038.563016739] [lidar_localization]: scan_min_range: 0.500000
+[INFO] [1794902038.563058817] [lidar_localization]: far_point_boost_min_range: 15.000000
+[INFO] [1794902038.563118911] [lidar_localization]: far_point_boost_factor: 2
+[INFO] [1794902038.563163293] [lidar_localization]: height_boost: enabled=0 min_z=2.000 m (base frame) extra_copies=1 max_copies=3 (existing far weighting preserved); fitness gate uses baseline cloud
+[INFO] [1794902038.563207483] [lidar_localization]: scan_period: 0.100000
+[INFO] [1794902038.563248793] [lidar_localization]: use_pcd_map: 1
+[INFO] [1794902038.563286391] [lidar_localization]: map_path: /home/fdmover/traymover_ros2/logs/option21_airport/final_validation/static_s101_fastlio/room.pcd
+[INFO] [1794902038.563326485] [lidar_localization]: set_initial_pose: 0
+[INFO] [1794902038.563365459] [lidar_localization]: use_odom: 1
+[INFO] [1794902038.563403378] [lidar_localization]: use_imu: 0
+[INFO] [1794902038.563441296] [lidar_localization]: enable_debug: 0
+[INFO] [1794902038.563478158] [lidar_localization]: enable_timer_publishing: 0
+[INFO] [1794902038.563517836] [lidar_localization]: pose_publish_frequency: 20.000000
+[INFO] [1794902038.563585417] [lidar_localization]: initializePubSub
+[INFO] [1794902038.579196861] [lidar_localization]: initializePubSub end
+[INFO] [1794902038.579370133] [lidar_localization]: initializeRegistration
+[INFO] [1794902038.579558124] [lidar_localization]: initializeRegistration end
+[INFO] [1794902038.579622089] [lidar_localization]: Configuring end
+[INFO] [1794902038.602440882] [lidar_localization]: Activating
+[INFO] [1794902038.602760196] [lidar_localization]: Loading pcd map from: /home/fdmover/traymover_ros2/logs/option21_airport/final_validation/static_s101_fastlio/room.pcd
+[INFO] [1794902038.859155375] [lidar_localization]: Map Size 157139
+[INFO] [1794902038.868815796] [lidar_localization]: Map downsample: leaf=0.150 m input=157139 output=155304 retained=98.8% elapsed=0.009 s
+[INFO] [1794902038.874575723] [lidar_localization]: NDT map density at 0.50 m: points=155304 voxels=25029 usable_voxels=18235 usable_points=129085 (83.1%), usable_voxel_ratio=72.86%, max_points_per_voxel=19
+[INFO] [1794902038.901991457] [lidar_localization]: NDT target map cloud: points=155304 x=[-40.00, 40.00] y=[-25.00, 25.00] z=[0.00, 8.00]
+[INFO] [1794902038.906344570] [lidar_localization]: Initial Map Published
+[INFO] [1794902038.906559312] [lidar_localization]: Activating end
+[INFO] [1794902046.710030622] [lidar_localization]: initialPoseReceived
+[INFO] [1794902046.710278515] [lidar_localization]: Initialpose accepted as NDT guess only; waiting for NDT alignment before publishing map->odom
+[INFO] [1794902046.710347696] [lidar_localization]: initialPoseReceived end
+[INFO] [1794902047.172415745] [lidar_localization]: NDT source cloud: raw=10922 filtered=10909 kept=16967 frame=base_link
+[INFO] [1794902047.301356322] [lidar_localization]: NDT aligned: fitness=0.011 map→odom=[-0.16, -0.05, 0.05, yaw=-0.000]
+[INFO] [1794902050.712072832] [lidar_localization]: NDT source cloud: raw=10859 filtered=10845 kept=16890 frame=base_link
+[INFO] [1794902050.767996459] [lidar_localization]: NDT auto correction: applied translation=0.001 rotation=0.000 remaining_translation=0.001 remaining_rotation=0.000
+[INFO] [1794902050.768899554] [lidar_localization]: NDT aligned: fitness=0.011 map→odom=[-0.16, -0.05, 0.05, yaw=-0.000]
+[INFO] [1794902054.119610355] [lidar_localization]: NDT source cloud: raw=10903 filtered=10887 kept=16939 frame=base_link
+[INFO] [1794902054.188577683] [lidar_localization]: NDT auto correction: applied translation=0.012 rotation=0.000 remaining_translation=0.027 remaining_rotation=0.000
+[INFO] [1794902054.189079612] [lidar_localization]: NDT aligned: fitness=0.018 map→odom=[-0.17, -0.06, 0.05, yaw=-0.000]
+[INFO] [1794902057.783412473] [lidar_localization]: NDT source cloud: raw=10869 filtered=10852 kept=16832 frame=base_link
+[INFO] [1794902057.825450853] [lidar_localization]: NDT auto correction: applied translation=0.005 rotation=0.000 remaining_translation=0.013 remaining_rotation=0.000
+[INFO] [1794902057.826192419] [lidar_localization]: NDT aligned: fitness=0.018 map→odom=[-0.18, -0.06, 0.06, yaw=-0.000]
+[INFO] [1794902061.556469401] [lidar_localization]: NDT source cloud: raw=10878 filtered=10867 kept=16885 frame=base_link
+[INFO] [1794902061.609727724] [lidar_localization]: NDT auto correction: applied translation=0.003 rotation=0.000 remaining_translation=0.006 remaining_rotation=0.000
+[INFO] [1794902061.610240597] [lidar_localization]: NDT aligned: fitness=0.018 map→odom=[-0.18, -0.06, 0.06, yaw=-0.000]
+[INFO] [1794902065.204545672] [lidar_localization]: NDT source cloud: raw=10988 filtered=10968 kept=17080 frame=base_link
+[INFO] [1794902065.353614293] [lidar_localization]: NDT auto correction: applied translation=0.012 rotation=0.001 remaining_translation=0.028 remaining_rotation=0.003
+[INFO] [1794902065.354528172] [lidar_localization]: NDT aligned: fitness=0.020 map→odom=[-0.18, -0.06, 0.05, yaw=-0.000]
+[INFO] [1794902068.663120680] [lidar_localization]: NDT source cloud: raw=10906 filtered=10896 kept=16980 frame=base_link
+[INFO] [1794902068.742735870] [lidar_localization]: NDT auto correction: applied translation=0.009 rotation=0.001 remaining_translation=0.020 remaining_rotation=0.002
+[INFO] [1794902068.743419488] [lidar_localization]: NDT aligned: fitness=0.021 map→odom=[-0.18, -0.06, 0.04, yaw=-0.000]
+[INFO] [1794902072.319257064] [lidar_localization]: NDT source cloud: raw=10935 filtered=10913 kept=17023 frame=base_link
+[INFO] [1794902072.367383536] [lidar_localization]: NDT auto correction: applied translation=0.006 rotation=0.001 remaining_translation=0.013 remaining_rotation=0.002
+[INFO] [1794902072.368083633] [lidar_localization]: NDT aligned: fitness=0.021 map→odom=[-0.18, -0.06, 0.03, yaw=-0.000]
+[INFO] [1794902076.092795437] [lidar_localization]: NDT source cloud: raw=11008 filtered=10993 kept=17145 frame=base_link
+[INFO] [1794902076.136655002] [lidar_localization]: NDT auto correction: applied translation=0.003 rotation=0.000 remaining_translation=0.007 remaining_rotation=0.001
+[INFO] [1794902076.137172035] [lidar_localization]: NDT aligned: fitness=0.021 map→odom=[-0.18, -0.06, 0.03, yaw=-0.000]
+[INFO] [1794902079.692033942] [lidar_localization]: NDT source cloud: raw=11052 filtered=11026 kept=17190 frame=base_link
+[INFO] [1794902079.785509748] [lidar_localization]: NDT auto correction: applied translation=0.005 rotation=0.001 remaining_translation=0.013 remaining_rotation=0.001
+[INFO] [1794902079.785982015] [lidar_localization]: NDT aligned: fitness=0.022 map→odom=[-0.18, -0.07, 0.02, yaw=-0.000]
+[INFO] [1794902083.478166372] [lidar_localization]: NDT source cloud: raw=10962 filtered=10938 kept=17099 frame=base_link
+[INFO] [1794902083.625884430] [lidar_localization]: NDT auto correction: applied translation=0.018 rotation=0.001 remaining_translation=0.042 remaining_rotation=0.001
+[INFO] [1794902083.626399127] [lidar_localization]: NDT aligned: fitness=0.018 map→odom=[-0.16, -0.06, 0.02, yaw=-0.001]
+[INFO] [1794902087.667434505] [lidar_localization]: NDT source cloud: raw=11020 filtered=11007 kept=17063 frame=base_link
+[INFO] [1794902087.726148778] [lidar_localization]: NDT auto correction: applied translation=0.013 rotation=0.000 remaining_translation=0.031 remaining_rotation=0.001
+[INFO] [1794902087.726589174] [lidar_localization]: NDT aligned: fitness=0.018 map→odom=[-0.15, -0.06, 0.02, yaw=-0.001]
+[INFO] [1794902091.395583800] [lidar_localization]: NDT source cloud: raw=11011 filtered=10998 kept=17013 frame=base_link
+[INFO] [1794902091.513526253] [lidar_localization]: NDT auto correction: applied translation=0.012 rotation=0.000 remaining_translation=0.028 remaining_rotation=0.001
+[INFO] [1794902091.514048982] [lidar_localization]: NDT aligned: fitness=0.020 map→odom=[-0.14, -0.07, 0.01, yaw=-0.001]
+[INFO] [1794902094.869825164] [lidar_localization]: NDT source cloud: raw=11093 filtered=11080 kept=17092 frame=base_link
+[INFO] [1794902094.943274695] [lidar_localization]: NDT auto correction: applied translation=0.008 rotation=0.000 remaining_translation=0.018 remaining_rotation=0.001
+[INFO] [1794902094.943756689] [lidar_localization]: NDT aligned: fitness=0.020 map→odom=[-0.14, -0.07, 0.01, yaw=-0.001]
+[INFO] [1794902098.525572540] [lidar_localization]: NDT source cloud: raw=11082 filtered=11068 kept=17076 frame=base_link
+[INFO] [1794902098.591370641] [lidar_localization]: NDT auto correction: applied translation=0.005 rotation=0.000 remaining_translation=0.012 remaining_rotation=0.001
+[INFO] [1794902098.591835453] [lidar_localization]: NDT aligned: fitness=0.020 map→odom=[-0.14, -0.08, 0.01, yaw=-0.002]
+[INFO] [1794902102.644794299] [lidar_localization]: NDT source cloud: raw=11090 filtered=11072 kept=17057 frame=base_link
+[INFO] [1794902102.704694492] [lidar_localization]: NDT auto correction: applied translation=0.004 rotation=0.000 remaining_translation=0.010 remaining_rotation=0.001
+[INFO] [1794902102.705198565] [lidar_localization]: NDT aligned: fitness=0.020 map→odom=[-0.13, -0.08, 0.01, yaw=-0.002]
+[INFO] [1794902106.635429557] [lidar_localization]: NDT source cloud: raw=11188 filtered=11154 kept=17265 frame=base_link
+[INFO] [1794902106.725509796] [lidar_localization]: NDT auto correction: applied translation=0.006 rotation=0.000 remaining_translation=0.014 remaining_rotation=0.001
+[INFO] [1794902106.726064876] [lidar_localization]: NDT aligned: fitness=0.020 map→odom=[-0.13, -0.08, 0.01, yaw=-0.002]
+[INFO] [1794902110.617446133] [lidar_localization]: NDT source cloud: raw=11225 filtered=11195 kept=17363 frame=base_link
+[INFO] [1794902110.691366965] [lidar_localization]: NDT auto correction: applied translation=0.006 rotation=0.000 remaining_translation=0.015 remaining_rotation=0.001
+[INFO] [1794902110.692136179] [lidar_localization]: NDT aligned: fitness=0.020 map→odom=[-0.12, -0.08, 0.01, yaw=-0.002]
+[INFO] [1794902114.683096723] [lidar_localization]: NDT source cloud: raw=11206 filtered=11120 kept=17224 frame=base_link
+[INFO] [1794902114.829559006] [lidar_localization]: NDT auto correction: applied translation=0.012 rotation=0.000 remaining_translation=0.028 remaining_rotation=0.000
+[INFO] [1794902114.830097862] [lidar_localization]: NDT aligned: fitness=0.019 map→odom=[-0.11, -0.08, 0.01, yaw=-0.002]
+[INFO] [1794902119.035333001] [lidar_localization]: NDT source cloud: raw=11170 filtered=11091 kept=17185 frame=base_link
+[INFO] [1794902119.124504699] [lidar_localization]: NDT auto correction: applied translation=0.006 rotation=0.000 remaining_translation=0.015 remaining_rotation=0.001
+[INFO] [1794902119.124939911] [lidar_localization]: NDT aligned: fitness=0.019 map→odom=[-0.10, -0.08, 0.02, yaw=-0.002]
+[INFO] [1794902122.943510652] [lidar_localization]: NDT source cloud: raw=11215 filtered=11198 kept=17330 frame=base_link
+[INFO] [1794902123.023393387] [lidar_localization]: NDT auto correction: applied translation=0.002 rotation=0.000 remaining_translation=0.004 remaining_rotation=0.001
+[INFO] [1794902123.023945971] [lidar_localization]: NDT aligned: fitness=0.019 map→odom=[-0.10, -0.08, 0.03, yaw=-0.002]
+[INFO] [1794902126.610226382] [lidar_localization]: NDT source cloud: raw=11165 filtered=11139 kept=17238 frame=base_link
+[INFO] [1794902126.651652407] [lidar_localization]: NDT auto correction: applied translation=0.001 rotation=0.000 remaining_translation=0.003 remaining_rotation=0.001
+[INFO] [1794902126.652168961] [lidar_localization]: NDT aligned: fitness=0.019 map→odom=[-0.10, -0.08, 0.03, yaw=-0.002]
+[INFO] [1794902130.261875091] [lidar_localization]: NDT source cloud: raw=11193 filtered=11170 kept=17263 frame=base_link
+[INFO] [1794902130.322424701] [lidar_localization]: NDT auto correction: applied translation=0.002 rotation=0.000 remaining_translation=0.005 remaining_rotation=0.001
+[INFO] [1794902130.323223738] [lidar_localization]: NDT aligned: fitness=0.019 map→odom=[-0.10, -0.08, 0.04, yaw=-0.002]
+[INFO] [1794902133.689618021] [lidar_localization]: NDT source cloud: raw=11208 filtered=11183 kept=17204 frame=base_link
+[INFO] [1794902133.759594007] [lidar_localization]: NDT auto correction: applied translation=0.005 rotation=0.001 remaining_translation=0.012 remaining_rotation=0.002
+[INFO] [1794902133.760043299] [lidar_localization]: NDT aligned: fitness=0.018 map→odom=[-0.10, -0.07, 0.05, yaw=-0.002]
+[INFO] [1794902137.402253464] [lidar_localization]: NDT source cloud: raw=11262 filtered=11242 kept=17298 frame=base_link
+[INFO] [1794902137.527575365] [lidar_localization]: NDT auto correction: applied translation=0.013 rotation=0.001 remaining_translation=0.031 remaining_rotation=0.002
+[INFO] [1794902137.528234729] [lidar_localization]: NDT aligned: fitness=0.017 map→odom=[-0.11, -0.07, 0.06, yaw=-0.002]
+[INFO] [1794902141.665052514] [lidar_localization]: NDT source cloud: raw=11248 filtered=11212 kept=17243 frame=base_link
+[INFO] [1794902141.729614731] [lidar_localization]: NDT auto correction: applied translation=0.009 rotation=0.001 remaining_translation=0.022 remaining_rotation=0.001
+[INFO] [1794902141.730477094] [lidar_localization]: NDT aligned: fitness=0.017 map→odom=[-0.11, -0.06, 0.06, yaw=-0.002]
+[INFO] [1794902146.141364606] [lidar_localization]: NDT source cloud: raw=11240 filtered=11217 kept=17196 frame=base_link
+[INFO] [1794902146.213660414] [lidar_localization]: NDT auto correction: applied translation=0.005 rotation=0.000 remaining_translation=0.012 remaining_rotation=0.001
+[INFO] [1794902146.214163240] [lidar_localization]: NDT aligned: fitness=0.018 map→odom=[-0.11, -0.06, 0.07, yaw=-0.002]
+[INFO] [1794902150.045444768] [lidar_localization]: NDT source cloud: raw=11289 filtered=11263 kept=17334 frame=base_link
+[INFO] [1794902150.103497167] [lidar_localization]: NDT auto correction: applied translation=0.005 rotation=0.000 remaining_translation=0.012 remaining_rotation=0.001
+[INFO] [1794902150.103948284] [lidar_localization]: NDT aligned: fitness=0.018 map→odom=[-0.11, -0.06, 0.07, yaw=-0.001]
+[INFO] [1794902153.522567766] [lidar_localization]: NDT source cloud: raw=11317 filtered=11285 kept=17345 frame=base_link
+[INFO] [1794902153.600185787] [lidar_localization]: NDT auto correction: applied translation=0.004 rotation=0.000 remaining_translation=0.008 remaining_rotation=0.001
+[INFO] [1794902153.600680742] [lidar_localization]: NDT aligned: fitness=0.018 map→odom=[-0.11, -0.06, 0.07, yaw=-0.001]
+[INFO] [1794902157.630668973] [lidar_localization]: NDT source cloud: raw=11276 filtered=11251 kept=17349 frame=base_link
+[INFO] [1794902157.713031020] [lidar_localization]: NDT auto correction: applied translation=0.005 rotation=0.000 remaining_translation=0.013 remaining_rotation=0.000
+[INFO] [1794902157.713515671] [lidar_localization]: NDT aligned: fitness=0.017 map→odom=[-0.12, -0.06, 0.08, yaw=-0.001]
+[INFO] [1794902161.187146437] [lidar_localization]: NDT source cloud: raw=11269 filtered=11189 kept=17186 frame=base_link
+[INFO] [1794902161.244831378] [lidar_localization]: NDT auto correction: applied translation=0.003 rotation=0.000 remaining_translation=0.008 remaining_rotation=0.000
+[INFO] [1794902161.245292606] [lidar_localization]: NDT aligned: fitness=0.017 map→odom=[-0.12, -0.06, 0.08, yaw=-0.001]
+[INFO] [1794902165.480897910] [lidar_localization]: NDT source cloud: raw=11202 filtered=11130 kept=17090 frame=base_link
+[INFO] [1794902165.538985653] [lidar_localization]: NDT auto correction: applied translation=0.002 rotation=0.000 remaining_translation=0.006 remaining_rotation=0.000
+[INFO] [1794902165.539528318] [lidar_localization]: NDT aligned: fitness=0.017 map→odom=[-0.12, -0.06, 0.08, yaw=-0.001]
+[INFO] [1794902169.236108854] [lidar_localization]: NDT source cloud: raw=11313 filtered=11271 kept=17321 frame=base_link
+[INFO] [1794902169.309513193] [lidar_localization]: NDT auto correction: applied translation=0.003 rotation=0.000 remaining_translation=0.007 remaining_rotation=0.000
+[INFO] [1794902169.310072689] [lidar_localization]: NDT aligned: fitness=0.017 map→odom=[-0.12, -0.06, 0.09, yaw=-0.001]
+[INFO] [1794902173.425218429] [lidar_localization]: NDT source cloud: raw=11247 filtered=11179 kept=17151 frame=base_link
+[INFO] [1794902173.530886192] [lidar_localization]: NDT auto correction: applied translation=0.001 rotation=0.003 remaining_translation=0.003 remaining_rotation=0.007
+[INFO] [1794902173.531433625] [lidar_localization]: NDT aligned: fitness=0.017 map→odom=[-0.14, -0.01, 0.08, yaw=-0.004]
+[INFO] [1794902177.004251065] [lidar_localization]: NDT source cloud: raw=11233 filtered=11139 kept=17112 frame=base_link
+[INFO] [1794902177.128117163] [lidar_localization]: NDT auto correction: applied translation=0.009 rotation=0.001 remaining_translation=0.022 remaining_rotation=0.001
+[INFO] [1794902177.128686835] [lidar_localization]: NDT aligned: fitness=0.019 map→odom=[-0.13, -0.02, 0.08, yaw=-0.004]
+[INFO] [1794902180.579412092] [lidar_localization]: NDT source cloud: raw=11261 filtered=11200 kept=17199 frame=base_link
+[INFO] [1794902180.663165414] [lidar_localization]: NDT auto correction: applied translation=0.009 rotation=0.000 remaining_translation=0.021 remaining_rotation=0.001
+[INFO] [1794902180.663582292] [lidar_localization]: NDT aligned: fitness=0.019 map→odom=[-0.12, -0.03, 0.08, yaw=-0.003]
+[INFO] [1794902184.123687674] [lidar_localization]: NDT source cloud: raw=11227 filtered=11189 kept=17222 frame=base_link
+[INFO] [1794902184.209681258] [lidar_localization]: NDT auto correction: applied translation=0.006 rotation=0.000 remaining_translation=0.013 remaining_rotation=0.000
+[INFO] [1794902184.210151318] [lidar_localization]: NDT aligned: fitness=0.020 map→odom=[-0.12, -0.04, 0.08, yaw=-0.003]
+[INFO] [1794902188.198640162] [lidar_localization]: NDT source cloud: raw=11274 filtered=11251 kept=17293 frame=base_link
+[INFO] [1794902188.311699194] [lidar_localization]: NDT auto correction: applied translation=0.009 rotation=0.001 remaining_translation=0.022 remaining_rotation=0.002
+[INFO] [1794902188.312085482] [lidar_localization]: NDT aligned: fitness=0.017 map→odom=[-0.12, -0.04, 0.08, yaw=-0.003]
+[INFO] [1794902192.372950576] [lidar_localization]: NDT source cloud: raw=11278 filtered=11259 kept=17317 frame=base_link
+[INFO] [1794902192.424087670] [lidar_localization]: NDT auto correction: applied translation=0.008 rotation=0.000 remaining_translation=0.018 remaining_rotation=0.001
+[INFO] [1794902192.424582081] [lidar_localization]: NDT aligned: fitness=0.017 map→odom=[-0.13, -0.05, 0.08, yaw=-0.002]
+[INFO] [1794902197.163332056] [lidar_localization]: NDT source cloud: raw=11208 filtered=11179 kept=17158 frame=base_link
+[INFO] [1794902197.210762079] [lidar_localization]: NDT auto correction: applied translation=0.005 rotation=0.000 remaining_translation=0.011 remaining_rotation=0.001
+[INFO] [1794902197.211295689] [lidar_localization]: NDT aligned: fitness=0.017 map→odom=[-0.13, -0.05, 0.08, yaw=-0.002]
+[INFO] [1794902200.787326357] [lidar_localization]: NDT source cloud: raw=11163 filtered=11138 kept=17184 frame=base_link
+[INFO] [1794902200.843534092] [lidar_localization]: NDT auto correction: applied translation=0.003 rotation=0.000 remaining_translation=0.008 remaining_rotation=0.001
+[INFO] [1794902200.844019991] [lidar_localization]: NDT aligned: fitness=0.016 map→odom=[-0.13, -0.05, 0.08, yaw=-0.002]
+[INFO] [1794902204.351764060] [lidar_localization]: NDT source cloud: raw=11232 filtered=11217 kept=17346 frame=base_link
+[INFO] [1794902204.425513746] [lidar_localization]: NDT auto correction: applied translation=0.003 rotation=0.000 remaining_translation=0.006 remaining_rotation=0.001
+[INFO] [1794902204.426003614] [lidar_localization]: NDT aligned: fitness=0.016 map→odom=[-0.13, -0.05, 0.08, yaw=-0.001]
+[INFO] [1794902208.467463084] [lidar_localization]: NDT source cloud: raw=11144 filtered=11126 kept=17197 frame=base_link
+[INFO] [1794902208.516009134] [lidar_localization]: NDT auto correction: applied translation=0.001 rotation=0.000 remaining_translation=0.002 remaining_rotation=0.000
+[INFO] [1794902208.516517625] [lidar_localization]: NDT aligned: fitness=0.016 map→odom=[-0.13, -0.05, 0.07, yaw=-0.001]
+[INFO] [1794902212.298730741] [lidar_localization]: NDT source cloud: raw=11205 filtered=11177 kept=17277 frame=base_link
+[INFO] [1794902212.362560983] [lidar_localization]: NDT auto correction: applied translation=0.002 rotation=0.000 remaining_translation=0.004 remaining_rotation=0.000
+[INFO] [1794902212.363023300] [lidar_localization]: NDT aligned: fitness=0.016 map→odom=[-0.13, -0.05, 0.07, yaw=-0.001]
+[INFO] [1794902216.565190662] [lidar_localization]: NDT source cloud: raw=11153 filtered=11133 kept=17230 frame=base_link
+[INFO] [1794902216.648185512] [lidar_localization]: NDT auto correction: applied translation=0.002 rotation=0.000 remaining_translation=0.005 remaining_rotation=0.000
+[INFO] [1794902216.648675252] [lidar_localization]: NDT aligned: fitness=0.016 map→odom=[-0.13, -0.05, 0.07, yaw=-0.001]
+[INFO] [1794902220.433790346] [lidar_localization]: NDT source cloud: raw=11236 filtered=11199 kept=17329 frame=base_link
+[INFO] [1794902220.475176227] [lidar_localization]: NDT auto correction: applied translation=0.001 rotation=0.000 remaining_translation=0.003 remaining_rotation=0.000
+[INFO] [1794902220.475689198] [lidar_localization]: NDT aligned: fitness=0.016 map→odom=[-0.13, -0.05, 0.07, yaw=-0.001]
+[INFO] [1794902224.130754125] [lidar_localization]: NDT source cloud: raw=11220 filtered=11123 kept=17183 frame=base_link
+[INFO] [1794902224.181999500] [lidar_localization]: NDT auto correction: applied translation=0.002 rotation=0.000 remaining_translation=0.005 remaining_rotation=0.000
+[INFO] [1794902224.182460569] [lidar_localization]: NDT aligned: fitness=0.016 map→odom=[-0.13, -0.04, 0.07, yaw=-0.001]
+[INFO] [1794902228.123380099] [lidar_localization]: NDT source cloud: raw=11184 filtered=11140 kept=17274 frame=base_link
+[INFO] [1794902228.196119396] [lidar_localization]: NDT auto correction: applied translation=0.001 rotation=0.000 remaining_translation=0.003 remaining_rotation=0.000
+[INFO] [1794902228.197150265] [lidar_localization]: NDT aligned: fitness=0.016 map→odom=[-0.13, -0.04, 0.07, yaw=-0.001]
+[INFO] [1794902232.672152441] [lidar_localization]: NDT source cloud: raw=11165 filtered=11145 kept=17269 frame=base_link
+[INFO] [1794902232.724534320] [lidar_localization]: NDT auto correction: applied translation=0.001 rotation=0.000 remaining_translation=0.002 remaining_rotation=0.001
+[INFO] [1794902232.725006269] [lidar_localization]: NDT aligned: fitness=0.016 map→odom=[-0.13, -0.04, 0.06, yaw=-0.002]
+[INFO] [1794902236.696772025] [lidar_localization]: NDT source cloud: raw=11163 filtered=11145 kept=17253 frame=base_link
+[INFO] [1794902236.768134942] [lidar_localization]: NDT auto correction: applied translation=0.002 rotation=0.000 remaining_translation=0.005 remaining_rotation=0.000
+[INFO] [1794902236.768651272] [lidar_localization]: NDT aligned: fitness=0.016 map→odom=[-0.13, -0.04, 0.06, yaw=-0.002]
+[INFO] [1794902240.974985032] [lidar_localization]: NDT source cloud: raw=11087 filtered=11071 kept=17063 frame=base_link
+[INFO] [1794902241.027482818] [lidar_localization]: NDT auto correction: applied translation=0.001 rotation=0.000 remaining_translation=0.002 remaining_rotation=0.001
+[INFO] [1794902241.027996300] [lidar_localization]: NDT aligned: fitness=0.016 map→odom=[-0.13, -0.04, 0.06, yaw=-0.002]
+[INFO] [1794902245.091983992] [lidar_localization]: NDT source cloud: raw=11070 filtered=11043 kept=17052 frame=base_link
+[INFO] [1794902245.140510587] [lidar_localization]: NDT auto correction: applied translation=0.001 rotation=0.000 remaining_translation=0.003 remaining_rotation=0.000
+[INFO] [1794902245.140941865] [lidar_localization]: NDT aligned: fitness=0.016 map→odom=[-0.13, -0.04, 0.05, yaw=-0.002]
+[INFO] [1794902248.969471180] [lidar_localization]: NDT source cloud: raw=11073 filtered=11041 kept=17109 frame=base_link
+[INFO] [1794902249.020531625] [lidar_localization]: NDT auto correction: applied translation=0.002 rotation=0.000 remaining_translation=0.004 remaining_rotation=0.000
+[INFO] [1794902249.020974551] [lidar_localization]: NDT aligned: fitness=0.015 map→odom=[-0.13, -0.04, 0.05, yaw=-0.002]
+[INFO] [1794902253.147544821] [lidar_localization]: NDT source cloud: raw=11091 filtered=11070 kept=17113 frame=base_link
+[INFO] [1794902253.203242710] [lidar_localization]: NDT auto correction: applied translation=0.002 rotation=0.000 remaining_translation=0.005 remaining_rotation=0.000
+[INFO] [1794902253.203781728] [lidar_localization]: NDT aligned: fitness=0.015 map→odom=[-0.13, -0.04, 0.05, yaw=-0.002]
+[INFO] [1794902257.679176933] [lidar_localization]: NDT source cloud: raw=11086 filtered=11052 kept=17164 frame=base_link
+[INFO] [1794902257.748755149] [lidar_localization]: NDT auto correction: applied translation=0.005 rotation=0.001 remaining_translation=0.012 remaining_rotation=0.001
+[INFO] [1794902257.749319221] [lidar_localization]: NDT aligned: fitness=0.015 map→odom=[-0.13, -0.04, 0.04, yaw=-0.002]
+[INFO] [1794902261.889442309] [lidar_localization]: NDT source cloud: raw=11065 filtered=11044 kept=17229 frame=base_link
+[INFO] [1794902261.948996623] [lidar_localization]: NDT auto correction: applied translation=0.005 rotation=0.001 remaining_translation=0.012 remaining_rotation=0.001
+[INFO] [1794902261.949617110] [lidar_localization]: NDT aligned: fitness=0.016 map→odom=[-0.13, -0.04, 0.03, yaw=-0.002]
+[INFO] [1794902265.790921582] [lidar_localization]: NDT source cloud: raw=11103 filtered=11080 kept=17303 frame=base_link
+[INFO] [1794902265.876589738] [lidar_localization]: NDT auto correction: applied translation=0.002 rotation=0.001 remaining_translation=0.005 remaining_rotation=0.002
+[INFO] [1794902265.877207248] [lidar_localization]: NDT aligned: fitness=0.015 map→odom=[-0.13, -0.05, 0.03, yaw=-0.002]
+[INFO] [1794902270.175240125] [lidar_localization]: NDT source cloud: raw=10927 filtered=10907 kept=17033 frame=base_link
+[INFO] [1794902270.212168816] [lidar_localization]: NDT auto correction: applied translation=0.002 rotation=0.000 remaining_translation=0.004 remaining_rotation=0.001
+[INFO] [1794902270.212777079] [lidar_localization]: NDT aligned: fitness=0.015 map→odom=[-0.13, -0.05, 0.02, yaw=-0.002]
+[INFO] [1794902274.034445407] [lidar_localization]: NDT source cloud: raw=10934 filtered=10914 kept=17023 frame=base_link
+[INFO] [1794902274.077612982] [lidar_localization]: NDT auto correction: applied translation=0.002 rotation=0.000 remaining_translation=0.005 remaining_rotation=0.001
+[INFO] [1794902274.078164191] [lidar_localization]: NDT aligned: fitness=0.015 map→odom=[-0.13, -0.05, 0.02, yaw=-0.002]
+[INFO] [1794902277.937545105] [lidar_localization]: NDT source cloud: raw=10941 filtered=10924 kept=17021 frame=base_link
+[INFO] [1794902277.988517738] [lidar_localization]: NDT auto correction: applied translation=0.002 rotation=0.000 remaining_translation=0.005 remaining_rotation=0.000
+[INFO] [1794902277.989000694] [lidar_localization]: NDT aligned: fitness=0.014 map→odom=[-0.13, -0.05, 0.02, yaw=-0.002]
+[INFO] [1794902281.649683673] [lidar_localization]: NDT source cloud: raw=10863 filtered=10849 kept=16860 frame=base_link
+[INFO] [1794902281.739155568] [lidar_localization]: NDT auto correction: applied translation=0.002 rotation=0.000 remaining_translation=0.004 remaining_rotation=0.000
+[INFO] [1794902281.739649179] [lidar_localization]: NDT aligned: fitness=0.014 map→odom=[-0.13, -0.05, 0.02, yaw=-0.002]
+[INFO] [1794902285.489424165] [lidar_localization]: NDT source cloud: raw=10923 filtered=10895 kept=16927 frame=base_link
+[INFO] [1794902285.571382452] [lidar_localization]: NDT auto correction: applied translation=0.003 rotation=0.000 remaining_translation=0.006 remaining_rotation=0.000
+[INFO] [1794902285.571871616] [lidar_localization]: NDT aligned: fitness=0.014 map→odom=[-0.13, -0.05, 0.02, yaw=-0.002]
+[INFO] [1794902290.668622984] [lidar_localization]: NDT source cloud: raw=10962 filtered=10936 kept=17013 frame=base_link
+[INFO] [1794902290.755156227] [lidar_localization]: NDT auto correction: applied translation=0.004 rotation=0.000 remaining_translation=0.010 remaining_rotation=0.000
+[INFO] [1794902290.755735083] [lidar_localization]: NDT aligned: fitness=0.014 map→odom=[-0.13, -0.05, 0.02, yaw=-0.002]
+[INFO] [1794902295.211575072] [lidar_localization]: NDT source cloud: raw=10887 filtered=10872 kept=16929 frame=base_link
+[INFO] [1794902295.294499317] [lidar_localization]: NDT auto correction: applied translation=0.005 rotation=0.000 remaining_translation=0.013 remaining_rotation=0.000
+[INFO] [1794902295.295021407] [lidar_localization]: NDT aligned: fitness=0.014 map→odom=[-0.14, -0.06, 0.02, yaw=-0.002]
+[INFO] [1794902299.204176484] [lidar_localization]: NDT source cloud: raw=10916 filtered=10897 kept=16938 frame=base_link
+[INFO] [1794902299.265059804] [lidar_localization]: NDT auto correction: applied translation=0.003 rotation=0.000 remaining_translation=0.007 remaining_rotation=0.000
+[INFO] [1794902299.265664260] [lidar_localization]: NDT aligned: fitness=0.014 map→odom=[-0.14, -0.06, 0.02, yaw=-0.002]
+[INFO] [1794902303.199508848] [lidar_localization]: NDT source cloud: raw=10912 filtered=10888 kept=16933 frame=base_link
+[INFO] [1794902303.277667248] [lidar_localization]: NDT auto correction: applied translation=0.003 rotation=0.000 remaining_translation=0.007 remaining_rotation=0.000
+[INFO] [1794902303.278215642] [lidar_localization]: NDT aligned: fitness=0.015 map→odom=[-0.14, -0.06, 0.02, yaw=-0.001]
+[INFO] [1794902306.736364020] [rclcpp]: signal_handler(SIGINT/SIGTERM)

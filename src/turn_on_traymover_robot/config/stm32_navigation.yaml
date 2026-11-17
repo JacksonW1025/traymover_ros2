@@ -1,0 +1,26 @@
+# Option 21 only. Measured body velocity; no conversion of encoder raw units.
+# Mechanical parameters are also transmitted to the controller (170 mm / 455 mm).
+turn_on_traymover_robot:
+  ros__parameters:
+    usart_port_name: /dev/serial/by-id/usb-1a86_USB_Serial-if00-port0
+    serial_baud_rate: 115200
+    robot_frame_id: base_footprint
+    odom_frame_id: odom
+    publish_odom_tf: true
+    odom_source_mode: stm32_velocity
+    wheel_diameter: 0.17
+    wheel_track: 0.455
+    gear_reduction: 5600
+    tick_meter_ratio: 10
+    left_encoder_sign: 1
+    right_encoder_sign: -1
+    poll_rate_hz: 20.0
+    status_poll_rate_hz: 1.0
+    left_motor_scale: 1
+    right_motor_scale: 1
+    alarm_led: 1
+    ir_threshold: 20
+    cmd_vel_timeout: 0.5
+    auto_estop_enabled: false
+    auto_estop_timeout_sec: 0.3
+    feedback_max_gap_sec: 0.3

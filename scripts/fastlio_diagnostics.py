@@ -27,6 +27,7 @@ def parse_args():
     parser.add_argument('--lidar-topic', default='/point_cloud_raw')
     parser.add_argument('--imu-topic', default='/imu/data_raw')
     parser.add_argument('--odom-topic', default='/odom')
+    parser.add_argument('--odometry-source', choices=('fastlio', 'stm32'), default='fastlio')
     parser.add_argument('--interval-sec', type=float, default=2.0)
     parser.add_argument('--lidar-qos', choices=('sensor_data', 'reliable'), default='sensor_data')
     return parser.parse_args()
@@ -52,6 +53,7 @@ class FastlioDiagnostics:
         self.output_dir = os.path.abspath(args.output_dir)
         os.makedirs(self.output_dir, exist_ok=True)
         self.interval_sec = max(0.5, args.interval_sec)
+        self.odometry_source = getattr(args, 'odometry_source', 'fastlio')
         self.lock = threading.Lock()
         self.started_wall = time.time()
         self.last_rosout_wall = 0.0
@@ -183,7 +185,8 @@ class FastlioDiagnostics:
             self.mark('tf')
             for transform in msg.transforms:
                 key = (transform.header.frame_id, transform.child_frame_id)
-                if key in (('camera_init', 'body'), ('odom', 'camera_init')):
+                if key in (('camera_init', 'body'), ('odom', 'camera_init'),
+                           ('odom', 'base_footprint')):
                     is_first_transform = key not in self.last_tf
                     t = transform.transform.translation
                     self.last_tf[key] = (self.now_wall(), t.x, t.y, t.z)
@@ -238,16 +241,19 @@ class FastlioDiagnostics:
 
             if self.counts['lidar'] == 0:
                 state = 'WAIT_LIDAR'
-            elif self.counts['imu'] == 0:
+            elif self.odometry_source == 'fastlio' and self.counts['imu'] == 0:
                 state = 'WAIT_IMU'
             elif lidar_age and float(lidar_age) > max(3.0, self.interval_sec * 2.0):
                 state = 'STALE_LIDAR'
-            elif imu_age and float(imu_age) > max(3.0, self.interval_sec * 2.0):
+            elif (self.odometry_source == 'fastlio' and imu_age
+                  and float(imu_age) > max(3.0, self.interval_sec * 2.0)):
                 state = 'STALE_IMU'
             elif self.counts['odom'] == 0:
                 state = 'WAIT_ODOM'
-            elif ('camera_init', 'body') not in self.last_tf:
+            elif self.odometry_source == 'fastlio' and ('camera_init', 'body') not in self.last_tf:
                 state = 'WAIT_FASTLIO_TF'
+            elif self.odometry_source == 'stm32' and ('odom', 'base_footprint') not in self.last_tf:
+                state = 'WAIT_STM32_TF'
             elif odom_age and float(odom_age) > max(3.0, self.interval_sec * 2.0):
                 state = 'STALE_ODOM'
             else:

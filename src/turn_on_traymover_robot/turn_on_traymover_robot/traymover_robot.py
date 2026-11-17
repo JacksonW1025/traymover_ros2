@@ -332,6 +332,18 @@ def normalize_angle(angle: float) -> float:
     return math.atan2(math.sin(angle), math.cos(angle))
 
 
+def integrate_velocity_step(x, y, yaw, vx, wz, dt):
+    """Integrate body-frame m/s and rad/s using the exact planar arc."""
+    if not all(math.isfinite(value) for value in (x, y, yaw, vx, wz, dt)) or dt < 0:
+        raise ValueError('velocity integration requires finite values and dt >= 0')
+    turn = wz * dt
+    half_turn = turn / 2.0
+    sinc = math.sin(half_turn) / half_turn if abs(half_turn) > 1e-9 else 1.0
+    distance = vx * dt * sinc
+    return (x + distance * math.cos(yaw + half_turn),
+            y + distance * math.sin(yaw + half_turn), normalize_angle(yaw + turn))
+
+
 def charge_status_to_power_supply_status(charge_status: int) -> int:
     if charge_status == 0:
         return BatteryState.POWER_SUPPLY_STATUS_NOT_CHARGING
@@ -367,8 +379,8 @@ def integrate_diff_drive_step(
 class TurnOnTraymoverRobot(Node):
     """Traymover robot serial driver node."""
 
-    def __init__(self):
-        super().__init__('turn_on_traymover_robot')
+    def __init__(self, **node_kwargs):
+        super().__init__('turn_on_traymover_robot', **node_kwargs)
 
         self.declare_parameter('usart_port_name', '/dev/ttyCH341USB0')
         self.declare_parameter('serial_baud_rate', 115200)
@@ -389,6 +401,7 @@ class TurnOnTraymoverRobot(Node):
         self.declare_parameter('right_encoder_sign', 1)
         self.declare_parameter('poll_rate_hz', 20.0)
         self.declare_parameter('status_poll_rate_hz', 1.0)
+        self.declare_parameter('feedback_max_gap_sec', 0.3)
         self.declare_parameter('auto_estop_enabled', False)
         self.declare_parameter('auto_estop_timeout_sec', 0.30)
 
@@ -411,6 +424,9 @@ class TurnOnTraymoverRobot(Node):
         self.right_encoder_sign = int(self.get_parameter('right_encoder_sign').value)
         self.poll_rate_hz = float(self.get_parameter('poll_rate_hz').value)
         self.status_poll_rate_hz = float(self.get_parameter('status_poll_rate_hz').value)
+        self.feedback_max_gap_sec = float(self.get_parameter('feedback_max_gap_sec').value)
+        if not math.isfinite(self.feedback_max_gap_sec) or self.feedback_max_gap_sec <= 0:
+            raise ValueError('feedback_max_gap_sec must be finite and positive')
         self.auto_estop_enabled = bool(self.get_parameter('auto_estop_enabled').value)
         self.auto_estop_timeout_sec = float(
             self.get_parameter('auto_estop_timeout_sec').value
@@ -434,8 +450,8 @@ class TurnOnTraymoverRobot(Node):
             )
             self.auto_estop_timeout_sec = 0.30
 
-        self.odom_enabled = self.odom_source_mode == 'stm32_feedback'
-        if self.odom_source_mode not in ('none', 'stm32_feedback'):
+        self.odom_enabled = self.odom_source_mode in ('stm32_feedback', 'stm32_velocity')
+        if self.odom_source_mode not in ('none', 'stm32_feedback', 'stm32_velocity'):
             self.get_logger().warn(
                 f'Unsupported odom_source_mode={self.odom_source_mode!r}; '
                 'falling back to command-only mode.'
@@ -462,6 +478,7 @@ class TurnOnTraymoverRobot(Node):
         self._last_warning_times = {}
         self._feedback_active_logged = False
         self._last_feedback_mono = None
+        self._last_velocity_stamp_ns = None
         self._last_status_poll_mono = float('-inf')
         self._latest_motor_feedback = None
         self._latest_motor_status = None
@@ -565,6 +582,14 @@ class TurnOnTraymoverRobot(Node):
             )
             return
 
+        if self.odom_source_mode == 'stm32_velocity':
+            self.get_logger().info(
+                'STM32 measured velocity odometry: bytes 29:31 mm/s -> m/s, '
+                '31:33 millirad/s -> rad/s; ROS-time integration, '
+                f'max_gap={self.feedback_max_gap_sec:.3f}s, '
+                f'publish_odom_tf={self.publish_odom_tf}.')
+            return
+
         self.get_logger().info(
             'STM32 odometry feedback enabled: publishing /odom from wheel encoder deltas '
             f'with wheel_track={self.wheel_track:.3f} m, wheel_diameter={self.wheel_diameter:.3f} m, '
@@ -623,7 +648,9 @@ class TurnOnTraymoverRobot(Node):
                 'No valid STM32 motor feedback frame received; status topics may be stale.',
             )
         else:
-            self.handle_motor_feedback(feedback, now.to_msg())
+            feedback_time = (self.get_clock().now()
+                             if self.odom_source_mode == 'stm32_velocity' else now)
+            self.handle_motor_feedback(feedback, feedback_time.to_msg())
 
         if self.should_poll_motor_status():
             status = self.request_motor_status()
@@ -824,10 +851,24 @@ class TurnOnTraymoverRobot(Node):
         # 和 Python 端 wheel_track 偏差。tick 字段保留用于构建 odom msg。
         vx = feedback.linear_velocity_mps
         wz = feedback.angular_velocity_rads
-        mid_yaw = self.odom_yaw + 0.5 * wz * dt
-        self.odom_x += vx * math.cos(mid_yaw) * dt
-        self.odom_y += vx * math.sin(mid_yaw) * dt
-        self.odom_yaw += wz * dt
+        if self.odom_source_mode == 'stm32_velocity':
+            stamp_ns = stamp.sec * 1000000000 + stamp.nanosec
+            previous = self._last_velocity_stamp_ns
+            self._last_velocity_stamp_ns = stamp_ns
+            # No invented displacement on the first frame, after reconnect,
+            # or across ROS clock resets. Missing feedback never uses cmd_vel.
+            dt = (stamp_ns - previous) / 1e9 if previous is not None else 0.0
+            if dt < 0.0 or dt > self.feedback_max_gap_sec:
+                self.throttled_warn(
+                    'odom_gap', 'STM32 feedback time gap/reset: rebase without integrating.')
+                dt = 0.0
+            self.odom_x, self.odom_y, self.odom_yaw = integrate_velocity_step(
+                self.odom_x, self.odom_y, self.odom_yaw, vx, wz, dt)
+        else:
+            mid_yaw = self.odom_yaw + 0.5 * wz * dt
+            self.odom_x += vx * math.cos(mid_yaw) * dt
+            self.odom_y += vx * math.sin(mid_yaw) * dt
+            self.odom_yaw += wz * dt
 
         left_ticks = self.left_encoder_sign * feedback.left_encoder_ticks
         right_ticks = self.right_encoder_sign * feedback.right_encoder_ticks

@@ -1,0 +1,107 @@
+Panels:
+  - Class: rviz_common/Displays
+    Name: Displays
+Visualization Manager:
+  Class: ""
+  Enabled: true
+  Name: root
+  Global Options:
+    Fixed Frame: map
+    Background Color: 35; 35; 40
+  Displays:
+    - Class: rviz_default_plugins/Grid
+      Name: Grid
+      Enabled: true
+      Cell Size: 1
+      Plane Cell Count: 30
+    - Class: rviz_default_plugins/PointCloud2
+      Name: Synthetic Room
+      Enabled: true
+      Topic:
+        Value: /simulation/map
+        Reliability Policy: Reliable
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Depth: 1
+      Style: Points
+      Size (Pixels): 2
+      Color Transformer: FlatColor
+      Color: 130; 130; 140
+    - Class: rviz_default_plugins/PointCloud2
+      Name: Synthetic LiDAR
+      Enabled: true
+      Topic:
+        Value: /point_cloud_localization
+        Reliability Policy: Best Effort
+        Durability Policy: Volatile
+        Depth: 5
+      Style: Points
+      Size (Pixels): 2
+      Color Transformer: FlatColor
+      Color: 90; 180; 255
+    - Class: rviz_default_plugins/Path
+      Name: Ground Truth
+      Enabled: true
+      Topic:
+        Value: /simulation/truth_path
+        Durability Policy: Transient Local
+      Color: 40; 230; 70
+      Line Style: Lines
+      Line Width: 0.04
+      Buffer Length: 1
+    - Class: rviz_default_plugins/Path
+      Name: Raw Wheel Odometry (initial origin aligned)
+      Enabled: true
+      Topic:
+        Value: /simulation/wheel_path
+        Durability Policy: Transient Local
+      Color: 255; 150; 40
+      Line Style: Lines
+      Line Width: 0.04
+      Buffer Length: 1
+    - Class: rviz_default_plugins/Path
+      Name: NDT plus Wheel Odometry
+      Enabled: true
+      Topic:
+        Value: /simulation/localized_path
+        Durability Policy: Transient Local
+      Color: 60; 100; 255
+      Line Style: Lines
+      Line Width: 0.04
+      Buffer Length: 1
+    - Class: rviz_default_plugins/Path
+      Name: Waypoints
+      Enabled: true
+      Topic:
+        Value: /simulation/goals
+        Durability Policy: Transient Local
+      Color: 240; 240; 240
+      Line Style: Lines
+      Line Width: 0.02
+      Buffer Length: 1
+    - Class: rviz_default_plugins/TF
+      Name: Robot TF
+      Enabled: true
+      Show Names: true
+      Show Axes: true
+      Show Arrows: false
+  Tools:
+    - Class: rviz_default_plugins/Interact
+    - Class: rviz_default_plugins/MoveCamera
+    - Class: rviz_default_plugins/Select
+  Views:
+    Current:
+      Class: rviz_default_plugins/Orbit
+      Target Frame: <Fixed Frame>
+      Distance: 19
+      Pitch: 1.15
+      Yaw: 0.2
+      Focal Point:
+        X: 1.5
+        Y: 1
+        Z: 0
+Window Geometry:
+  Width: 1400
+  Height: 900
+  Hide Left Dock: false
+  Hide Right Dock: false

@@ -13,7 +13,8 @@ SRC_ROOT = PKG_ROOT.parent
 WORKSPACE_ROOT = SRC_ROOT.parent
 
 
-def _run_option10_prompt(tmp_path, answers, converter_status=0, runs=1, cleanup_status=0):
+def _run_option10_prompt(tmp_path, answers, converter_status=0, runs=1, cleanup_status=0,
+                         option=10):
     """Execute the real menu function, replacing hardware and ROS side effects."""
     launcher = (WORKSPACE_ROOT / 'scripts/traymover.sh').read_text()
     body = launcher.split('action_start_nav() {', 1)[1].split('\n}', 1)[0]
@@ -57,7 +58,7 @@ sleep() { :; }
     prompt = launcher.split('prompt_ndt_height_boost() {', 1)[1].split('\n}', 1)[0]
     script = stubs + '\nprompt_ndt_height_boost() {' + prompt + '\n}\n'
     script += '\naction_start_nav() {' + body + '\n}\n'
-    script += 'action_start_nav\n' * runs
+    script += f'action_start_nav {option}\n' * runs
     result = subprocess.run(['bash', '-u', '-c', script], input=answers, env=env,
                             text=True, capture_output=True, timeout=10)
     args = arguments.read_text().splitlines() if arguments.exists() else []
@@ -323,7 +324,8 @@ def test_navigation_options_offer_automatic_estop_after_rviz_prompt():
     assert launcher_text.count('prompt_auto_estop') == 5  # definition + four calls
     assert launcher_text.count('action_start_auto_estop') == 5
     assert launcher_text.count('auto_estop_enabled:=${AUTO_ESTOP_ENABLED}') == 3
-    assert launcher_text.count('auto_estop_enabled:=${nav_auto_estop_enabled}') == 1
+    # The shared baseline now has separate FAST-LIO and option-21 chassis commands.
+    assert launcher_text.count('auto_estop_enabled:=${nav_auto_estop_enabled}') == 2
     assert 'traymover_auto_estop.launch.py' in launcher_text
 
 

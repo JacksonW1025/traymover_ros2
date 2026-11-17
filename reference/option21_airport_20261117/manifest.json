@@ -1,0 +1,52 @@
+{
+  "primary_experiment": "Nominal 1x, synthetic LiDAR 20Hz, one paired seed (101), real driver+PTY vs real FAST-LIO; same real NDT backend",
+  "additional_tests": "Static reference and 1.5x pressure tests with noise seeds 101/202. Accelerated results are not nominal-rate evidence.",
+  "area_m": [
+    80,
+    50,
+    8
+  ],
+  "route_length_m": 46.0,
+  "route_duration_s": 137.0,
+  "map_change": "Remove 12x4m cloth frontage; expose a back wall 3m deeper; preserve primary walls and three pillars.",
+  "obstacles": "Two new kiosks and 18 moving cylindrical pedestrians; no physical collision simulation.",
+  "wheel_feedback_gain_assumption": 1.01,
+  "sensors": "2cm xyz point noise, instantaneous 32-ring XYZIRT snapshots; hypothetical 200Hz IMU with .02m/s^2 acceleration noise and .002rad/s gyro noise plus calibrated startup bias.",
+  "initialization": "Controlled tracking: accurate initial pose at 5s after both frontends warm up; first NDT cloud at 5.2s; motion starts at 8s.",
+  "fairness": "All pairs have equal canonical sensor-value hashes, equal prior maps and equal normalized NDT settings; nominal inputs also match the accelerated sequence exactly.",
+  "truth_usage": "Truth generates synthetic sensor measurements and evaluation only; neither estimator receives truth odometry. Prescribed trajectory prevents estimator-dependent paths.",
+  "primary_commands": [
+    "OPENBLAS_NUM_THREADS=1 python3 scripts/option21_airport_benchmark.py --output logs/option21_airport/nominal_rate --case changed --seeds 101 --duration 140 --rate 1 --domain 180 --sensor-cache-bag logs/option21_airport/benchmark/changed_s101_wheel/bag",
+    "./scripts/replay_option21_simulation.sh logs/option21_airport/nominal_rate changed_s101_wheel"
+  ],
+  "independent_regeneration": "OPENBLAS_NUM_THREADS=1 python3 scripts/option21_airport_benchmark.py --output /tmp/new_airport_trial --case changed --seeds 101 --duration 140 --rate 1 --domain 180",
+  "limitations": [
+    "Synthetic hall, not the real airport or user LVI-SAM PCD.",
+    "No spinning-scan distortion, reflections, real sensor extrinsic error, tire slip or calibrated motor model.",
+    "One nominal paired seed and two accelerated noise seeds do not establish general statistical superiority.",
+    "The experiment measures localization, not full Nav2 planning, human avoidance or collision safety.",
+    "Wheel feedback latency/quantization is idealized; 1% gain is an assumption, not a measured calibration.",
+    "The static reference was generated live and ran slower than the cached nominal/pressure replay; do not use it for throughput comparisons.",
+    "Displayed fitness is an optimizer score, not a calibrated probability."
+  ],
+  "engineering_observation": "FAST-LIO installed ARM build flags define MP_PROC_NUM=1 without MP_EN; primary observed advantage includes timeliness/compute throughput.",
+  "excluded_preflights": {
+    "pilot": "startup-offset observation and noncanonical transport-padding hash; not used for paired accuracy claims",
+    "initialization_control": "noncanonical hash; not primary",
+    "canonical_control": "short preflight without synchronized NDT warmup; not primary",
+    "validation": "interrupted while checking observer backlog; not primary",
+    "paired_validation": "lifecycle startup collision in preflight; not primary",
+    "controlled_validation": "observer TF backlog identified; not primary; replaced by final_validation/benchmark"
+  },
+  "large_artifacts": "Rosbags, point maps and serial JSONL remain in logs/option21_airport (gitignored).",
+  "software_commit": "488076d1fd9c89e41e0f3d4771ac8227c65cb87a",
+  "software_branch": "feat/option21-stm32-odometry",
+  "source_sha256_at_analysis": {
+    "scripts/option21_simulation.py": "1a14d2c43d7ba1ac2cc7d8b7848b725a88fcbe60924ec0b26e2cb5aafa57e4c6",
+    "scripts/option21_airport_benchmark.py": "21ec47c9e2f6e4a9c47817340abfa082a778345477ffe773778ff2fbf489f6a4",
+    "src/traymover_robot_nav/config/localization.yaml": "e0c2526cb5fd7d82464c0f1653db9ecdeb557b5feaa19cbbd893b52be80ac298",
+    "src/traymover_robot_slam/FAST_LIO/config/traymover.yaml": "44bce71306a12022a4b9ccb669162fca8a09f0015dd6ede7f25292e6360e17b7",
+    "src/traymover_robot_slam/FAST_LIO/CMakeLists.txt": "311a153175fad04adb8ce55b2a1b45ec9f556add64318a40b3e547912ea8e806",
+    "src/turn_on_traymover_robot/turn_on_traymover_robot/traymover_robot.py": "e8cd5bbeb4d4fd25a5dc11af01d3848d10842f575ca6239b079d0357d38c7b8f"
+  }
+}

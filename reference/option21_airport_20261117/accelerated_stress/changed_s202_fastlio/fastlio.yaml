@@ -1,0 +1,56 @@
+/**:
+  ros__parameters:
+    common:
+      imu_topic: /imu/data_raw
+      lid_topic: /point_cloud_raw
+      time_offset_lidar_to_imu: 0.0
+      time_sync_en: false
+    cube_side_length: 1000.0
+    feature_extract_enable: false
+    filter_size_map: 0.2
+    filter_size_surf: 0.2
+    map_file_path: /home/wheeltec/traymover_ros2/src/traymover_robot_slam/FAST_LIO/PCD/traymover.pcd
+    mapping:
+      acc_cov: 0.1
+      b_acc_cov: 0.0001
+      b_gyr_cov: 0.0001
+      det_range: 100.0
+      extrinsic_R:
+      - 1.0
+      - 0.0
+      - 0.0
+      - 0.0
+      - 1.0
+      - 0.0
+      - 0.0
+      - 0.0
+      - 1.0
+      extrinsic_T:
+      - 0.435
+      - 0.0
+      - 1.485
+      extrinsic_est_en: true
+      fov_degree: 360.0
+      gyr_cov: 0.1
+    max_iteration: 3
+    pcd_save:
+      interval: -1
+      pcd_save_en: true
+    pcd_save.pcd_save_en: false
+    point_filter_num: 2
+    preprocess:
+      blind: 0.5
+      lidar_type: 2
+      scan_line: 32
+      scan_rate: 20
+      timestamp_unit: 0
+    publish:
+      dense_publish_en: true
+      map_en: true
+      path_en: true
+      scan_bodyframe_pub_en: false
+      scan_publish_en: true
+    publish.map_en: false
+    publish.path_en: false
+    runtime_pos_log_enable: false
+    use_sim_time: true

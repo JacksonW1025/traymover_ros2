@@ -10,6 +10,7 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RUN_DIR="$1"
 shift
+ODOMETRY_SOURCE="${TRAYMOVER_ODOMETRY_SOURCE:-fastlio}"
 mkdir -p "${RUN_DIR}"/{ndt,fastlio,processes,parameters,ros}
 export ROS_LOG_DIR="${RUN_DIR}/ros"
 command -v setsid >/dev/null
@@ -55,6 +56,7 @@ pids+=("$!")
 setsid python3 "${SCRIPT_DIR}/fastlio_diagnostics.py" \
     --output-dir "${RUN_DIR}/fastlio" --use-sim-time false \
     --odom-topic /odom \
+    --odometry-source "${ODOMETRY_SOURCE}" \
     --interval-sec "${TRAYMOVER_FASTLIO_LOG_INTERVAL_SEC:-2}" \
     > "${RUN_DIR}/processes/fastlio_diagnostics.log" 2>&1 &
 pids+=("$!")
@@ -86,6 +88,9 @@ pids+=("${nav_pid}")
 # Retry while launch creates the nodes. Store failures separately and never
 # change node parameters. A failed snapshot does not stop navigation.
 pending=(lidar_localization fastlio_mapping pointcloud_nav_preprocessor)
+if [[ "${ODOMETRY_SOURCE}" = stm32 ]]; then
+    pending=(lidar_localization turn_on_traymover_robot pointcloud_nav_preprocessor)
+fi
 for attempt in {1..8}; do
     remaining=()
     for node in "${pending[@]}"; do

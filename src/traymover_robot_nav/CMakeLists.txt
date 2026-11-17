@@ -38,6 +38,10 @@ ament_target_dependencies(option18_lifecycle_manager nav2_lifecycle_manager tf2_
 
 if(BUILD_TESTING)
   find_package(ament_cmake_pytest REQUIRED)
+  ament_add_pytest_test(test_option21_launch test/test_option21_launch.py)
+  ament_add_pytest_test(test_option21_simulation test/test_option21_simulation.py)
+  ament_add_pytest_test(test_option21_airport test/test_option21_airport.py)
+  ament_add_pytest_test(test_option21_replay test/test_option21_replay.py)
   ament_add_pytest_test(test_static_tf_cleanup test/test_static_tf_cleanup.py)
   foreach(option20_test map sensors guard config)
     ament_add_pytest_test(

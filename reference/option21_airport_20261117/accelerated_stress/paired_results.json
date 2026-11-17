@@ -1,0 +1,47 @@
+[
+  {
+    "case": "changed",
+    "seed": 101,
+    "identical_sensor_input": true,
+    "identical_ndt_settings": true,
+    "identical_prior_map": true,
+    "wheel_rmse_m": 0.1861033398799297,
+    "fastlio_rmse_m": 1.9449433856656508,
+    "wheel_p95_m": 0.2320030532704832,
+    "fastlio_p95_m": 4.661058448432841,
+    "wheel_fresh_coverage": 1.0,
+    "fastlio_fresh_coverage": 0.001549186676994578,
+    "wheel_over_50cm_or_stale_fraction": 0.0,
+    "fastlio_over_50cm_or_stale_fraction": 0.9984508133230054
+  },
+  {
+    "case": "changed",
+    "seed": 202,
+    "identical_sensor_input": true,
+    "identical_ndt_settings": true,
+    "identical_prior_map": true,
+    "wheel_rmse_m": 0.18742538707889278,
+    "fastlio_rmse_m": 1.0804704280038948,
+    "wheel_p95_m": 0.25337935978960746,
+    "fastlio_p95_m": 2.9804925163439715,
+    "wheel_fresh_coverage": 1.0,
+    "fastlio_fresh_coverage": 0.008520526723470178,
+    "wheel_over_50cm_or_stale_fraction": 0.0,
+    "fastlio_over_50cm_or_stale_fraction": 0.9922540666150271
+  },
+  {
+    "case": "static",
+    "seed": 101,
+    "identical_sensor_input": true,
+    "identical_ndt_settings": true,
+    "identical_prior_map": true,
+    "wheel_rmse_m": 0.1846568348511187,
+    "fastlio_rmse_m": 0.19462603620386873,
+    "wheel_p95_m": 0.22947862068452285,
+    "fastlio_p95_m": 0.2749259825952268,
+    "wheel_fresh_coverage": 1.0,
+    "fastlio_fresh_coverage": 1.0,
+    "wheel_over_50cm_or_stale_fraction": 0.0,
+    "fastlio_over_50cm_or_stale_fraction": 0.0
+  }
+]

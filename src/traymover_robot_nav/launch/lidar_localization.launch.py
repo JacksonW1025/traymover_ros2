@@ -1,6 +1,10 @@
 """Launch: global LiDAR localization against a prebuilt FAST_LIO PCD map,
 with FAST_LIO running online as the fast odometry source.
 
+Option 21 selects odometry_source:=stm32: external measured wheel odometry
+owns odom->base_footprint, with a static footprint->base_link height. None
+of the FAST-LIO nodes or camera_init/body bridges are started in that mode.
+
 Rationale for the two-stage stack (FAST_LIO + NDT):
   Pure NDT-to-map in open airport space fails — NDT's convergence basin is
   ~ndt_resolution/2 (= 0.25 m with our 0.5 m voxel), and with no motion
@@ -28,6 +32,7 @@ from pathlib import Path
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, EmitEvent, RegisterEventHandler
+from launch.conditions import LaunchConfigurationEquals
 from launch.events import matches_action
 from launch.substitutions import Command, LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import LifecycleNode, Node
@@ -81,6 +86,7 @@ def generate_launch_description():
     #    scans into FAST_LIO's pcl_wait_pub and grows memory/bandwidth over time.
     # ------------------------------------------------------------------
     fast_lio = Node(
+        condition=LaunchConfigurationEquals('odometry_source', 'fastlio'),
         package='fast_lio',
         executable='fastlio_mapping',
         name='fastlio_mapping',
@@ -110,6 +116,7 @@ def generate_launch_description():
     #                                   so rotation is identity)
     # ------------------------------------------------------------------
     static_odom_to_cam_init = Node(
+        condition=LaunchConfigurationEquals('odometry_source', 'fastlio'),
         package='tf2_ros',
         executable='static_transform_publisher',
         name='static_odom_to_camera_init',
@@ -117,12 +124,23 @@ def generate_launch_description():
         output='screen',
     )
     static_body_to_base = Node(
+        condition=LaunchConfigurationEquals('odometry_source', 'fastlio'),
         package='tf2_ros',
         executable='static_transform_publisher',
         name='static_body_to_base_link',
         # xyz in body frame where base_link sits. Body (IMU) is at
         # base_link + (0, 0, -0.12), so base_link is at body + (0, 0, +0.12).
         arguments=['0', '0', '0.12', '0', '0', '0', 'body', 'base_link'],
+        output='screen',
+    )
+
+    # The URDF root is base_link. Wheel odometry tracks the ground footprint;
+    # do not attach base_link to the FAST-LIO body branch in this mode.
+    static_footprint_to_base = Node(
+        package='tf2_ros', executable='static_transform_publisher',
+        name='stm32_base_height',
+        condition=LaunchConfigurationEquals('odometry_source', 'stm32'),
+        arguments=['0', '0', '0.20', '0', '0', '0', 'base_footprint', 'base_link'],
         output='screen',
     )
 
@@ -156,9 +174,8 @@ def generate_launch_description():
         remappings=[
             ('/cloud', cloud_topic),
             ('/imu', '/imu/data_raw'),
-            # /odom is the FAST_LIO-provided twist; lidar_localization
-            # integrates it between NDT scans. Kept explicit so breaking the
-            # remap in FAST_LIO doesn't silently disable motion prediction.
+            # Pose deltas / scan-time TF provide motion prediction. The source
+            # is FAST-LIO by default or the external STM32 driver in option 21.
             ('/odom', '/odom'),
             # Default remains /path for option 10. Option 14 remaps this to a
             # diagnostic topic so only CMU localPlanner owns the follower path.
@@ -196,6 +213,8 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
+        DeclareLaunchArgument('odometry_source', default_value='fastlio',
+                              choices=['fastlio', 'stm32']),
         DeclareLaunchArgument('use_sim_time', default_value='false'),
         DeclareLaunchArgument('localization_params', default_value=default_params),
         DeclareLaunchArgument('urdf_model', default_value=default_urdf),
@@ -230,6 +249,7 @@ def generate_launch_description():
         fast_lio,
         static_odom_to_cam_init,
         static_body_to_base,
+        static_footprint_to_base,
         lidar_loc,
         configure_localization,
         activate_localization,

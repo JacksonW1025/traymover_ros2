@@ -1,0 +1,291 @@
+[INFO] [1794903370.252379331] [lidar_localization]: Configuring
+[INFO] [1794903370.252681785] [lidar_localization]: initializeParameters
+[INFO] [1794903370.252770934] [lidar_localization]: map_voxel_leaf_size: 0.150 m
+[INFO] [1794903370.252824052] [lidar_localization]: auto_correction_enabled: 1; confirmations=3 absolute=2.50m/0.60rad step=0.15m/0.08rad improvement=0.010
+[INFO] [1794903370.252876914] [lidar_localization]: lock_planar: 0
+[INFO] [1794903370.252900529] [lidar_localization]: max_pose_jump_translation: 0.35 m
+[INFO] [1794903370.252921584] [lidar_localization]: max_pose_jump_rotation: 0.45 rad
+[INFO] [1794903370.252949615] [lidar_localization]: bootstrap jump limits: translation=2.50 m rotation=0.60 rad
+[INFO] [1794903370.252973871] [lidar_localization]: ndt_align_interval_s: 2.00 s
+[INFO] [1794903370.252995982] [lidar_localization]: tf_rebroadcast_rate_hz: 50.00 Hz
+[INFO] [1794903370.253020813] [lidar_localization]: map_odom_smoothing: 0.30
+[INFO] [1794903370.253043724] [lidar_localization]: max_map_odom_update_translation: 0.50 m
+[INFO] [1794903370.253064876] [lidar_localization]: max_map_odom_update_rotation: 0.25 rad
+[INFO] [1794903370.253086155] [lidar_localization]: global_frame_id: map
+[INFO] [1794903370.253104874] [lidar_localization]: odom_frame_id: odom
+[INFO] [1794903370.253124714] [lidar_localization]: base_frame_id: base_link
+[INFO] [1794903370.253143337] [lidar_localization]: enable_map_odom_tf: 1
+[INFO] [1794903370.253163080] [lidar_localization]: registration_method: NDT_OMP
+[INFO] [1794903370.253181192] [lidar_localization]: ndt_resolution: 0.500000
+[INFO] [1794903370.253203431] [lidar_localization]: ndt_step_size: 0.100000
+[INFO] [1794903370.253226662] [lidar_localization]: ndt_num_threads: 4
+[INFO] [1794903370.253263269] [lidar_localization]: adaptive_ndt_resolution: 1
+[INFO] [1794903370.253290692] [lidar_localization]: adaptive_ndt_max_resolution: 3.00 m
+[INFO] [1794903370.253314019] [lidar_localization]: adaptive_ndt_resolution_step: 0.10 m
+[INFO] [1794903370.253337218] [lidar_localization]: adaptive_ndt_min_usable_voxel_ratio: 0.010
+[INFO] [1794903370.253361186] [lidar_localization]: transform_epsilon: 0.001000
+[INFO] [1794903370.253385153] [lidar_localization]: voxel_leaf_size: 0.150000
+[INFO] [1794903370.253409536] [lidar_localization]: scan_max_range: 120.000000
+[INFO] [1794903370.253434495] [lidar_localization]: scan_min_range: 0.500000
+[INFO] [1794903370.253457566] [lidar_localization]: far_point_boost_min_range: 15.000000
+[INFO] [1794903370.253481086] [lidar_localization]: far_point_boost_factor: 2
+[INFO] [1794903370.253502301] [lidar_localization]: height_boost: enabled=0 min_z=2.000 m (base frame) extra_copies=1 max_copies=3 (existing far weighting preserved); fitness gate uses baseline cloud
+[INFO] [1794903370.253526076] [lidar_localization]: scan_period: 0.100000
+[INFO] [1794903370.253549147] [lidar_localization]: use_pcd_map: 1
+[INFO] [1794903370.253570235] [lidar_localization]: map_path: /home/fdmover/traymover_ros2/logs/option21_airport/nominal_rate/changed_s101_fastlio/room.pcd
+[INFO] [1794903370.253588826] [lidar_localization]: set_initial_pose: 0
+[INFO] [1794903370.253608857] [lidar_localization]: use_odom: 1
+[INFO] [1794903370.253632825] [lidar_localization]: use_imu: 0
+[INFO] [1794903370.253654904] [lidar_localization]: enable_debug: 0
+[INFO] [1794903370.253673815] [lidar_localization]: enable_timer_publishing: 0
+[INFO] [1794903370.253693942] [lidar_localization]: pose_publish_frequency: 20.000000
+[INFO] [1794903370.253720438] [lidar_localization]: initializePubSub
+[INFO] [1794903370.262053437] [lidar_localization]: initializePubSub end
+[INFO] [1794903370.262179801] [lidar_localization]: initializeRegistration
+[INFO] [1794903370.262295221] [lidar_localization]: initializeRegistration end
+[INFO] [1794903370.262334900] [lidar_localization]: Configuring end
+[INFO] [1794903370.304217939] [lidar_localization]: Activating
+[INFO] [1794903370.304407437] [lidar_localization]: Loading pcd map from: /home/fdmover/traymover_ros2/logs/option21_airport/nominal_rate/changed_s101_fastlio/room.pcd
+[INFO] [1794903370.535832229] [lidar_localization]: Map Size 157139
+[INFO] [1794903370.546030830] [lidar_localization]: Map downsample: leaf=0.150 m input=157139 output=155304 retained=98.8% elapsed=0.010 s
+[INFO] [1794903370.551847786] [lidar_localization]: NDT map density at 0.50 m: points=155304 voxels=25029 usable_voxels=18235 usable_points=129085 (83.1%), usable_voxel_ratio=72.86%, max_points_per_voxel=19
+[INFO] [1794903370.580862522] [lidar_localization]: NDT target map cloud: points=155304 x=[-40.00, 40.00] y=[-25.00, 25.00] z=[0.00, 8.00]
+[INFO] [1794903370.585316484] [lidar_localization]: Initial Map Published
+[INFO] [1794903370.585543517] [lidar_localization]: Activating end
+[INFO] [1794903375.765124238] [lidar_localization]: initialPoseReceived
+[INFO] [1794903375.765361030] [lidar_localization]: Initialpose accepted as NDT guess only; waiting for NDT alignment before publishing map->odom
+[INFO] [1794903375.765415652] [lidar_localization]: initialPoseReceived end
+[INFO] [1794903376.259000208] [lidar_localization]: NDT source cloud: raw=10974 filtered=10803 kept=16547 frame=base_link
+[INFO] [1794903376.389457005] [lidar_localization]: NDT aligned: fitness=0.141 map→odom=[-0.18, -0.05, -0.01, yaw=0.000]
+[INFO] [1794903378.323101240] [lidar_localization]: NDT source cloud: raw=10969 filtered=10779 kept=16454 frame=base_link
+[INFO] [1794903378.403203219] [lidar_localization]: NDT auto correction: applied translation=0.003 rotation=0.000 remaining_translation=0.006 remaining_rotation=0.000
+[INFO] [1794903378.404345612] [lidar_localization]: NDT aligned: fitness=0.141 map→odom=[-0.18, -0.05, -0.01, yaw=0.000]
+[INFO] [1794903380.493253787] [lidar_localization]: NDT source cloud: raw=11065 filtered=10837 kept=16537 frame=base_link
+[INFO] [1794903380.567405918] [lidar_localization]: NDT auto correction: applied translation=0.001 rotation=0.000 remaining_translation=0.003 remaining_rotation=0.000
+[INFO] [1794903380.568363806] [lidar_localization]: NDT aligned: fitness=0.174 map→odom=[-0.18, -0.05, -0.01, yaw=0.000]
+[INFO] [1794903382.599110552] [lidar_localization]: NDT source cloud: raw=11083 filtered=10853 kept=16527 frame=base_link
+[INFO] [1794903382.698403182] [lidar_localization]: NDT auto correction: applied translation=0.010 rotation=0.000 remaining_translation=0.023 remaining_rotation=0.001
+[INFO] [1794903382.699423436] [lidar_localization]: NDT aligned: fitness=0.171 map→odom=[-0.17, -0.05, -0.01, yaw=0.000]
+[INFO] [1794903384.738725070] [lidar_localization]: NDT source cloud: raw=11123 filtered=10867 kept=16577 frame=base_link
+[INFO] [1794903384.888143473] [lidar_localization]: NDT auto correction: applied translation=0.013 rotation=0.001 remaining_translation=0.030 remaining_rotation=0.001
+[INFO] [1794903384.888541827] [lidar_localization]: NDT aligned: fitness=0.186 map→odom=[-0.18, -0.04, -0.01, yaw=0.000]
+[INFO] [1794903386.856230900] [lidar_localization]: NDT source cloud: raw=11071 filtered=10749 kept=16342 frame=base_link
+[INFO] [1794903386.998404651] [lidar_localization]: NDT auto correction: applied translation=0.016 rotation=0.000 remaining_translation=0.037 remaining_rotation=0.001
+[INFO] [1794903386.998883259] [lidar_localization]: NDT aligned: fitness=0.200 map→odom=[-0.20, -0.04, -0.01, yaw=0.000]
+[INFO] [1794903388.989895236] [lidar_localization]: NDT source cloud: raw=11100 filtered=10824 kept=16444 frame=base_link
+[INFO] [1794903389.048918789] [lidar_localization]: NDT auto correction: applied translation=0.011 rotation=0.000 remaining_translation=0.025 remaining_rotation=0.001
+[INFO] [1794903389.049934914] [lidar_localization]: NDT aligned: fitness=0.230 map→odom=[-0.20, -0.04, -0.01, yaw=0.000]
+[INFO] [1794903391.118720062] [lidar_localization]: NDT source cloud: raw=11157 filtered=10807 kept=16428 frame=base_link
+[INFO] [1794903391.276100215] [lidar_localization]: NDT auto correction: applied translation=0.018 rotation=0.001 remaining_translation=0.041 remaining_rotation=0.002
+[INFO] [1794903391.276585671] [lidar_localization]: NDT aligned: fitness=0.231 map→odom=[-0.19, -0.04, -0.01, yaw=-0.000]
+[INFO] [1794903393.301357938] [lidar_localization]: NDT source cloud: raw=11058 filtered=10788 kept=16409 frame=base_link
+[INFO] [1794903393.406609858] [lidar_localization]: NDT auto correction: applied translation=0.008 rotation=0.001 remaining_translation=0.018 remaining_rotation=0.002
+[INFO] [1794903393.407020948] [lidar_localization]: NDT aligned: fitness=0.208 map→odom=[-0.19, -0.03, -0.01, yaw=-0.000]
+[INFO] [1794903395.457864859] [lidar_localization]: NDT source cloud: raw=11158 filtered=10857 kept=16490 frame=base_link
+[INFO] [1794903395.650528564] [lidar_localization]: NDT auto correction: applied translation=0.022 rotation=0.001 remaining_translation=0.051 remaining_rotation=0.003
+[INFO] [1794903395.650958661] [lidar_localization]: NDT aligned: fitness=0.231 map→odom=[-0.17, -0.04, -0.01, yaw=-0.000]
+[INFO] [1794903397.650157723] [lidar_localization]: NDT source cloud: raw=11132 filtered=10894 kept=16622 frame=base_link
+[INFO] [1794903397.723080650] [lidar_localization]: NDT auto correction: applied translation=0.010 rotation=0.001 remaining_translation=0.024 remaining_rotation=0.002
+[INFO] [1794903397.724109768] [lidar_localization]: NDT aligned: fitness=0.228 map→odom=[-0.16, -0.04, -0.02, yaw=-0.000]
+[INFO] [1794903399.856792962] [lidar_localization]: NDT source cloud: raw=11144 filtered=10879 kept=16489 frame=base_link
+[INFO] [1794903399.971931624] [lidar_localization]: NDT auto correction: applied translation=0.004 rotation=0.001 remaining_translation=0.010 remaining_rotation=0.002
+[INFO] [1794903399.972375225] [lidar_localization]: NDT aligned: fitness=0.234 map→odom=[-0.16, -0.04, -0.03, yaw=-0.000]
+[INFO] [1794903402.081076354] [lidar_localization]: NDT source cloud: raw=11097 filtered=10863 kept=16401 frame=base_link
+[INFO] [1794903402.201852875] [lidar_localization]: NDT auto correction: applied translation=0.021 rotation=0.001 remaining_translation=0.048 remaining_rotation=0.002
+[INFO] [1794903402.202313467] [lidar_localization]: NDT aligned: fitness=0.228 map→odom=[-0.14, -0.04, -0.03, yaw=-0.000]
+[INFO] [1794903404.321349681] [lidar_localization]: NDT source cloud: raw=11184 filtered=10936 kept=16431 frame=base_link
+[INFO] [1794903404.440225498] [lidar_localization]: NDT auto correction: applied translation=0.007 rotation=0.000 remaining_translation=0.017 remaining_rotation=0.001
+[INFO] [1794903404.440896644] [lidar_localization]: NDT aligned: fitness=0.250 map→odom=[-0.13, -0.04, -0.03, yaw=-0.001]
+[INFO] [1794903406.617692144] [lidar_localization]: NDT source cloud: raw=11289 filtered=10965 kept=16414 frame=base_link
+[INFO] [1794903406.685714660] [lidar_localization]: NDT auto correction: applied translation=0.004 rotation=0.000 remaining_translation=0.010 remaining_rotation=0.000
+[INFO] [1794903406.686162741] [lidar_localization]: NDT aligned: fitness=0.273 map→odom=[-0.13, -0.04, -0.03, yaw=-0.001]
+[INFO] [1794903408.819855152] [lidar_localization]: NDT source cloud: raw=11248 filtered=10900 kept=16345 frame=base_link
+[INFO] [1794903408.928521137] [lidar_localization]: NDT auto correction: applied translation=0.008 rotation=0.001 remaining_translation=0.019 remaining_rotation=0.001
+[INFO] [1794903408.928947363] [lidar_localization]: NDT aligned: fitness=0.273 map→odom=[-0.12, -0.04, -0.03, yaw=-0.001]
+[INFO] [1794903411.064336142] [lidar_localization]: NDT source cloud: raw=11385 filtered=11034 kept=16564 frame=base_link
+[INFO] [1794903411.178842923] [lidar_localization]: NDT auto correction: applied translation=0.007 rotation=0.001 remaining_translation=0.016 remaining_rotation=0.002
+[INFO] [1794903411.179294236] [lidar_localization]: NDT aligned: fitness=0.260 map→odom=[-0.11, -0.04, -0.02, yaw=-0.001]
+[INFO] [1794903413.275027810] [lidar_localization]: NDT source cloud: raw=11330 filtered=11040 kept=16626 frame=base_link
+[INFO] [1794903413.496798864] [lidar_localization]: NDT auto correction: applied translation=0.014 rotation=0.006 remaining_translation=0.032 remaining_rotation=0.015
+[INFO] [1794903413.497403675] [lidar_localization]: NDT aligned: fitness=0.250 map→odom=[-0.10, 0.05, -0.00, yaw=-0.007]
+[INFO] [1794903415.496363129] [lidar_localization]: NDT source cloud: raw=11361 filtered=10965 kept=16577 frame=base_link
+[INFO] [1794903415.602221113] [lidar_localization]: NDT auto correction: applied translation=0.015 rotation=0.003 remaining_translation=0.034 remaining_rotation=0.007
+[INFO] [1794903415.602671178] [lidar_localization]: NDT aligned: fitness=0.249 map→odom=[-0.09, 0.10, 0.00, yaw=-0.010]
+[INFO] [1794903417.608470122] [lidar_localization]: NDT source cloud: raw=11335 filtered=10977 kept=16565 frame=base_link
+[INFO] [1794903417.741655605] [lidar_localization]: NDT auto correction: applied translation=0.011 rotation=0.004 remaining_translation=0.027 remaining_rotation=0.008
+[INFO] [1794903417.742173892] [lidar_localization]: NDT aligned: fitness=0.265 map→odom=[-0.08, 0.15, 0.01, yaw=-0.013]
+[INFO] [1794903419.843849563] [lidar_localization]: NDT source cloud: raw=11396 filtered=11059 kept=16672 frame=base_link
+[INFO] [1794903419.986536744] [lidar_localization]: NDT auto correction: applied translation=0.011 rotation=0.002 remaining_translation=0.026 remaining_rotation=0.004
+[INFO] [1794903419.986903516] [lidar_localization]: NDT aligned: fitness=0.277 map→odom=[-0.08, 0.15, 0.01, yaw=-0.012]
+[INFO] [1794903422.062420296] [lidar_localization]: NDT source cloud: raw=11377 filtered=11047 kept=16613 frame=base_link
+[INFO] [1794903422.187021237] [lidar_localization]: NDT auto correction: applied translation=0.023 rotation=0.004 remaining_translation=0.053 remaining_rotation=0.009
+[INFO] [1794903422.187459462] [lidar_localization]: NDT aligned: fitness=0.267 map→odom=[-0.07, 0.07, -0.00, yaw=-0.009]
+[INFO] [1794903424.290455649] [lidar_localization]: NDT source cloud: raw=11443 filtered=11107 kept=16708 frame=base_link
+[INFO] [1794903424.402006980] [lidar_localization]: NDT auto correction: applied translation=0.007 rotation=0.002 remaining_translation=0.017 remaining_rotation=0.004
+[INFO] [1794903424.402559346] [lidar_localization]: NDT aligned: fitness=0.307 map→odom=[-0.07, 0.04, -0.01, yaw=-0.007]
+[INFO] [1794903426.524016489] [lidar_localization]: NDT source cloud: raw=11436 filtered=11095 kept=16666 frame=base_link
+[INFO] [1794903426.589732013] [lidar_localization]: NDT auto correction: applied translation=0.006 rotation=0.001 remaining_translation=0.015 remaining_rotation=0.003
+[INFO] [1794903426.590275163] [lidar_localization]: NDT aligned: fitness=0.306 map→odom=[-0.07, 0.03, -0.01, yaw=-0.006]
+[INFO] [1794903428.821590071] [lidar_localization]: NDT source cloud: raw=11388 filtered=11072 kept=16622 frame=base_link
+[INFO] [1794903428.961176719] [lidar_localization]: NDT auto correction: applied translation=0.014 rotation=0.001 remaining_translation=0.034 remaining_rotation=0.002
+[INFO] [1794903428.961674014] [lidar_localization]: NDT aligned: fitness=0.321 map→odom=[-0.07, 0.02, -0.01, yaw=-0.005]
+[INFO] [1794903431.062845679] [lidar_localization]: NDT source cloud: raw=11445 filtered=11135 kept=16711 frame=base_link
+[INFO] [1794903431.178449259] [lidar_localization]: NDT auto correction: applied translation=0.011 rotation=0.001 remaining_translation=0.026 remaining_rotation=0.003
+[INFO] [1794903431.179048375] [lidar_localization]: NDT aligned: fitness=0.328 map→odom=[-0.08, 0.02, -0.01, yaw=-0.005]
+[INFO] [1794903433.222807540] [lidar_localization]: NDT source cloud: raw=11449 filtered=11108 kept=16652 frame=base_link
+[INFO] [1794903433.349554939] [lidar_localization]: NDT auto correction: applied translation=0.002 rotation=0.001 remaining_translation=0.005 remaining_rotation=0.002
+[INFO] [1794903433.350023115] [lidar_localization]: NDT aligned: fitness=0.388 map→odom=[-0.08, 0.01, -0.02, yaw=-0.005]
+[INFO] [1794903435.662307079] [lidar_localization]: NDT source cloud: raw=11590 filtered=11278 kept=16938 frame=base_link
+[INFO] [1794903435.809569631] [lidar_localization]: NDT auto correction: applied translation=0.006 rotation=0.001 remaining_translation=0.014 remaining_rotation=0.001
+[INFO] [1794903435.810096845] [lidar_localization]: NDT aligned: fitness=0.432 map→odom=[-0.08, 0.02, -0.02, yaw=-0.005]
+[INFO] [1794903438.081998204] [lidar_localization]: NDT source cloud: raw=11576 filtered=11222 kept=16786 frame=base_link
+[INFO] [1794903438.179114821] [lidar_localization]: NDT auto correction: applied translation=0.003 rotation=0.000 remaining_translation=0.007 remaining_rotation=0.001
+[INFO] [1794903438.179591029] [lidar_localization]: NDT aligned: fitness=0.408 map→odom=[-0.09, 0.03, -0.02, yaw=-0.005]
+[INFO] [1794903440.376184201] [lidar_localization]: NDT source cloud: raw=11562 filtered=11273 kept=16904 frame=base_link
+[INFO] [1794903440.495733027] [lidar_localization]: NDT auto correction: applied translation=0.024 rotation=0.006 remaining_translation=0.057 remaining_rotation=0.014
+[INFO] [1794903440.496196211] [lidar_localization]: NDT aligned: fitness=0.415 map→odom=[-0.15, 0.13, -0.01, yaw=-0.011]
+[INFO] [1794903442.758089507] [lidar_localization]: NDT source cloud: raw=11498 filtered=11127 kept=16753 frame=base_link
+[INFO] [1794903442.931981408] [lidar_localization]: NDT auto correction: applied translation=0.011 rotation=0.002 remaining_translation=0.025 remaining_rotation=0.004
+[INFO] [1794903442.932428433] [lidar_localization]: NDT aligned: fitness=0.442 map→odom=[-0.15, 0.16, -0.01, yaw=-0.013]
+[INFO] [1794903445.134822164] [lidar_localization]: NDT source cloud: raw=11514 filtered=11166 kept=16724 frame=base_link
+[INFO] [1794903445.231320851] [lidar_localization]: NDT auto correction: applied translation=0.013 rotation=0.003 remaining_translation=0.031 remaining_rotation=0.007
+[INFO] [1794903445.231775844] [lidar_localization]: NDT aligned: fitness=0.424 map→odom=[-0.18, 0.22, 0.00, yaw=-0.016]
+[INFO] [1794903447.597194329] [lidar_localization]: NDT source cloud: raw=11472 filtered=11145 kept=16725 frame=base_link
+[INFO] [1794903447.682871139] [lidar_localization]: NDT auto correction: applied translation=0.004 rotation=0.001 remaining_translation=0.010 remaining_rotation=0.003
+[INFO] [1794903447.683372531] [lidar_localization]: NDT aligned: fitness=0.448 map→odom=[-0.19, 0.23, 0.01, yaw=-0.017]
+[INFO] [1794903450.050912875] [lidar_localization]: NDT source cloud: raw=11536 filtered=11218 kept=16816 frame=base_link
+[INFO] [1794903450.147404171] [lidar_localization]: NDT auto correction: applied translation=0.004 rotation=0.001 remaining_translation=0.010 remaining_rotation=0.002
+[INFO] [1794903450.147886587] [lidar_localization]: NDT aligned: fitness=0.447 map→odom=[-0.19, 0.24, 0.02, yaw=-0.017]
+[INFO] [1794903452.430318751] [lidar_localization]: NDT source cloud: raw=11451 filtered=11182 kept=16844 frame=base_link
+[INFO] [1794903452.519527155] [lidar_localization]: NDT auto correction: applied translation=0.006 rotation=0.001 remaining_translation=0.013 remaining_rotation=0.003
+[INFO] [1794903452.519952869] [lidar_localization]: NDT aligned: fitness=0.444 map→odom=[-0.19, 0.25, 0.03, yaw=-0.017]
+[INFO] [1794903454.853419717] [lidar_localization]: NDT source cloud: raw=11407 filtered=11123 kept=16753 frame=base_link
+[INFO] [1794903454.942860753] [lidar_localization]: NDT auto correction: applied translation=0.007 rotation=0.002 remaining_translation=0.017 remaining_rotation=0.004
+[INFO] [1794903454.943239237] [lidar_localization]: NDT aligned: fitness=0.459 map→odom=[-0.20, 0.27, 0.05, yaw=-0.018]
+[INFO] [1794903457.305819263] [lidar_localization]: NDT source cloud: raw=11397 filtered=11184 kept=16806 frame=base_link
+[INFO] [1794903457.376165356] [lidar_localization]: NDT auto correction: applied translation=0.006 rotation=0.001 remaining_translation=0.014 remaining_rotation=0.003
+[INFO] [1794903457.376661307] [lidar_localization]: NDT aligned: fitness=0.443 map→odom=[-0.20, 0.27, 0.07, yaw=-0.018]
+[INFO] [1794903459.698328216] [lidar_localization]: NDT source cloud: raw=11500 filtered=11244 kept=16956 frame=base_link
+[INFO] [1794903459.845221635] [lidar_localization]: NDT auto correction: applied translation=0.013 rotation=0.005 remaining_translation=0.030 remaining_rotation=0.011
+[INFO] [1794903459.845602838] [lidar_localization]: NDT aligned: fitness=0.434 map→odom=[-0.17, 0.21, 0.09, yaw=-0.013]
+[INFO] [1794903462.107949566] [lidar_localization]: NDT source cloud: raw=11450 filtered=11092 kept=16580 frame=base_link
+[INFO] [1794903462.191505777] [lidar_localization]: NDT auto correction: applied translation=0.009 rotation=0.004 remaining_translation=0.022 remaining_rotation=0.009
+[INFO] [1794903462.191905092] [lidar_localization]: NDT aligned: fitness=0.373 map→odom=[-0.15, 0.16, 0.10, yaw=-0.010]
+[INFO] [1794903464.582954049] [lidar_localization]: NDT source cloud: raw=11345 filtered=10991 kept=16497 frame=base_link
+[INFO] [1794903464.635825783] [lidar_localization]: NDT auto correction: applied translation=0.013 rotation=0.002 remaining_translation=0.031 remaining_rotation=0.006
+[INFO] [1794903464.636326886] [lidar_localization]: NDT aligned: fitness=0.323 map→odom=[-0.13, 0.13, 0.11, yaw=-0.007]
+[WARN] [1794903467.329931839] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 95.200000 but the latest data is at time 95.150000, when looking up transform from frame [base_link] to frame [odom]
+[INFO] [1794903467.648985097] [lidar_localization]: NDT source cloud: raw=11363 filtered=11055 kept=16606 frame=base_link
+[INFO] [1794903467.731854996] [lidar_localization]: NDT auto correction: applied translation=0.016 rotation=0.002 remaining_translation=0.036 remaining_rotation=0.004
+[INFO] [1794903467.732272198] [lidar_localization]: NDT aligned: fitness=0.335 map→odom=[-0.12, 0.12, 0.12, yaw=-0.005]
+[WARN] [1794903469.912652577] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 97.450000 but the latest data is at time 97.400000, when looking up transform from frame [base_link] to frame [odom]
+[INFO] [1794903470.222618461] [lidar_localization]: NDT source cloud: raw=11396 filtered=11072 kept=16664 frame=base_link
+[INFO] [1794903470.333646906] [lidar_localization]: NDT auto correction: applied translation=0.009 rotation=0.001 remaining_translation=0.021 remaining_rotation=0.003
+[INFO] [1794903470.334136938] [lidar_localization]: NDT aligned: fitness=0.300 map→odom=[-0.11, 0.10, 0.11, yaw=-0.004]
+[INFO] [1794903472.521382600] [lidar_localization]: NDT source cloud: raw=11342 filtered=11003 kept=16500 frame=base_link
+[INFO] [1794903472.627167669] [lidar_localization]: NDT auto correction: applied translation=0.012 rotation=0.001 remaining_translation=0.029 remaining_rotation=0.002
+[INFO] [1794903472.627610630] [lidar_localization]: NDT aligned: fitness=0.257 map→odom=[-0.11, 0.10, 0.10, yaw=-0.003]
+[INFO] [1794903474.808681691] [lidar_localization]: NDT source cloud: raw=11363 filtered=11074 kept=16659 frame=base_link
+[INFO] [1794903474.892217648] [lidar_localization]: NDT auto correction: applied translation=0.007 rotation=0.001 remaining_translation=0.017 remaining_rotation=0.001
+[INFO] [1794903474.892682081] [lidar_localization]: NDT aligned: fitness=0.232 map→odom=[-0.10, 0.10, 0.10, yaw=-0.003]
+[WARN] [1794903477.111878498] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 103.700000 but the latest data is at time 103.650000, when looking up transform from frame [base_link] to frame [odom]
+[INFO] [1794903477.336887707] [lidar_localization]: NDT source cloud: raw=11328 filtered=11024 kept=16612 frame=base_link
+[INFO] [1794903477.418868485] [lidar_localization]: NDT auto correction: applied translation=0.015 rotation=0.001 remaining_translation=0.035 remaining_rotation=0.002
+[INFO] [1794903477.419288791] [lidar_localization]: NDT aligned: fitness=0.222 map→odom=[-0.10, 0.07, 0.10, yaw=-0.002]
+[WARN] [1794903479.586282579] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 105.850000 but the latest data is at time 105.800000, when looking up transform from frame [base_link] to frame [odom]
+[INFO] [1794903479.842955146] [lidar_localization]: NDT source cloud: raw=11365 filtered=11111 kept=16792 frame=base_link
+[INFO] [1794903479.914628077] [lidar_localization]: NDT auto correction: applied translation=0.007 rotation=0.001 remaining_translation=0.016 remaining_rotation=0.001
+[INFO] [1794903479.915127324] [lidar_localization]: NDT aligned: fitness=0.226 map→odom=[-0.10, 0.07, 0.10, yaw=-0.003]
+[INFO] [1794903482.241888802] [lidar_localization]: NDT source cloud: raw=11280 filtered=10964 kept=16577 frame=base_link
+[INFO] [1794903482.328302520] [lidar_localization]: NDT auto correction: applied translation=0.009 rotation=0.001 remaining_translation=0.020 remaining_rotation=0.002
+[INFO] [1794903482.328855653] [lidar_localization]: NDT aligned: fitness=0.234 map→odom=[-0.09, 0.07, 0.10, yaw=-0.003]
+[WARN] [1794903484.667780636] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 110.050000 but the latest data is at time 109.950000, when looking up transform from frame [base_link] to frame [odom]
+[INFO] [1794903485.065281936] [lidar_localization]: NDT source cloud: raw=11401 filtered=11150 kept=16808 frame=base_link
+[INFO] [1794903485.181808920] [lidar_localization]: NDT auto correction: applied translation=0.007 rotation=0.003 remaining_translation=0.017 remaining_rotation=0.008
+[INFO] [1794903485.182706522] [lidar_localization]: NDT aligned: fitness=0.239 map→odom=[-0.09, 0.12, 0.11, yaw=-0.006]
+[WARN] [1794903487.394871465] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 112.300000 but the latest data is at time 112.150000, when looking up transform from frame [base_link] to frame [odom]
+[INFO] [1794903487.761975191] [lidar_localization]: NDT source cloud: raw=11304 filtered=11030 kept=16661 frame=base_link
+[INFO] [1794903487.893495178] [lidar_localization]: NDT auto correction: applied translation=0.025 rotation=0.001 remaining_translation=0.057 remaining_rotation=0.003
+[INFO] [1794903487.894043735] [lidar_localization]: NDT aligned: fitness=0.245 map→odom=[-0.07, 0.09, 0.10, yaw=-0.006]
+[WARN] [1794903490.124935582] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 114.500000 but the latest data is at time 114.350000, when looking up transform from frame [base_link] to frame [odom]
+[INFO] [1794903490.573110999] [lidar_localization]: NDT source cloud: raw=11264 filtered=10963 kept=16466 frame=base_link
+[INFO] [1794903490.704743367] [lidar_localization]: NDT auto correction: applied translation=0.016 rotation=0.002 remaining_translation=0.037 remaining_rotation=0.004
+[INFO] [1794903490.705186040] [lidar_localization]: NDT aligned: fitness=0.262 map→odom=[-0.07, 0.07, 0.09, yaw=-0.005]
+[WARN] [1794903492.950295501] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 116.700000 but the latest data is at time 116.250000, when looking up transform from frame [base_link] to frame [odom]
+[WARN] [1794903493.459251896] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 116.800000 but the latest data is at time 116.700000, when looking up transform from frame [base_link] to frame [odom]
+[WARN] [1794903493.967838352] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 117.250000 but the latest data is at time 117.000000, when looking up transform from frame [base_link] to frame [odom]
+[WARN] [1794903494.476356459] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 117.700000 but the latest data is at time 117.350000, when looking up transform from frame [base_link] to frame [odom]
+[WARN] [1794903494.985404725] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 118.000000 but the latest data is at time 117.800000, when looking up transform from frame [base_link] to frame [odom]
+[WARN] [1794903495.496269346] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 118.500000 but the latest data is at time 118.100000, when looking up transform from frame [base_link] to frame [odom]
+[WARN] [1794903496.004666370] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 118.900000 but the latest data is at time 118.500000, when looking up transform from frame [base_link] to frame [odom]
+[WARN] [1794903496.512190847] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 119.350000 but the latest data is at time 118.900000, when looking up transform from frame [base_link] to frame [odom]
+[WARN] [1794903497.019528995] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 119.800000 but the latest data is at time 119.350000, when looking up transform from frame [base_link] to frame [odom]
+[WARN] [1794903497.527339192] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 120.100000 but the latest data is at time 119.800000, when looking up transform from frame [base_link] to frame [odom]
+[WARN] [1794903498.035418148] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 120.550000 but the latest data is at time 120.100000, when looking up transform from frame [base_link] to frame [odom]
+[WARN] [1794903498.543632428] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 120.800000 but the latest data is at time 120.450000, when looking up transform from frame [base_link] to frame [odom]
+[WARN] [1794903499.051509952] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 121.250000 but the latest data is at time 120.850000, when looking up transform from frame [base_link] to frame [odom]
+[WARN] [1794903499.559618412] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 121.700000 but the latest data is at time 121.150000, when looking up transform from frame [base_link] to frame [odom]
+[WARN] [1794903500.068471168] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 122.000000 but the latest data is at time 121.600000, when looking up transform from frame [base_link] to frame [odom]
+[WARN] [1794903500.577552589] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 122.450000 but the latest data is at time 121.950000, when looking up transform from frame [base_link] to frame [odom]
+[WARN] [1794903501.087008653] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 122.800000 but the latest data is at time 122.350000, when looking up transform from frame [base_link] to frame [odom]
+[WARN] [1794903501.597016443] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 123.200000 but the latest data is at time 122.800000, when looking up transform from frame [base_link] to frame [odom]
+[WARN] [1794903502.107006283] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 123.650000 but the latest data is at time 123.100000, when looking up transform from frame [base_link] to frame [odom]
+[WARN] [1794903502.616774370] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 124.000000 but the latest data is at time 123.450000, when looking up transform from frame [base_link] to frame [odom]
+[WARN] [1794903503.125639064] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 124.450000 but the latest data is at time 123.850000, when looking up transform from frame [base_link] to frame [odom]
+[WARN] [1794903503.635754500] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 124.800000 but the latest data is at time 124.250000, when looking up transform from frame [base_link] to frame [odom]
+[WARN] [1794903504.143483680] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 125.200000 but the latest data is at time 124.700000, when looking up transform from frame [base_link] to frame [odom]
+[WARN] [1794903504.651322938] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 125.650000 but the latest data is at time 125.000000, when looking up transform from frame [base_link] to frame [odom]
+[WARN] [1794903505.159651651] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 126.000000 but the latest data is at time 125.350000, when looking up transform from frame [base_link] to frame [odom]
+[WARN] [1794903505.669911628] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 126.500000 but the latest data is at time 125.800000, when looking up transform from frame [base_link] to frame [odom]
+[WARN] [1794903506.178040988] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 126.850000 but the latest data is at time 126.150000, when looking up transform from frame [base_link] to frame [odom]
+[WARN] [1794903506.685624159] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 127.300000 but the latest data is at time 126.600000, when looking up transform from frame [base_link] to frame [odom]
+[WARN] [1794903507.193259329] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 127.700000 but the latest data is at time 126.950000, when looking up transform from frame [base_link] to frame [odom]
+[WARN] [1794903507.701131580] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 128.050000 but the latest data is at time 127.400000, when looking up transform from frame [base_link] to frame [odom]
+[WARN] [1794903508.207462314] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 128.500000 but the latest data is at time 127.800000, when looking up transform from frame [base_link] to frame [odom]
+[WARN] [1794903508.715546718] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 128.800000 but the latest data is at time 128.100000, when looking up transform from frame [base_link] to frame [odom]
+[WARN] [1794903509.224274621] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 129.250000 but the latest data is at time 128.450000, when looking up transform from frame [base_link] to frame [odom]
+[WARN] [1794903509.731722151] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 129.700000 but the latest data is at time 128.800000, when looking up transform from frame [base_link] to frame [odom]
+[WARN] [1794903510.239357675] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 130.100000 but the latest data is at time 129.150000, when looking up transform from frame [base_link] to frame [odom]
+[WARN] [1794903510.746651035] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 130.500000 but the latest data is at time 129.450000, when looking up transform from frame [base_link] to frame [odom]
+[WARN] [1794903511.254526647] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 130.900000 but the latest data is at time 129.850000, when looking up transform from frame [base_link] to frame [odom]
+[WARN] [1794903511.764188153] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 131.400000 but the latest data is at time 130.300000, when looking up transform from frame [base_link] to frame [odom]
+[WARN] [1794903512.272401739] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 131.800000 but the latest data is at time 130.750000, when looking up transform from frame [base_link] to frame [odom]
+[WARN] [1794903512.780524833] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 132.250000 but the latest data is at time 131.150000, when looking up transform from frame [base_link] to frame [odom]
+[WARN] [1794903513.289335328] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 132.700000 but the latest data is at time 131.650000, when looking up transform from frame [base_link] to frame [odom]
+[WARN] [1794903513.799636110] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 133.050000 but the latest data is at time 132.000000, when looking up transform from frame [base_link] to frame [odom]
+[WARN] [1794903514.309748642] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 133.550000 but the latest data is at time 132.500000, when looking up transform from frame [base_link] to frame [odom]
+[WARN] [1794903514.819568193] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 133.900000 but the latest data is at time 132.950000, when looking up transform from frame [base_link] to frame [odom]
+[WARN] [1794903515.329448734] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 134.300000 but the latest data is at time 133.400000, when looking up transform from frame [base_link] to frame [odom]
+[WARN] [1794903515.839497493] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 134.750000 but the latest data is at time 133.800000, when looking up transform from frame [base_link] to frame [odom]
+[WARN] [1794903516.349964799] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 135.050000 but the latest data is at time 134.150000, when looking up transform from frame [base_link] to frame [odom]
+[WARN] [1794903516.859215442] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 135.500000 but the latest data is at time 134.600000, when looking up transform from frame [base_link] to frame [odom]
+[WARN] [1794903517.367895417] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 135.800000 but the latest data is at time 134.950000, when looking up transform from frame [base_link] to frame [odom]
+[WARN] [1794903517.876883061] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 136.250000 but the latest data is at time 135.300000, when looking up transform from frame [base_link] to frame [odom]
+[WARN] [1794903518.386593946] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 136.700000 but the latest data is at time 135.750000, when looking up transform from frame [base_link] to frame [odom]
+[WARN] [1794903518.895812655] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 137.100000 but the latest data is at time 136.050000, when looking up transform from frame [base_link] to frame [odom]
+[WARN] [1794903519.405719310] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 137.550000 but the latest data is at time 136.500000, when looking up transform from frame [base_link] to frame [odom]
+[WARN] [1794903519.916137949] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 137.900000 but the latest data is at time 136.950000, when looking up transform from frame [base_link] to frame [odom]
+[WARN] [1794903520.426254613] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 138.400000 but the latest data is at time 137.400000, when looking up transform from frame [base_link] to frame [odom]
+[WARN] [1794903520.934609993] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 138.800000 but the latest data is at time 137.800000, when looking up transform from frame [base_link] to frame [odom]
+[WARN] [1794903521.443218293] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 139.200000 but the latest data is at time 138.200000, when looking up transform from frame [base_link] to frame [odom]
+[WARN] [1794903521.953602598] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 139.650000 but the latest data is at time 138.600000, when looking up transform from frame [base_link] to frame [odom]
+[WARN] [1794903522.461696644] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 139.950000 but the latest data is at time 138.950000, when looking up transform from frame [base_link] to frame [odom]
+[WARN] [1794903522.971387500] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 140.350000 but the latest data is at time 139.400000, when looking up transform from frame [base_link] to frame [odom]
+[WARN] [1794903523.480598310] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 140.800000 but the latest data is at time 139.850000, when looking up transform from frame [base_link] to frame [odom]
+[WARN] [1794903523.991036150] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 141.050000 but the latest data is at time 140.150000, when looking up transform from frame [base_link] to frame [odom]
+[WARN] [1794903524.501178257] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 141.500000 but the latest data is at time 140.500000, when looking up transform from frame [base_link] to frame [odom]
+[WARN] [1794903525.010462121] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 141.800000 but the latest data is at time 140.900000, when looking up transform from frame [base_link] to frame [odom]
+[WARN] [1794903525.519421772] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 142.200000 but the latest data is at time 141.200000, when looking up transform from frame [base_link] to frame [odom]
+[WARN] [1794903526.028115352] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 142.600000 but the latest data is at time 141.500000, when looking up transform from frame [base_link] to frame [odom]
+[WARN] [1794903526.537443312] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 142.850000 but the latest data is at time 141.850000, when looking up transform from frame [base_link] to frame [odom]
+[WARN] [1794903527.046756584] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 143.300000 but the latest data is at time 142.150000, when looking up transform from frame [base_link] to frame [odom]
+[WARN] [1794903527.557203739] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 143.750000 but the latest data is at time 142.450000, when looking up transform from frame [base_link] to frame [odom]
+[WARN] [1794903528.067870406] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 144.000000 but the latest data is at time 142.800000, when looking up transform from frame [base_link] to frame [odom]
+[WARN] [1794903528.578657711] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 144.400000 but the latest data is at time 143.150000, when looking up transform from frame [base_link] to frame [odom]
+[WARN] [1794903529.089197344] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 144.800000 but the latest data is at time 143.500000, when looking up transform from frame [base_link] to frame [odom]
+[WARN] [1794903529.599621109] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 145.150000 but the latest data is at time 143.850000, when looking up transform from frame [base_link] to frame [odom]
+[WARN] [1794903530.109605465] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 145.600000 but the latest data is at time 144.150000, when looking up transform from frame [base_link] to frame [odom]
+[WARN] [1794903530.619390756] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 145.950000 but the latest data is at time 144.550000, when looking up transform from frame [base_link] to frame [odom]
+[WARN] [1794903531.128750142] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 146.400000 but the latest data is at time 144.900000, when looking up transform from frame [base_link] to frame [odom]
+[INFO] [1794903531.345517500] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[WARN] [1794903531.353959906] [lidar_localization]: NDT auto correction: scan-time odom unavailable: Lookup would require extrapolation into the future.  Requested time 146.800000 but the latest data is at time 144.950000, when looking up transform from frame [base_link] to frame [odom]

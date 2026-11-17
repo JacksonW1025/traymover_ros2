@@ -1,0 +1,70 @@
+{
+  "experiment": "Synthetic closed-loop waypoint tracking / real STM32 ROS driver / real NDT_OMP",
+  "run_command": "python3 scripts/option21_simulation.py --scenario all --duration 90 --output logs/option21_simulation/validation --rate 2",
+  "analysis_command": "python3 scripts/option21_simulation.py --scenario all --output logs/option21_simulation/validation --analyze-only",
+  "environment": "AGX Orin, Ubuntu 22.04, ROS 2 Humble; ROS_DOMAIN_ID=167; PTY serial only",
+  "units": {
+    "position": "m",
+    "yaw": "rad",
+    "linear_velocity": "m/s",
+    "angular_velocity": "rad/s",
+    "time": "simulation s"
+  },
+  "model": {
+    "room_m": [
+      16,
+      12,
+      3
+    ],
+    "waypoints_m": [
+      [
+        3,
+        0
+      ],
+      [
+        3,
+        2
+      ],
+      [
+        0,
+        2
+      ],
+      [
+        0,
+        0
+      ]
+    ],
+    "cloud_noise_std_m": 0.01,
+    "cloud_rate_hz": 10,
+    "chassis_poll_hz": 20,
+    "initial_guess_error": [
+      0.3,
+      -0.2,
+      0.1
+    ],
+    "ndt_align_interval_s": 2.0,
+    "velocity_bias_scenario": 1.05,
+    "dropout_serial_interval_s": [
+      25,
+      26
+    ],
+    "dropout_cloud_interval_s": [
+      25,
+      28
+    ]
+  },
+  "limitations": [
+    "Not hardware calibration or a physical tire/ground simulation.",
+    "Synthetic point clouds in base_link; physical LiDAR extrinsics and deskew are not tested.",
+    "Waypoint feedback controller, not Nav2 planning/avoidance.",
+    "Controller intentionally continues its script through the short outage; age/current-time error is reported separately.",
+    "No real-world PCD or raw LiDAR dataset was used."
+  ],
+  "replay": "./scripts/replay_option21_simulation.sh logs/option21_simulation/validation bias",
+  "large_artifacts": "Rosbags and serial.jsonl remain under logs/option21_simulation/validation (gitignored).",
+  "source_sha256_at_analysis": {
+    "scripts/option21_simulation.py": "8e48717a896fa2936cd744087f686b1819eb9ce1076a9b115bf39fb865176dba",
+    "src/turn_on_traymover_robot/turn_on_traymover_robot/traymover_robot.py": "e8cd5bbeb4d4fd25a5dc11af01d3848d10842f575ca6239b079d0357d38c7b8f",
+    "src/traymover_robot_nav/config/localization.yaml": "e0c2526cb5fd7d82464c0f1653db9ecdeb557b5feaa19cbbd893b52be80ac298"
+  }
+}

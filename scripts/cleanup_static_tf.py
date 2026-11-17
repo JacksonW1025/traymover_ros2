@@ -10,6 +10,7 @@ import time
 MANAGED_NODES = frozenset({
     'static_odom_to_camera_init', 'static_body_to_base_link',
     'option20_raw_origin', 'option20_base_height', 'option20_scan_origin',
+    'stm32_base_height',
 })
 
 
