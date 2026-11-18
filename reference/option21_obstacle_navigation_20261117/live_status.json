@@ -1,0 +1,31 @@
+{
+  "t": 35.0,
+  "truth": [
+    6.15730537407242,
+    -4.268129997648512,
+    -1.1957702617546073
+  ],
+  "counts": {
+    "odom": 702,
+    "tf": 3597,
+    "tf_static": 2,
+    "map_cloud": 1,
+    "cloud": 317,
+    "initialpose": 1,
+    "ndt": 15,
+    "aligned_cloud": 15,
+    "global_costmap": 19,
+    "local_costmap": 47,
+    "action_status": 1,
+    "plan": 36,
+    "cmd": 726,
+    "nonzero_cmd": 726,
+    "local_plan": 726
+  },
+  "self_test_finished": false,
+  "self_test": {},
+  "minimum_true_footprint_clearance_m": 0.999920991046854,
+  "physical_collision_blocks": 0,
+  "output_free_gb": 32.900386816,
+  "cloud_publishers": 1
+}

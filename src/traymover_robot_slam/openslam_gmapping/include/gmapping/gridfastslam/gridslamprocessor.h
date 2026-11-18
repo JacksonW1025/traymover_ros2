@@ -9,7 +9,7 @@
 #include <gmapping/particlefilter/particlefilter.h>
 #include <gmapping/utils/point.h>
 #include <gmapping/utils/macro_params.h>
-#include <gmapping/log/sensorlog.h>
+#include <gmapping/sensor/sensor_odometry/odometryreading.h>
 #include <gmapping/sensor/sensor_range/rangesensor.h>
 #include <gmapping/sensor/sensor_range/rangereading.h>
 #include <gmapping/scanmatcher/scanmatcher.h>

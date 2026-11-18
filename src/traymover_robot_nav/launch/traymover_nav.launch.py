@@ -142,6 +142,7 @@ def generate_launch_description():
         launch_arguments={
             'use_sim_time': use_sim_time,
             'pcd_path': pcd_path,
+            'localization_params': LaunchConfiguration('localization_params'),
             'odometry_source': odometry_source,
             'cloud_topic': '/point_cloud_localization',
             'height_boost_enabled': LaunchConfiguration('height_boost_enabled'),
@@ -201,6 +202,7 @@ def generate_launch_description():
         executable='rviz2',
         name='rviz2',
         arguments=['-d', rviz_config],
+        parameters=[{'use_sim_time': use_sim_time}],
         condition=IfCondition(launch_rviz),
     )
 
@@ -209,7 +211,7 @@ def generate_launch_description():
                               choices=['fastlio', 'stm32']),
         DeclareLaunchArgument('robot_config', default_value=os.path.join(
             bringup_share, 'config', 'traymover_robot.yaml')),
-        DeclareLaunchArgument('imu_serial_port', default_value='/dev/ttyCH343USB0'),
+        DeclareLaunchArgument('imu_serial_port', default_value=''),
         DeclareLaunchArgument('use_imu', default_value='true'),
         DeclareLaunchArgument('use_sim_time', default_value='false'),
         DeclareLaunchArgument('autostart', default_value='true'),
@@ -219,6 +221,8 @@ def generate_launch_description():
             'publish_scan', default_value='false',
             description='Publish obstacle scan for additive navigation modes.'),
         DeclareLaunchArgument('params_file', default_value=default_params),
+        DeclareLaunchArgument('localization_params', default_value=os.path.join(
+            nav_share, 'config', 'localization.yaml')),
         DeclareLaunchArgument('map', default_value=default_map),
         DeclareLaunchArgument(
             'auto_correction_enabled', default_value='false',

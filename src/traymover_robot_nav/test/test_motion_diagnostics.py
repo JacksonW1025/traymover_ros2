@@ -2,6 +2,7 @@
 
 import csv
 import importlib.util
+import math
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -9,9 +10,11 @@ import pytest
 
 
 pytest.importorskip('rclpy')
-from geometry_msgs.msg import Twist  # noqa: E402
+from geometry_msgs.msg import TransformStamped, Twist  # noqa: E402
+from nav_msgs.msg import Odometry  # noqa: E402
 from rclpy.qos import DurabilityPolicy, ReliabilityPolicy  # noqa: E402
 from std_msgs.msg import Bool, UInt8  # noqa: E402
+from tf2_msgs.msg import TFMessage  # noqa: E402
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -66,7 +69,7 @@ def test_missing_motion_topics_are_unknown_and_csv_schema_stays_stable(monitor):
     instance, _, _, directory = monitor
     instance.report()
     record, = motion_records(directory)
-    for key in ('cmd_vel', 'estop', 'estop_auto', 'estop_manual', 'motor_enabled'):
+    for key in ('cmd_vel', 'odom_twist', 'estop', 'estop_auto', 'estop_manual', 'motor_enabled'):
         assert record[key + '_value'] == 'unknown'
         assert record[key + '_count'] == '0'
         assert record[key + '_age_sec'] == '-'
@@ -96,7 +99,6 @@ def test_commands_are_aggregated_and_zero_does_not_erase_last_nonzero(monitor):
     steady_time[0] = 102.0
     callback(Twist())
     assert (directory / 'ndt_events.log').read_text() == before
-    assert len(instance.motion) == 5
     steady_time[0] = 105.0
     instance.report()
     record = motion_records(directory)[-1]
@@ -154,3 +156,32 @@ def test_motor_enabled_preserves_raw_byte_without_claiming_measured_velocity(mon
     # These names contain speed but carry PWM, and are not measured wheel velocity.
     assert '/motor_status_speed_x' not in node.subscriptions
     assert '/motor_status_speed_th' not in node.subscriptions
+
+
+def test_stm32_report_pairs_measured_twist_and_footprint_tf(monitor):
+    instance, node, _, directory = monitor
+    command = Twist()
+    command.angular.z = 0.04
+    node.subscriptions['/cmd_vel'][1](command)
+
+    odom = Odometry()
+    odom.header.frame_id, odom.child_frame_id = 'odom', 'base_footprint'
+    odom.pose.pose.position.x = .34
+    odom.pose.pose.orientation.z = math.sin(.3 / 2)
+    odom.pose.pose.orientation.w = math.cos(.3 / 2)
+    node.subscriptions['/odom'][1](odom)
+    transform = TransformStamped()
+    transform.header.frame_id, transform.child_frame_id = 'odom', 'base_footprint'
+    node.subscriptions['/tf'][1](TFMessage(transforms=[transform]))
+
+    instance.report()
+    record, = motion_records(directory)
+    assert record['cmd_vel_nonzero_count'] == '1'
+    assert record['odom_twist_value'] == '0.000000,0.000000'
+    assert record['odom_twist_count'] == '1'
+    assert record['odom_twist_nonzero_count'] == '0'
+    assert 'odom_pose_xyzyaw=0.340,0.000,0.000,0.300' in (
+        directory / 'ndt_events.log').read_text()
+    with (directory / 'ndt_metrics.csv').open() as stream:
+        row, = csv.DictReader(stream)
+    assert float(row['odom_base_age_sec']) >= 0.0

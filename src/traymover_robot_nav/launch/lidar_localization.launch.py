@@ -194,6 +194,7 @@ def generate_launch_description():
     ))
     activate_localization = RegisterEventHandler(OnStateTransition(
         target_lifecycle_node=lidar_loc,
+        start_state='configuring',
         goal_state='inactive',
         entities=[EmitEvent(event=ChangeState(
             lifecycle_node_matcher=matches_action(lidar_loc),
@@ -250,7 +251,7 @@ def generate_launch_description():
         static_odom_to_cam_init,
         static_body_to_base,
         static_footprint_to_base,
+        activate_localization,
         lidar_loc,
         configure_localization,
-        activate_localization,
     ])

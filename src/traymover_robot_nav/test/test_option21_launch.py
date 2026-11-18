@@ -62,6 +62,8 @@ def test_hardware_and_localization_receive_matching_sources(monkeypatch, source,
     localization, = [args for args in includes if 'odometry_source' in args]
     assert hardware['odom_source_mode'].perform(context) == expected
     assert localization['odometry_source'].perform(context) == source
+    assert localization['localization_params'].perform(context) == str(
+        PKG / 'config/localization.yaml')
 
 
 @pytest.mark.parametrize('source', ['fastlio', 'stm32'])
@@ -86,6 +88,21 @@ def test_only_one_motion_tf_branch_is_active(monkeypatch, source):
         assert 'stm32_base_height' not in active
 
 
+def test_localization_watches_configuration_before_launching_node(monkeypatch):
+    from launch.actions import EmitEvent, RegisterEventHandler
+    from launch_ros.actions import LifecycleNode
+
+    module = load_launch('lidar_localization', monkeypatch)
+    actions = module.generate_launch_description().entities
+    handler, = [index for index, action in enumerate(actions)
+                if isinstance(action, RegisterEventHandler)]
+    node, = [index for index, action in enumerate(actions)
+             if isinstance(action, LifecycleNode)]
+    configure, = [index for index, action in enumerate(actions)
+                  if isinstance(action, EmitEvent)]
+    assert handler < node < configure
+
+
 def test_option21_wrapper_and_si_profile(monkeypatch):
     from launch.actions import IncludeLaunchDescription
     module = load_launch('traymover_nav_stm32', monkeypatch)
@@ -101,6 +118,42 @@ def test_option21_wrapper_and_si_profile(monkeypatch):
                              'stm32_navigation.yaml').read_text())
     params = profile['turn_on_traymover_robot']['ros__parameters']
     assert params['odom_source_mode'] == 'stm32_velocity'
+    assert params['angular_feedback_sign'] == -1
+    assert params['max_command_angular_speed'] == 0.25
     assert params['publish_odom_tf'] is True
     assert params['robot_frame_id'] == 'base_footprint'
     assert params['odom_frame_id'] == 'odom'
+
+
+def test_option21_navigation_and_ndt_tuning(monkeypatch, tmp_path):
+    from launch.actions import IncludeLaunchDescription
+
+    module = load_launch('traymover_nav_stm32', monkeypatch)
+    description = module.generate_launch_description()
+    include, = [action for action in description.entities
+                if isinstance(action, IncludeLaunchDescription)]
+    args = dict(include.launch_arguments)
+    context = context_for(description, pcd_path='/tmp/lvisam.pcd')
+    generated_nav = Path(args['params_file'].perform(context))
+    generated_ndt = Path(args['localization_params'].perform(context))
+    try:
+        baseline = yaml.safe_load((PKG / 'config/nav2_params.yaml').read_text())
+        controller = baseline['controller_server']['ros__parameters']
+        assert controller['odom_topic'] == '/odom'
+        controller['FollowPath'].update(
+            max_angular_accel=4.4, rotate_to_heading_angular_vel=0.25)
+        assert yaml.safe_load(generated_nav.read_text()) == baseline
+
+        baseline = yaml.safe_load((PKG / 'config/localization.yaml').read_text())
+        baseline['/**']['ros__parameters'].update(
+            score_threshold=0.5, ndt_align_interval_s=1.0, auto_correction_max_step_rotation=0.04)
+        assert yaml.safe_load(generated_ndt.read_text()) == baseline
+    finally:
+        generated_nav.unlink()
+        generated_ndt.unlink()
+
+    override = tmp_path / 'custom.yaml'
+    context = context_for(description, pcd_path='/tmp/lvisam.pcd', params_file=str(override),
+                          localization_params=str(override))
+    assert args['params_file'].perform(context) == str(override)
+    assert args['localization_params'].perform(context) == str(override)

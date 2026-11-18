@@ -3,6 +3,7 @@
 
 import argparse
 import csv
+import math
 import os
 import threading
 import time
@@ -66,7 +67,8 @@ class NdtDiagnostics:
         self.motion = {
             key: {'count': 0, 'interval_count': 0, 'value': None, 'last_seen': None,
                   'nonzero_count': 0, 'interval_nonzero_count': 0, 'last_nonzero': None}
-            for key in ('cmd_vel', 'estop', 'estop_auto', 'estop_manual', 'motor_enabled')
+            for key in ('cmd_vel', 'odom_twist', 'estop', 'estop_auto', 'estop_manual',
+                        'motor_enabled')
         }
         self._closed = False
 
@@ -169,7 +171,8 @@ class NdtDiagnostics:
 
     def report_motion(self):
         # Called once per report with self.lock held. Nonzero counts for Bool states
-        # mean asserted state, not movement; cmd_vel uses linear xyz then angular xyz.
+        # mean asserted state; cmd_vel uses linear xyz then angular xyz.
+        # odom_twist uses measured linear x and angular z.
         now = time.monotonic()
         fields = []
         for key, sample in self.motion.items():
@@ -192,11 +195,17 @@ class NdtDiagnostics:
     def on_odom(self, msg):
         with self.lock:
             self.mark('odom')
+            pose = msg.pose.pose
+            q = pose.orientation
+            yaw = math.atan2(2.0 * (q.w * q.z + q.x * q.y),
+                             1.0 - 2.0 * (q.y * q.y + q.z * q.z))
             self.last_odom = (
                 msg.header.frame_id, msg.child_frame_id,
-                msg.pose.pose.position.x, msg.pose.pose.position.y,
-                msg.pose.pose.position.z,
+                pose.position.x, pose.position.y, pose.position.z, yaw,
             )
+            twist = msg.twist.twist
+            self.record_motion('odom_twist', '%.6f,%.6f' % (twist.linear.x, twist.angular.z),
+                               twist.linear.x != 0.0 or twist.angular.z != 0.0)
             if self.counts['odom'] == 1:
                 self.log_event('FIRST_ODOM', 'frame=%s child=%s x=%.3f y=%.3f z=%.3f' % (
                     self.last_odom[0], self.last_odom[1], self.last_odom[2],
@@ -224,7 +233,8 @@ class NdtDiagnostics:
             self.mark('tf')
             for transform in msg.transforms:
                 key = (transform.header.frame_id, transform.child_frame_id)
-                if key in (('map', 'odom'), ('odom', 'base_link'), ('camera_init', 'body')):
+                if key in (('map', 'odom'), ('odom', 'base_link'), ('odom', 'base_footprint'),
+                           ('camera_init', 'body')):
                     is_first_transform = key not in self.last_tf
                     t = transform.transform.translation
                     self.last_tf[key] = (self.now_wall(), t.x, t.y, t.z)
@@ -268,7 +278,10 @@ class NdtDiagnostics:
             odom_age = self.age('odom')
             pcl_age = self.age('pcl_pose')
             map_odom_age = self.tf_age(('map', 'odom'))
-            odom_base_age = self.tf_age(('odom', 'base_link'))
+            odom_child = 'base_link'
+            if self.last_odom is not None and self.last_odom[:2] == ('odom', 'base_footprint'):
+                odom_child = 'base_footprint'
+            odom_base_age = self.tf_age(('odom', odom_child))
             self.metrics_writer.writerow([
                 datetime.now(timezone.utc).isoformat(), '%.6f' % ros_time,
                 '%.3f' % elapsed, 'REPORT', self.counts['cloud'], cloud_age,
@@ -299,15 +312,16 @@ class NdtDiagnostics:
             map_odom = self.last_tf.get(('map', 'odom'))
             map_odom_position = '-' if map_odom is None else '%.3f,%.3f,%.3f' % map_odom[1:]
             ndt_position = '-' if self.last_pcl_pose is None else '%.3f,%.3f,%.3f' % self.last_pcl_pose
+            odom_pose = '-' if self.last_odom is None else '%.3f,%.3f,%.3f,%.3f' % self.last_odom[2:]
             self.log_event('REPORT', 'state=%s cloud=%d age=%s points=%s odom=%d age=%s '
                            'initialpose=%d pcl_pose=%d age=%s ndt_pose=%s tf=%d map_odom_age=%s '
-                           'map_odom=%s odom_base_age=%s lifecycle=%s' % (
+                           'map_odom=%s odom_base_age=%s lifecycle=%s odom_pose_xyzyaw=%s' % (
                                state, self.counts['cloud'], cloud_age or '-',
                                self.last_cloud_points if self.last_cloud_points is not None else '-',
                                self.counts['odom'], odom_age or '-', self.counts['initialpose'],
                                self.counts['pcl_pose'], pcl_age or '-', ndt_position,
                                self.counts['tf'], map_odom_age or '-', map_odom_position,
-                               odom_base_age or '-', self.lifecycle_state))
+                               odom_base_age or '-', self.lifecycle_state, odom_pose))
             self.report_motion()
 
     def request_lifecycle_state(self):

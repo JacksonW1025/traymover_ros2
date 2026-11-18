@@ -1,7 +1,7 @@
 turn_on_traymover_robot:
   ros__parameters:
     # 串口配置
-    usart_port_name: "/dev/ttyCH341USB0"
+    usart_port_name: "/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0"
     serial_baud_rate: 115200
 
     # 坐标系

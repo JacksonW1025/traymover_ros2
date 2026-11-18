@@ -1,0 +1,433 @@
+[INFO] [launch]: All log files can be found below /dev/shm/traymover_experiments/full_chain_20261117_173457_manual/ros/2026-11-17-17-35-00-012926-ubuntu-40185
+[INFO] [launch]: Default logging verbosity is set to INFO
+[INFO] [pointcloud_nav_preprocessor.py-1]: process started with pid [40256]
+[INFO] [robot_state_publisher-2]: process started with pid [40258]
+[INFO] [static_transform_publisher-3]: process started with pid [40260]
+[INFO] [lidar_localization_node-4]: process started with pid [40262]
+[INFO] [map_server-5]: process started with pid [40264]
+[INFO] [planner_server-6]: process started with pid [40266]
+[INFO] [controller_server-7]: process started with pid [40268]
+[INFO] [bt_navigator-8]: process started with pid [40270]
+[INFO] [lifecycle_manager-9]: process started with pid [40272]
+[static_transform_publisher-3] [WARN] [1794908100.646398076] []: Old-style arguments are deprecated; see --help for new-style arguments
+[static_transform_publisher-3] [INFO] [1794908100.724668220] [stm32_base_height]: Spinning until stopped - publishing transform
+[static_transform_publisher-3] translation: ('0.000000', '0.000000', '0.200000')
+[static_transform_publisher-3] rotation: ('0.000000', '0.000000', '0.000000', '1.000000')
+[static_transform_publisher-3] from 'base_footprint' to 'base_link'
+[planner_server-6] [INFO] [1794908100.748397696] [planner_server]: 
+[planner_server-6] 	planner_server lifecycle node launched. 
+[planner_server-6] 	Waiting on external lifecycle transitions to activate
+[planner_server-6] 	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[controller_server-7] [INFO] [1794908100.752150739] [controller_server]: 
+[controller_server-7] 	controller_server lifecycle node launched. 
+[controller_server-7] 	Waiting on external lifecycle transitions to activate
+[controller_server-7] 	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[planner_server-6] [INFO] [1794908100.754648405] [planner_server]: Creating
+[controller_server-7] [INFO] [1794908100.770186636] [controller_server]: Creating controller server
+[planner_server-6] [INFO] [1794908100.774666980] [global_costmap.global_costmap]: 
+[planner_server-6] 	global_costmap lifecycle node launched. 
+[planner_server-6] 	Waiting on external lifecycle transitions to activate
+[planner_server-6] 	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[planner_server-6] [INFO] [1794908100.778373817] [global_costmap.global_costmap]: Creating Costmap
+[bt_navigator-8] [INFO] [1794908100.783039913] [bt_navigator]: 
+[bt_navigator-8] 	bt_navigator lifecycle node launched. 
+[bt_navigator-8] 	Waiting on external lifecycle transitions to activate
+[bt_navigator-8] 	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[bt_navigator-8] [INFO] [1794908100.783333790] [bt_navigator]: Creating
+[robot_state_publisher-2] [INFO] [1794908100.796766629] [traymover_robot_state_publisher]: got segment base_link
+[robot_state_publisher-2] [INFO] [1794908100.799723574] [traymover_robot_state_publisher]: got segment camera_link
+[robot_state_publisher-2] [INFO] [1794908100.805272389] [traymover_robot_state_publisher]: got segment camera_mount_link
+[lifecycle_manager-9] [INFO] [1794908100.807375542] [lifecycle_manager_navigation]: Creating
+[robot_state_publisher-2] [INFO] [1794908100.809331756] [traymover_robot_state_publisher]: got segment front_left_caster_link
+[robot_state_publisher-2] [INFO] [1794908100.812629168] [traymover_robot_state_publisher]: got segment front_right_caster_link
+[lifecycle_manager-9] [INFO] [1794908100.814024668] [lifecycle_manager_navigation]: [34m[1mCreating and initializing lifecycle service clients[0m[0m
+[robot_state_publisher-2] [INFO] [1794908100.820862715] [traymover_robot_state_publisher]: got segment imu_link
+[robot_state_publisher-2] [INFO] [1794908100.822251431] [traymover_robot_state_publisher]: got segment laser
+[robot_state_publisher-2] [INFO] [1794908100.823860682] [traymover_robot_state_publisher]: got segment left_wheel_link
+[robot_state_publisher-2] [INFO] [1794908100.825680358] [traymover_robot_state_publisher]: got segment rear_left_caster_link
+[robot_state_publisher-2] [INFO] [1794908100.827240907] [traymover_robot_state_publisher]: got segment rear_right_caster_link
+[robot_state_publisher-2] [INFO] [1794908100.829049799] [traymover_robot_state_publisher]: got segment right_wheel_link
+[robot_state_publisher-2] [INFO] [1794908100.829130884] [traymover_robot_state_publisher]: got segment sensor_mast_link
+[map_server-5] [INFO] [1794908100.858329370] [map_server]: 
+[map_server-5] 	map_server lifecycle node launched. 
+[map_server-5] 	Waiting on external lifecycle transitions to activate
+[map_server-5] 	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[map_server-5] [INFO] [1794908100.858616623] [map_server]: Creating
+[lifecycle_manager-9] [INFO] [1794908100.861719898] [lifecycle_manager_navigation]: [34m[1mStarting managed nodes bringup...[0m[0m
+[lifecycle_manager-9] [INFO] [1794908100.864535472] [lifecycle_manager_navigation]: [34m[1mConfiguring map_server[0m[0m
+[controller_server-7] [INFO] [1794908100.889647360] [local_costmap.local_costmap]: 
+[controller_server-7] 	local_costmap lifecycle node launched. 
+[controller_server-7] 	Waiting on external lifecycle transitions to activate
+[controller_server-7] 	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[controller_server-7] [INFO] [1794908100.893516335] [local_costmap.local_costmap]: Creating Costmap
+[map_server-5] [INFO] [1794908100.955481460] [map_server]: Configuring
+[map_server-5] [INFO] [1794908100.955639086] [map_io]: Loading yaml file: /dev/shm/traymover_experiments/full_chain_20261117_173457_manual/maps/room_2d.yaml
+[map_server-5] [INFO] [1794908100.956094653] [map_io]: resolution: 0.05
+[map_server-5] [INFO] [1794908100.956113533] [map_io]: origin[0]: -9
+[map_server-5] [INFO] [1794908100.956119964] [map_io]: origin[1]: -7
+[map_server-5] [INFO] [1794908100.956124604] [map_io]: origin[2]: 0
+[map_server-5] [INFO] [1794908100.956129756] [map_io]: free_thresh: 0.25
+[map_server-5] [INFO] [1794908100.956134716] [map_io]: occupied_thresh: 0.65
+[map_server-5] [INFO] [1794908100.956140892] [map_io]: mode: trinary
+[map_server-5] [INFO] [1794908100.956148603] [map_io]: negate: 0
+[map_server-5] [INFO] [1794908100.956416881] [map_io]: Loading image_file: /dev/shm/traymover_experiments/full_chain_20261117_173457_manual/maps/room_2d.pgm
+[map_server-5] [INFO] [1794908100.969508133] [map_io]: Read map /dev/shm/traymover_experiments/full_chain_20261117_173457_manual/maps/room_2d.pgm: 360 X 280 map @ 0.05 m/cell
+[lifecycle_manager-9] [INFO] [1794908100.984237499] [lifecycle_manager_navigation]: [34m[1mConfiguring planner_server[0m[0m
+[pointcloud_nav_preprocessor.py-1] [INFO] [1794908101.433042514] [pointcloud_nav_preprocessor]: preprocessing /point_cloud_raw -> /point_cloud_localization, /point_cloud_nav in base_link
+[pointcloud_nav_preprocessor.py-1] [WARN] [1794908101.615218065] [pointcloud_nav_preprocessor]: cannot transform laser -> base_link: "base_link" passed to lookupTransform argument target_frame does not exist. 
+[planner_server-6] [INFO] [1794908101.816791703] [planner_server]: Configuring
+[planner_server-6] [INFO] [1794908101.817059597] [global_costmap.global_costmap]: Configuring
+[planner_server-6] [INFO] [1794908101.843812991] [global_costmap.global_costmap]: Using plugin "static_layer"
+[planner_server-6] [INFO] [1794908101.853278363] [global_costmap.global_costmap]: Subscribing to the map topic (/map) with transient local durability
+[planner_server-6] [INFO] [1794908101.857079277] [global_costmap.global_costmap]: Initialized plugin "static_layer"
+[planner_server-6] [INFO] [1794908101.857212456] [global_costmap.global_costmap]: Using plugin "inflation_layer"
+[planner_server-6] [INFO] [1794908101.859083969] [global_costmap.global_costmap]: Initialized plugin "inflation_layer"
+[lidar_localization_node-4] [INFO] [1794908101.897725077] [lidar_localization]: Configuring
+[lidar_localization_node-4] [INFO] [1794908101.898308831] [lidar_localization]: initializeParameters
+[lidar_localization_node-4] [INFO] [1794908101.898500919] [lidar_localization]: map_voxel_leaf_size: 0.150 m
+[lidar_localization_node-4] [INFO] [1794908101.898646546] [lidar_localization]: auto_correction_enabled: 1; confirmations=3 absolute=2.50m/0.60rad step=0.15m/0.08rad improvement=0.010
+[lidar_localization_node-4] [INFO] [1794908101.898791116] [lidar_localization]: lock_planar: 0
+[lidar_localization_node-4] [INFO] [1794908101.898864906] [lidar_localization]: max_pose_jump_translation: 0.35 m
+[lidar_localization_node-4] [INFO] [1794908101.898933319] [lidar_localization]: max_pose_jump_rotation: 0.45 rad
+[lidar_localization_node-4] [INFO] [1794908101.898998053] [lidar_localization]: bootstrap jump limits: translation=2.50 m rotation=0.60 rad
+[lidar_localization_node-4] [INFO] [1794908101.899048739] [lidar_localization]: ndt_align_interval_s: 2.00 s
+[lidar_localization_node-4] [INFO] [1794908101.899089057] [lidar_localization]: tf_rebroadcast_rate_hz: 50.00 Hz
+[lidar_localization_node-4] [INFO] [1794908101.899138879] [lidar_localization]: map_odom_smoothing: 0.30
+[lidar_localization_node-4] [INFO] [1794908101.899180414] [lidar_localization]: max_map_odom_update_translation: 0.50 m
+[lidar_localization_node-4] [INFO] [1794908101.899224060] [lidar_localization]: max_map_odom_update_rotation: 0.25 rad
+[lidar_localization_node-4] [INFO] [1794908101.899266075] [lidar_localization]: global_frame_id: map
+[lidar_localization_node-4] [INFO] [1794908101.899341240] [lidar_localization]: odom_frame_id: odom
+[lidar_localization_node-4] [INFO] [1794908101.899401653] [lidar_localization]: base_frame_id: base_link
+[lidar_localization_node-4] [INFO] [1794908101.899455475] [lidar_localization]: enable_map_odom_tf: 1
+[lidar_localization_node-4] [INFO] [1794908101.899513937] [lidar_localization]: registration_method: NDT_OMP
+[lidar_localization_node-4] [INFO] [1794908101.899590606] [lidar_localization]: ndt_resolution: 0.500000
+[planner_server-6] [INFO] [1794908101.898503607] [planner_server]: Created global planner plugin GridBased of type nav2_navfn_planner/NavfnPlanner
+[planner_server-6] [INFO] [1794908101.898677873] [planner_server]: Configuring plugin GridBased of type NavfnPlanner
+[planner_server-6] [INFO] [1794908101.899593902] [planner_server]: Planner Server has GridBased  planners available.
+[lidar_localization_node-4] [INFO] [1794908101.899664332] [lidar_localization]: ndt_step_size: 0.100000
+[lidar_localization_node-4] [INFO] [1794908101.899749704] [lidar_localization]: ndt_num_threads: 4
+[lidar_localization_node-4] [INFO] [1794908101.899816294] [lidar_localization]: adaptive_ndt_resolution: 1
+[lidar_localization_node-4] [INFO] [1794908101.899884835] [lidar_localization]: adaptive_ndt_max_resolution: 3.00 m
+[lidar_localization_node-4] [INFO] [1794908101.899943553] [lidar_localization]: adaptive_ndt_resolution_step: 0.10 m
+[lidar_localization_node-4] [INFO] [1794908101.900005151] [lidar_localization]: adaptive_ndt_min_usable_voxel_ratio: 0.010
+[lidar_localization_node-4] [INFO] [1794908101.900072380] [lidar_localization]: transform_epsilon: 0.001000
+[lidar_localization_node-4] [INFO] [1794908101.900137306] [lidar_localization]: voxel_leaf_size: 0.150000
+[lidar_localization_node-4] [INFO] [1794908101.900207447] [lidar_localization]: scan_max_range: 120.000000
+[lidar_localization_node-4] [INFO] [1794908101.900294580] [lidar_localization]: scan_min_range: 0.500000
+[lidar_localization_node-4] [INFO] [1794908101.900364913] [lidar_localization]: far_point_boost_min_range: 15.000000
+[lidar_localization_node-4] [INFO] [1794908101.900430607] [lidar_localization]: far_point_boost_factor: 2
+[lidar_localization_node-4] [INFO] [1794908101.900494412] [lidar_localization]: height_boost: enabled=0 min_z=2.000 m (base frame) extra_copies=1 max_copies=3 (existing far weighting preserved); fitness gate uses baseline cloud
+[lidar_localization_node-4] [INFO] [1794908101.900578409] [lidar_localization]: scan_period: 0.100000
+[lidar_localization_node-4] [INFO] [1794908101.900656870] [lidar_localization]: use_pcd_map: 1
+[lidar_localization_node-4] [INFO] [1794908101.900722180] [lidar_localization]: map_path: /dev/shm/traymover_experiments/full_chain_20261117_173457_manual/maps/room.pcd
+[lidar_localization_node-4] [INFO] [1794908101.900792961] [lidar_localization]: set_initial_pose: 0
+[lidar_localization_node-4] [INFO] [1794908101.900859103] [lidar_localization]: use_odom: 1
+[lidar_localization_node-4] [INFO] [1794908101.900925820] [lidar_localization]: use_imu: 0
+[lidar_localization_node-4] [INFO] [1794908101.900991482] [lidar_localization]: enable_debug: 0
+[lidar_localization_node-4] [INFO] [1794908101.901054999] [lidar_localization]: enable_timer_publishing: 0
+[lidar_localization_node-4] [INFO] [1794908101.901126805] [lidar_localization]: pose_publish_frequency: 20.000000
+[lidar_localization_node-4] [INFO] [1794908101.901209841] [lidar_localization]: initializePubSub
+[lifecycle_manager-9] [INFO] [1794908101.928421906] [lifecycle_manager_navigation]: [34m[1mConfiguring controller_server[0m[0m
+[controller_server-7] [INFO] [1794908101.929121816] [controller_server]: Configuring controller interface
+[controller_server-7] [INFO] [1794908101.929595718] [controller_server]: getting goal checker plugins..
+[controller_server-7] [INFO] [1794908101.929851933] [controller_server]: Controller frequency set to 20.0000Hz
+[controller_server-7] [INFO] [1794908101.929976408] [local_costmap.local_costmap]: Configuring
+[controller_server-7] [INFO] [1794908101.954288134] [local_costmap.local_costmap]: Using plugin "inflation_layer"
+[lidar_localization_node-4] [INFO] [1794908101.956289915] [lidar_localization]: initializePubSub end
+[lidar_localization_node-4] [INFO] [1794908101.956416726] [lidar_localization]: initializeRegistration
+[lidar_localization_node-4] [INFO] [1794908101.956583344] [lidar_localization]: initializeRegistration end
+[lidar_localization_node-4] [INFO] [1794908101.956663565] [lidar_localization]: Configuring end
+[lidar_localization_node-4] [INFO] [1794908101.960185352] [lidar_localization]: Activating
+[lidar_localization_node-4] [INFO] [1794908101.960316451] [lidar_localization]: Loading pcd map from: /dev/shm/traymover_experiments/full_chain_20261117_173457_manual/maps/room.pcd
+[controller_server-7] [INFO] [1794908101.963230390] [local_costmap.local_costmap]: Initialized plugin "inflation_layer"
+[controller_server-7] [INFO] [1794908101.995320639] [controller_server]: Created progress_checker : progress_checker of type traymover_robot_nav::YawProgressChecker
+[controller_server-7] [INFO] [1794908101.997645928] [controller_server]: Created goal checker : general_goal_checker of type nav2_controller::SimpleGoalChecker
+[controller_server-7] [INFO] [1794908101.998441930] [controller_server]: Controller Server has general_goal_checker  goal checkers available.
+[controller_server-7] [INFO] [1794908101.999861141] [controller_server]: Created controller : FollowPath of type nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController
+[controller_server-7] [INFO] [1794908102.012156839] [controller_server]: Controller Server has FollowPath  controllers available.
+[lidar_localization_node-4] [INFO] [1794908102.012627989] [lidar_localization]: Map Size 27650
+[lidar_localization_node-4] [INFO] [1794908102.015244051] [lidar_localization]: Map downsample: leaf=0.150 m input=27650 output=17268 retained=62.5% elapsed=0.002 s
+[lidar_localization_node-4] [INFO] [1794908102.015934745] [lidar_localization]: NDT map density at 0.50 m: points=17268 voxels=1566 usable_voxels=1450 usable_points=16883 (97.8%), usable_voxel_ratio=92.59%, max_points_per_voxel=37
+[lidar_localization_node-4] [INFO] [1794908102.018807021] [lidar_localization]: NDT target map cloud: points=17268 x=[-8.00, 8.00] y=[-6.00, 6.00] z=[0.00, 3.00]
+[lidar_localization_node-4] [INFO] [1794908102.020051134] [lidar_localization]: Initial Map Published
+[lidar_localization_node-4] [INFO] [1794908102.020279317] [lidar_localization]: Activating end
+[lifecycle_manager-9] [INFO] [1794908102.030445399] [lifecycle_manager_navigation]: [34m[1mConfiguring bt_navigator[0m[0m
+[bt_navigator-8] [INFO] [1794908102.030976611] [bt_navigator]: Configuring
+[lifecycle_manager-9] [INFO] [1794908102.177191212] [lifecycle_manager_navigation]: [34m[1mActivating map_server[0m[0m
+[map_server-5] [INFO] [1794908102.177686713] [map_server]: Activating
+[map_server-5] [INFO] [1794908102.178204550] [map_server]: Creating bond (map_server) to lifecycle manager.
+[planner_server-6] [INFO] [1794908102.178832398] [global_costmap.global_costmap]: StaticLayer: Resizing costmap to 360 X 280 at 0.050000 m/pix
+[lifecycle_manager-9] [INFO] [1794908102.289819395] [lifecycle_manager_navigation]: Server map_server connected with bond.
+[lifecycle_manager-9] [INFO] [1794908102.290078681] [lifecycle_manager_navigation]: [34m[1mActivating planner_server[0m[0m
+[planner_server-6] [INFO] [1794908102.290808158] [planner_server]: Activating
+[planner_server-6] [INFO] [1794908102.291077844] [global_costmap.global_costmap]: Activating
+[planner_server-6] [INFO] [1794908102.291181392] [global_costmap.global_costmap]: Checking transform
+[planner_server-6] [INFO] [1794908102.291307787] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908102.791421215] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908103.291426073] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908103.791393240] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[pointcloud_nav_preprocessor.py-1] [WARN] [1794908103.807845390] [pointcloud_nav_preprocessor]: cannot transform laser -> base_link: "base_link" passed to lookupTransform argument target_frame does not exist. 
+[planner_server-6] [INFO] [1794908104.291393976] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908104.791384635] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908105.291570106] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908105.791391208] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908106.291381140] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908106.792044744] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908107.291389681] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908107.791392899] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908108.291390841] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908108.791382833] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908109.291388555] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908109.791389096] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908110.291387880] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908110.791372907] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908111.291380400] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908111.791379351] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908112.291389185] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908112.791472555] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908113.291382750] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908113.791380176] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908114.291400068] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908114.791401083] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908115.291523216] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908115.791372914] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908116.291424079] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908116.791433072] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908117.291410742] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908117.791344735] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908118.291379431] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908118.791378995] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908119.291388577] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908119.791377266] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908120.291411013] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908120.791392828] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908121.291406708] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908121.791393808] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908122.291383758] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908122.791390990] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908123.291404241] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908123.791381047] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908124.291388480] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908124.791437160] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908125.291401495] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908125.791409926] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908126.291379130] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908126.791404750] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908127.291377766] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908127.791382784] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908128.291434267] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908128.791433305] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908129.291410236] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908129.791410368] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908130.291405319] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908130.791411279] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908131.291394268] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908131.791407881] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908132.291407546] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908132.791394126] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908133.291391588] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908133.791415995] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908134.291397430] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908134.791391859] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908135.291395219] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908135.791538416] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908136.291384634] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908136.791379681] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908137.291420010] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908137.791424565] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908138.291354663] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908138.791414357] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908139.291381418] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908139.791372448] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908140.291394840] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908140.791377268] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908141.291389169] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908141.791380081] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[lidar_localization_node-4] [INFO] [1794908142.123893862] [lidar_localization]: initialPoseReceived
+[lidar_localization_node-4] [INFO] [1794908142.124219482] [lidar_localization]: Initialpose accepted as NDT guess only; waiting for NDT alignment before publishing map->odom
+[lidar_localization_node-4] [INFO] [1794908142.124366772] [lidar_localization]: initialPoseReceived end
+[lidar_localization_node-4] [INFO] [1794908142.148899044] [lidar_localization]: NDT source cloud: raw=9734 filtered=7857 kept=7857 frame=base_link
+[planner_server-6] [INFO] [1794908142.291355892] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[lidar_localization_node-4] [INFO] [1794908142.301546265] [lidar_localization]: NDT aligned: fitness=0.006 map→odom=[-0.07, -0.01, -0.03, yaw=0.001]
+[planner_server-6] [INFO] [1794908142.791803592] [global_costmap.global_costmap]: start
+[planner_server-6] [INFO] [1794908143.842334403] [planner_server]: Activating plugin GridBased of type NavfnPlanner
+[planner_server-6] [INFO] [1794908143.844903492] [planner_server]: Creating bond (planner_server) to lifecycle manager.
+[lifecycle_manager-9] [INFO] [1794908143.956900897] [lifecycle_manager_navigation]: Server planner_server connected with bond.
+[lifecycle_manager-9] [INFO] [1794908143.957155384] [lifecycle_manager_navigation]: [34m[1mActivating controller_server[0m[0m
+[controller_server-7] [INFO] [1794908143.957844574] [controller_server]: Activating
+[controller_server-7] [INFO] [1794908143.958033463] [local_costmap.local_costmap]: Activating
+[controller_server-7] [INFO] [1794908143.958100181] [local_costmap.local_costmap]: Checking transform
+[controller_server-7] [INFO] [1794908143.958621217] [local_costmap.local_costmap]: start
+[controller_server-7] [INFO] [1794908144.208969547] [controller_server]: Activating controller: FollowPath of type regulated_pure_pursuit_controller::RegulatedPurePursuitController
+[controller_server-7] [INFO] [1794908144.209284992] [controller_server]: Creating bond (controller_server) to lifecycle manager.
+[lidar_localization_node-4] [INFO] [1794908144.215724080] [lidar_localization]: NDT source cloud: raw=9680 filtered=7820 kept=7820 frame=base_link
+[lidar_localization_node-4] [INFO] [1794908144.256541796] [lidar_localization]: NDT auto correction: applied translation=0.001 rotation=0.000 remaining_translation=0.001 remaining_rotation=0.000
+[lidar_localization_node-4] [INFO] [1794908144.257317991] [lidar_localization]: NDT aligned: fitness=0.006 map→odom=[-0.07, -0.01, -0.03, yaw=0.001]
+[lifecycle_manager-9] [INFO] [1794908144.330342542] [lifecycle_manager_navigation]: Server controller_server connected with bond.
+[lifecycle_manager-9] [INFO] [1794908144.330615140] [lifecycle_manager_navigation]: [34m[1mActivating bt_navigator[0m[0m
+[bt_navigator-8] [INFO] [1794908144.331725338] [bt_navigator]: Activating
+[bt_navigator-8] [INFO] [1794908144.415361591] [bt_navigator]: Creating bond (bt_navigator) to lifecycle manager.
+[lifecycle_manager-9] [INFO] [1794908144.528859518] [lifecycle_manager_navigation]: Server bt_navigator connected with bond.
+[lifecycle_manager-9] [INFO] [1794908144.529164626] [lifecycle_manager_navigation]: [34m[1mManaged nodes are active[0m[0m
+[lifecycle_manager-9] [INFO] [1794908144.529283118] [lifecycle_manager_navigation]: [34m[1mCreating bond timer...[0m[0m
+[bt_navigator-8] [INFO] [1794908146.374243097] [bt_navigator]: Begin navigating from current location (-0.07, -0.01) to (6.52, -5.51)
+[controller_server-7] [INFO] [1794908146.396793364] [controller_server]: Received a goal, begin computing control effort.
+[controller_server-7] [WARN] [1794908146.397133351] [controller_server]: No goal checker was specified in parameter 'current_goal_checker'. Server will use only plugin loaded general_goal_checker . This warning will appear once.
+[lidar_localization_node-4] [INFO] [1794908146.442898500] [lidar_localization]: NDT source cloud: raw=9707 filtered=7848 kept=7848 frame=base_link
+[lidar_localization_node-4] [INFO] [1794908146.480985501] [lidar_localization]: NDT auto correction: applied translation=0.001 rotation=0.000 remaining_translation=0.002 remaining_rotation=0.000
+[lidar_localization_node-4] [INFO] [1794908146.481982712] [lidar_localization]: NDT aligned: fitness=0.006 map→odom=[-0.07, -0.01, -0.03, yaw=0.001]
+[controller_server-7] [INFO] [1794908147.447460751] [controller_server]: Passing new path to controller.
+[controller_server-7] [INFO] [1794908148.497456398] [controller_server]: Passing new path to controller.
+[lidar_localization_node-4] [INFO] [1794908148.639839977] [lidar_localization]: NDT source cloud: raw=9669 filtered=7675 kept=7675 frame=base_link
+[lidar_localization_node-4] [INFO] [1794908148.686824217] [lidar_localization]: NDT auto correction: applied translation=0.002 rotation=0.000 remaining_translation=0.004 remaining_rotation=0.001
+[lidar_localization_node-4] [INFO] [1794908148.687407972] [lidar_localization]: NDT aligned: fitness=0.006 map→odom=[-0.07, -0.01, -0.03, yaw=0.001]
+[controller_server-7] [INFO] [1794908149.497440343] [controller_server]: Passing new path to controller.
+[controller_server-7] [INFO] [1794908150.547448779] [controller_server]: Passing new path to controller.
+[lidar_localization_node-4] [INFO] [1794908150.822028737] [lidar_localization]: NDT source cloud: raw=9684 filtered=7674 kept=7674 frame=base_link
+[lidar_localization_node-4] [INFO] [1794908150.856494978] [lidar_localization]: NDT auto correction: applied translation=0.002 rotation=0.000 remaining_translation=0.004 remaining_rotation=0.001
+[lidar_localization_node-4] [INFO] [1794908150.857191368] [lidar_localization]: NDT aligned: fitness=0.006 map→odom=[-0.07, -0.01, -0.02, yaw=0.002]
+[controller_server-7] [INFO] [1794908151.597446345] [controller_server]: Passing new path to controller.
+[controller_server-7] [INFO] [1794908152.597445712] [controller_server]: Passing new path to controller.
+[lidar_localization_node-4] [INFO] [1794908152.978537406] [lidar_localization]: NDT source cloud: raw=9666 filtered=7539 kept=7539 frame=base_link
+[lidar_localization_node-4] [INFO] [1794908153.042758993] [lidar_localization]: NDT auto correction: applied translation=0.002 rotation=0.001 remaining_translation=0.005 remaining_rotation=0.002
+[lidar_localization_node-4] [INFO] [1794908153.043316892] [lidar_localization]: NDT aligned: fitness=0.006 map→odom=[-0.07, -0.01, -0.02, yaw=0.002]
+[controller_server-7] [INFO] [1794908153.647456226] [controller_server]: Passing new path to controller.
+[controller_server-7] [INFO] [1794908154.647457597] [controller_server]: Passing new path to controller.
+[lidar_localization_node-4] [INFO] [1794908155.124773285] [lidar_localization]: NDT source cloud: raw=9671 filtered=7608 kept=7608 frame=base_link
+[lidar_localization_node-4] [INFO] [1794908155.191061421] [lidar_localization]: NDT auto correction: applied translation=0.003 rotation=0.000 remaining_translation=0.006 remaining_rotation=0.001
+[lidar_localization_node-4] [INFO] [1794908155.191695254] [lidar_localization]: NDT aligned: fitness=0.006 map→odom=[-0.07, -0.01, -0.02, yaw=0.001]
+[controller_server-7] [INFO] [1794908155.697448580] [controller_server]: Passing new path to controller.
+[controller_server-7] [INFO] [1794908156.697435443] [controller_server]: Passing new path to controller.
+[lidar_localization_node-4] [INFO] [1794908157.401618133] [lidar_localization]: NDT source cloud: raw=9436 filtered=7381 kept=7381 frame=base_link
+[lidar_localization_node-4] [INFO] [1794908157.473275959] [lidar_localization]: NDT auto correction: applied translation=0.006 rotation=0.001 remaining_translation=0.015 remaining_rotation=0.002
+[lidar_localization_node-4] [INFO] [1794908157.473837410] [lidar_localization]: NDT aligned: fitness=0.006 map→odom=[-0.07, -0.01, -0.02, yaw=0.001]
+[controller_server-7] [INFO] [1794908157.747462222] [controller_server]: Passing new path to controller.
+[controller_server-7] [INFO] [1794908158.797434486] [controller_server]: Passing new path to controller.
+[lidar_localization_node-4] [INFO] [1794908159.468414771] [lidar_localization]: NDT source cloud: raw=9287 filtered=7236 kept=7236 frame=base_link
+[lidar_localization_node-4] [INFO] [1794908159.507320915] [lidar_localization]: NDT auto correction: applied translation=0.005 rotation=0.001 remaining_translation=0.012 remaining_rotation=0.002
+[lidar_localization_node-4] [INFO] [1794908159.507805409] [lidar_localization]: NDT aligned: fitness=0.006 map→odom=[-0.08, -0.00, -0.02, yaw=0.001]
+[controller_server-7] [INFO] [1794908159.798344416] [controller_server]: Passing new path to controller.
+[controller_server-7] [INFO] [1794908160.847574488] [controller_server]: Passing new path to controller.
+[lidar_localization_node-4] [INFO] [1794908161.568506698] [lidar_localization]: NDT source cloud: raw=8948 filtered=6966 kept=6966 frame=base_link
+[lidar_localization_node-4] [INFO] [1794908161.652829563] [lidar_localization]: NDT auto correction: applied translation=0.005 rotation=0.001 remaining_translation=0.013 remaining_rotation=0.002
+[lidar_localization_node-4] [INFO] [1794908161.653938290] [lidar_localization]: NDT aligned: fitness=0.006 map→odom=[-0.08, -0.00, -0.01, yaw=0.001]
+[controller_server-7] [INFO] [1794908161.847455291] [controller_server]: Passing new path to controller.
+[controller_server-7] [INFO] [1794908162.897449611] [controller_server]: Passing new path to controller.
+[bt_navigator-8] [WARN] [1794908163.407711513] [BehaviorTreeEngine]: Behavior Tree tick rate 100.00 was exceeded!
+[lidar_localization_node-4] [INFO] [1794908163.657656671] [lidar_localization]: NDT source cloud: raw=8435 filtered=6549 kept=6541 frame=base_link
+[lidar_localization_node-4] [INFO] [1794908163.716661786] [lidar_localization]: NDT auto correction: applied translation=0.008 rotation=0.001 remaining_translation=0.019 remaining_rotation=0.003
+[lidar_localization_node-4] [INFO] [1794908163.717090858] [lidar_localization]: NDT aligned: fitness=0.007 map→odom=[-0.09, 0.00, -0.01, yaw=0.001]
+[controller_server-7] [INFO] [1794908163.947477156] [controller_server]: Passing new path to controller.
+[controller_server-7] [INFO] [1794908164.947469057] [controller_server]: Passing new path to controller.
+[lidar_localization_node-4] [INFO] [1794908165.715365832] [lidar_localization]: NDT source cloud: raw=7840 filtered=6075 kept=6065 frame=base_link
+[lidar_localization_node-4] [INFO] [1794908165.744559281] [lidar_localization]: NDT auto correction: applied translation=0.006 rotation=0.001 remaining_translation=0.015 remaining_rotation=0.003
+[lidar_localization_node-4] [INFO] [1794908165.745060191] [lidar_localization]: NDT aligned: fitness=0.007 map→odom=[-0.09, 0.00, -0.01, yaw=0.000]
+[controller_server-7] [INFO] [1794908165.997452432] [controller_server]: Passing new path to controller.
+[controller_server-7] [INFO] [1794908166.997465471] [controller_server]: Passing new path to controller.
+[lidar_localization_node-4] [INFO] [1794908167.954028093] [lidar_localization]: NDT source cloud: raw=7301 filtered=5681 kept=5731 frame=base_link
+[lidar_localization_node-4] [INFO] [1794908168.031117374] [lidar_localization]: NDT auto correction: applied translation=0.007 rotation=0.001 remaining_translation=0.015 remaining_rotation=0.003
+[lidar_localization_node-4] [INFO] [1794908168.031967550] [lidar_localization]: NDT aligned: fitness=0.007 map→odom=[-0.09, 0.00, -0.01, yaw=-0.000]
+[controller_server-7] [INFO] [1794908168.047458722] [controller_server]: Passing new path to controller.
+[controller_server-7] [INFO] [1794908169.097434608] [controller_server]: Passing new path to controller.
+[controller_server-7] [INFO] [1794908170.097450076] [controller_server]: Passing new path to controller.
+[lidar_localization_node-4] [INFO] [1794908170.151954721] [lidar_localization]: NDT source cloud: raw=6595 filtered=5123 kept=5211 frame=base_link
+[lidar_localization_node-4] [INFO] [1794908170.189301950] [lidar_localization]: NDT auto correction: applied translation=0.004 rotation=0.001 remaining_translation=0.010 remaining_rotation=0.003
+[lidar_localization_node-4] [INFO] [1794908170.190007620] [lidar_localization]: NDT aligned: fitness=0.006 map→odom=[-0.09, 0.00, -0.00, yaw=-0.001]
+[controller_server-7] [INFO] [1794908171.147471421] [controller_server]: Passing new path to controller.
+[controller_server-7] [INFO] [1794908172.147475197] [controller_server]: Passing new path to controller.
+[lidar_localization_node-4] [INFO] [1794908172.396654261] [lidar_localization]: NDT source cloud: raw=5890 filtered=4627 kept=4737 frame=base_link
+[lidar_localization_node-4] [INFO] [1794908172.461480797] [lidar_localization]: NDT auto correction: applied translation=0.010 rotation=0.001 remaining_translation=0.022 remaining_rotation=0.003
+[lidar_localization_node-4] [INFO] [1794908172.462245313] [lidar_localization]: NDT aligned: fitness=0.006 map→odom=[-0.08, 0.00, 0.00, yaw=0.000]
+[controller_server-7] [INFO] [1794908173.197445971] [controller_server]: Passing new path to controller.
+[controller_server-7] [INFO] [1794908174.247466130] [controller_server]: Passing new path to controller.
+[lidar_localization_node-4] [INFO] [1794908174.582809158] [lidar_localization]: NDT source cloud: raw=4986 filtered=3946 kept=4108 frame=base_link
+[lidar_localization_node-4] [INFO] [1794908174.636496138] [lidar_localization]: NDT auto correction: applied translation=0.006 rotation=0.000 remaining_translation=0.014 remaining_rotation=0.000
+[lidar_localization_node-4] [INFO] [1794908174.637159122] [lidar_localization]: NDT aligned: fitness=0.006 map→odom=[-0.08, 0.01, 0.00, yaw=0.000]
+[controller_server-7] [INFO] [1794908175.247480718] [controller_server]: Passing new path to controller.
+[controller_server-7] [INFO] [1794908176.297475969] [controller_server]: Passing new path to controller.
+[lidar_localization_node-4] [INFO] [1794908176.681354943] [lidar_localization]: NDT source cloud: raw=4399 filtered=3499 kept=3648 frame=base_link
+[lidar_localization_node-4] [INFO] [1794908176.703554317] [lidar_localization]: NDT auto correction: applied translation=0.004 rotation=0.000 remaining_translation=0.008 remaining_rotation=0.000
+[lidar_localization_node-4] [INFO] [1794908176.704071449] [lidar_localization]: NDT aligned: fitness=0.006 map→odom=[-0.08, 0.01, 0.01, yaw=0.000]
+[controller_server-7] [INFO] [1794908177.297481552] [controller_server]: Passing new path to controller.
+[controller_server-7] [INFO] [1794908178.347488951] [controller_server]: Passing new path to controller.
+[lidar_localization_node-4] [INFO] [1794908178.860216274] [lidar_localization]: NDT source cloud: raw=4289 filtered=3361 kept=3513 frame=base_link
+[lidar_localization_node-4] [INFO] [1794908178.888509216] [lidar_localization]: NDT auto correction: applied translation=0.004 rotation=0.000 remaining_translation=0.009 remaining_rotation=0.001
+[lidar_localization_node-4] [INFO] [1794908178.888983822] [lidar_localization]: NDT aligned: fitness=0.006 map→odom=[-0.07, 0.01, 0.01, yaw=-0.000]
+[controller_server-7] [INFO] [1794908179.397480584] [controller_server]: Passing new path to controller.
+[controller_server-7] [INFO] [1794908180.397462997] [controller_server]: Passing new path to controller.
+[lidar_localization_node-4] [INFO] [1794908180.938490471] [lidar_localization]: NDT source cloud: raw=4562 filtered=3652 kept=3834 frame=base_link
+[lidar_localization_node-4] [INFO] [1794908180.964332656] [lidar_localization]: NDT auto correction: applied translation=0.004 rotation=0.000 remaining_translation=0.009 remaining_rotation=0.001
+[lidar_localization_node-4] [INFO] [1794908180.965029046] [lidar_localization]: NDT aligned: fitness=0.006 map→odom=[-0.07, 0.01, 0.01, yaw=-0.000]
+[controller_server-7] [INFO] [1794908181.447465242] [controller_server]: Passing new path to controller.
+[controller_server-7] [INFO] [1794908182.447453849] [controller_server]: Passing new path to controller.
+[lidar_localization_node-4] [INFO] [1794908183.033331107] [lidar_localization]: NDT source cloud: raw=5001 filtered=4024 kept=4241 frame=base_link
+[lidar_localization_node-4] [INFO] [1794908183.110869919] [lidar_localization]: NDT auto correction: applied translation=0.008 rotation=0.001 remaining_translation=0.018 remaining_rotation=0.002
+[lidar_localization_node-4] [INFO] [1794908183.111366764] [lidar_localization]: NDT aligned: fitness=0.006 map→odom=[-0.07, 0.01, 0.01, yaw=-0.001]
+[controller_server-7] [INFO] [1794908183.348134534] [controller_server]: Reached the goal!
+[bt_navigator-8] [INFO] [1794908183.385271760] [bt_navigator]: Goal succeeded
+[lidar_localization_node-4] [INFO] [1794908185.147723544] [lidar_localization]: NDT source cloud: raw=5092 filtered=4052 kept=4274 frame=base_link
+[lidar_localization_node-4] [INFO] [1794908185.193453543] [lidar_localization]: NDT auto correction: applied translation=0.005 rotation=0.001 remaining_translation=0.011 remaining_rotation=0.001
+[lidar_localization_node-4] [INFO] [1794908185.194126254] [lidar_localization]: NDT aligned: fitness=0.006 map→odom=[-0.07, 0.01, 0.01, yaw=-0.000]
+[lidar_localization_node-4] [INFO] [1794908187.327359128] [lidar_localization]: NDT source cloud: raw=5103 filtered=4072 kept=4287 frame=base_link
+[lidar_localization_node-4] [INFO] [1794908187.367525875] [lidar_localization]: NDT auto correction: applied translation=0.004 rotation=0.001 remaining_translation=0.010 remaining_rotation=0.002
+[lidar_localization_node-4] [INFO] [1794908187.368025121] [lidar_localization]: NDT aligned: fitness=0.006 map→odom=[-0.07, 0.00, 0.01, yaw=0.000]
+[lidar_localization_node-4] [INFO] [1794908189.434720513] [lidar_localization]: NDT source cloud: raw=5131 filtered=4060 kept=4281 frame=base_link
+[lidar_localization_node-4] [INFO] [1794908189.472221055] [lidar_localization]: NDT auto correction: applied translation=0.002 rotation=0.001 remaining_translation=0.005 remaining_rotation=0.001
+[lidar_localization_node-4] [INFO] [1794908189.473048257] [lidar_localization]: NDT aligned: fitness=0.006 map→odom=[-0.07, 0.00, 0.01, yaw=0.001]
+[WARNING] [launch]: user interrupted with ctrl-c (SIGINT)
+[controller_server-7] [INFO] [1794908190.666033657] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[controller_server-7] [INFO] [1794908190.666315022] [controller_server]: Running Nav2 LifecycleNode rcl preshutdown (controller_server)
+[controller_server-7] [INFO] [1794908190.666557541] [controller_server]: Deactivating
+[controller_server-7] [INFO] [1794908190.666633891] [controller_server]: Deactivating controller: FollowPath of type regulated_pure_pursuit_controller::RegulatedPurePursuitController
+[INFO] [static_transform_publisher-3]: process has finished cleanly [pid 40260]
+[INFO] [robot_state_publisher-2]: process has finished cleanly [pid 40258]
+[INFO] [lidar_localization_node-4]: process has finished cleanly [pid 40262]
+[INFO] [map_server-5]: process has finished cleanly [pid 40264]
+[INFO] [lifecycle_manager-9]: process has finished cleanly [pid 40272]
+[INFO] [controller_server-7]: process has finished cleanly [pid 40268]
+[INFO] [bt_navigator-8]: process has finished cleanly [pid 40270]
+[INFO] [planner_server-6]: process has finished cleanly [pid 40266]
+[INFO] [pointcloud_nav_preprocessor.py-1]: process has finished cleanly [pid 40256]
+[bt_navigator-8] [INFO] [1794908190.666020345] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[bt_navigator-8] [INFO] [1794908190.666313710] [bt_navigator]: Running Nav2 LifecycleNode rcl preshutdown (bt_navigator)
+[bt_navigator-8] [INFO] [1794908190.666556517] [bt_navigator]: Deactivating
+[bt_navigator-8] [INFO] [1794908190.666634435] [bt_navigator]: Destroying bond (bt_navigator) to lifecycle manager.
+[lifecycle_manager-9] [INFO] [1794908190.666037945] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[lifecycle_manager-9] [INFO] [1794908190.666359885] [lifecycle_manager_navigation]: Running Nav2 LifecycleManager rcl preshutdown (lifecycle_manager_navigation)
+[lifecycle_manager-9] [INFO] [1794908190.666490728] [lifecycle_manager_navigation]: [34m[1mTerminating bond timer...[0m[0m
+[planner_server-6] [INFO] [1794908190.666052408] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[planner_server-6] [INFO] [1794908190.666314510] [planner_server]: Running Nav2 LifecycleNode rcl preshutdown (planner_server)
+[planner_server-6] [INFO] [1794908190.666557989] [planner_server]: Deactivating
+[planner_server-6] [INFO] [1794908190.666681825] [global_costmap.global_costmap]: Deactivating
+[map_server-5] [INFO] [1794908190.666088855] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[map_server-5] [INFO] [1794908190.666356973] [map_server]: Running Nav2 LifecycleNode rcl preshutdown (map_server)
+[map_server-5] [INFO] [1794908190.666567685] [map_server]: Deactivating
+[map_server-5] [INFO] [1794908190.666629347] [map_server]: Destroying bond (map_server) to lifecycle manager.
+[static_transform_publisher-3] [INFO] [1794908190.666083671] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[robot_state_publisher-2] [INFO] [1794908190.666192883] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[controller_server-7] [INFO] [1794908190.666727807] [local_costmap.local_costmap]: Deactivating
+[controller_server-7] [INFO] [1794908190.759594349] [controller_server]: Destroying bond (controller_server) to lifecycle manager.
+[controller_server-7] [INFO] [1794908190.770138602] [controller_server]: Cleaning up
+[controller_server-7] [INFO] [1794908190.770242086] [controller_server]: Cleaning up controller: FollowPath of type regulated_pure_pursuit_controller::RegulatedPurePursuitController
+[controller_server-7] [INFO] [1794908190.770351330] [local_costmap.local_costmap]: Cleaning up
+[controller_server-7] [INFO] [1794908190.795483655] [controller_server]: Destroying bond (controller_server) to lifecycle manager.
+[controller_server-7] [INFO] [1794908190.806000741] [local_costmap.local_costmap]: Destroying
+[controller_server-7] [INFO] [1794908190.822738078] [controller_server]: Destroying
+[lidar_localization_node-4] [INFO] [1794908190.666711456] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[map_server-5] [INFO] [1794908190.677720236] [map_server]: Cleaning up
+[map_server-5] [INFO] [1794908190.677906885] [map_server]: Destroying bond (map_server) to lifecycle manager.
+[map_server-5] [INFO] [1794908190.701102257] [map_server]: Destroying
+[bt_navigator-8] [INFO] [1794908190.677724523] [bt_navigator]: Cleaning up
+[bt_navigator-8] [INFO] [1794908190.812280254] [bt_navigator]: Completed Cleaning up
+[bt_navigator-8] [INFO] [1794908190.812488566] [bt_navigator]: Destroying bond (bt_navigator) to lifecycle manager.
+[bt_navigator-8] [INFO] [1794908190.831488125] [bt_navigator]: Destroying
+[lifecycle_manager-9] [INFO] [1794908190.755843447] [lifecycle_manager_navigation]: Destroying lifecycle_manager_navigation
+[planner_server-6] [INFO] [1794908190.792154145] [planner_server]: Deactivating plugin GridBased of type NavfnPlanner
+[planner_server-6] [INFO] [1794908190.792273213] [planner_server]: Destroying bond (planner_server) to lifecycle manager.
+[planner_server-6] [INFO] [1794908190.802681886] [planner_server]: Cleaning up
+[planner_server-6] [INFO] [1794908190.819750060] [global_costmap.global_costmap]: Cleaning up
+[planner_server-6] [INFO] [1794908190.824330211] [planner_server]: Cleaning up plugin GridBased of type NavfnPlanner
+[planner_server-6] [INFO] [1794908190.824663671] [planner_server]: Destroying plugin GridBased of type NavfnPlanner
+[planner_server-6] [INFO] [1794908190.838883245] [planner_server]: Destroying bond (planner_server) to lifecycle manager.
+[planner_server-6] [INFO] [1794908190.844881105] [global_costmap.global_costmap]: Destroying
+[planner_server-6] [INFO] [1794908190.856267823] [planner_server]: Destroying

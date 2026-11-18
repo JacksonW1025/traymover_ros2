@@ -1,0 +1,50 @@
+{
+  "manual_inputs": {
+    "/initialpose": [
+      {
+        "sim_time": 51.1,
+        "position": [
+          -0.05431245639920235,
+          -0.07049444317817688,
+          0.0
+        ],
+        "yaw": -0.17974566871783967
+      }
+    ],
+    "/goal_pose": [
+      {
+        "sim_time": 55.1,
+        "position": [
+          6.521986961364746,
+          -5.507880687713623,
+          0.0
+        ],
+        "yaw": 3.027526430585119
+      }
+    ],
+    "/navigate_to_pose/_action/status": [
+      {
+        "sim_time": 55.1,
+        "statuses": [
+          2
+        ]
+      },
+      {
+        "sim_time": 89.55,
+        "statuses": [
+          4
+        ]
+      }
+    ]
+  },
+  "goal_succeeded": true,
+  "final_true_pose": [
+    6.465676930056047,
+    -5.402012231803817,
+    -3.0375000000000063
+  ],
+  "true_goal_distance_m": 0.11991225785011826,
+  "localization_current_rmse_m": 0.07618164563412681,
+  "max_tf_age_s": 0.09999999999999998,
+  "caveat": "This manual run still had the failed first startup's duplicate pointcloud preprocessing publisher; use the subsequent clean automatic run for acceptance."
+}

@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 
 import yaml
-from ament_index_python.packages import get_package_share_directory
+from ament_index_python.packages import get_package_prefix, get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, OpaqueFunction
 from launch.substitutions import LaunchConfiguration
@@ -24,20 +24,25 @@ def include_imu_launch(context, *args, **kwargs):
             'supports the external N300 Pro IMU only.'
         )
 
-    return [
-        Node(
-            package='hipnuc_imu',
-            executable='talker',
-            name='traymover_imu_publisher',
-            output='screen',
-            parameters=[{
-                'serial_port': LaunchConfiguration('imu_serial_port'),
-                'baud_rate': LaunchConfiguration('imu_baud_rate'),
-                'frame_id': LaunchConfiguration('imu_frame_id'),
-                'imu_topic': LaunchConfiguration('imu_topic'),
-            }],
-        )
-    ]
+    port = (LaunchConfiguration('imu_serial_port').perform(context) or
+            cfg.get('imu_serial_port', '/dev/ttyCH343USB0'))
+    baud = int(LaunchConfiguration('imu_baud_rate').perform(context))
+    frame = LaunchConfiguration('imu_frame_id').perform(context)
+    topic = LaunchConfiguration('imu_topic').perform(context)
+    executables = Path(get_package_prefix('hipnuc_imu')) / 'lib' / 'hipnuc_imu'
+    if (executables / 'hipnuc_imu_node').is_file():
+        # Keep the existing topic's orientation for RViz and inertial data for FAST-LIO.
+        executable = 'hipnuc_imu_node'
+        parameters = {'port': port, 'baudrate': baud, 'frame_id': frame}
+        remappings = [('imu/data', topic)]
+    else:
+        executable = 'talker'
+        parameters = {'serial_port': port, 'baud_rate': baud,
+                      'frame_id': frame, 'imu_topic': topic}
+        remappings = []
+    return [Node(package='hipnuc_imu', executable=executable,
+                 name='traymover_imu_publisher', output='screen',
+                 parameters=[parameters], remappings=remappings)]
 
 
 def generate_launch_description():
@@ -63,7 +68,7 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             'imu_serial_port',
-            default_value='/dev/ttyCH343USB0',
+            default_value='',
             description='Serial port used by the N300 Pro IMU.',
         ),
         DeclareLaunchArgument(

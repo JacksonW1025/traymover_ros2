@@ -1,7 +1,6 @@
 #ifndef SCANMATCHERPROCESSOR_H
 #define SCANMATCHERPROCESSOR_H
 
-#include <gmapping/log/sensorlog.h>
 #include <gmapping/sensor/sensor_range/rangesensor.h>
 #include <gmapping/sensor/sensor_range/rangereading.h>
 //#include <gsl/gsl_eigen.h>

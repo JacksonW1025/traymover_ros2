@@ -95,7 +95,7 @@ for attempt in {1..8}; do
     remaining=()
     for node in "${pending[@]}"; do
         kill -0 "${nav_pid}" 2>/dev/null || break 2
-        if timeout 2 ros2 param dump "/${node}" \
+        if timeout 2 ros2 param dump "/${node}" --no-daemon \
             > "${RUN_DIR}/parameters/${node}.tmp" \
             2> "${RUN_DIR}/parameters/${node}.stderr"; then
             mv "${RUN_DIR}/parameters/${node}.tmp" "${RUN_DIR}/parameters/${node}.yaml"

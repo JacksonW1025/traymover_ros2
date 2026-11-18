@@ -1,0 +1,22 @@
+{
+  "full_software_chain_passed": true,
+  "clean_automatic_run": "reference/option21_full_chain_20261117/clean_run/self_test_results.json",
+  "clean_localization_cloud_publishers": 1,
+  "automatic_goals_true_distance_m": [
+    0.11495919308837921,
+    0.15985316302700653
+  ],
+  "automatic_localization_rmse_m": 0.07246843977524446,
+  "automatic_max_tf_age_s": 0.04999999999999716,
+  "manual_goal_succeeded": true,
+  "manual_goal_true_distance_m": 0.11991225785011826,
+  "manual_caveat": "This manual run still had the failed first startup's duplicate pointcloud preprocessing publisher; use the subsequent clean automatic run for acceptance.",
+  "hardware_serial_device_opened": false,
+  "physical_wheel_scale_or_real_world_accuracy_verified": false,
+  "mode": "Nav2 -> cmd_vel -> real chassis driver TX -> virtual STM32/plant -> real serial parser and odom TF -> NDT -> Nav2",
+  "external_disk_disconnected_during_setup": true,
+  "large_logs_temporarily_in_memory": "/dev/shm/traymover_experiments",
+  "manual_window_closed_and_processes_stopped": true,
+  "startup_dependency_added": "xacro 2.1.1 (Python user installation)",
+  "occupancy_projection_issue": "Original sparse synthetic PCD lost pillar occupancy during min-region=2 cleanup. Previous results prove transport/control linkage only, not obstacle avoidance. Superseded for obstacle navigation by option21_obstacle_navigation_20261117."
+}

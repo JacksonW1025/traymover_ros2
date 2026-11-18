@@ -1,0 +1,26 @@
+{
+  "t": 25.0,
+  "truth": [
+    2.012629545750915,
+    1.326409441608656,
+    1.332989217279404
+  ],
+  "counts": {
+    "odom": 502,
+    "tf": 2287,
+    "tf_static": 2,
+    "map_cloud": 1,
+    "initialpose": 1,
+    "cloud": 201,
+    "ndt": 10,
+    "aligned_cloud": 10,
+    "action_status": 3,
+    "plan": 18,
+    "cmd": 360,
+    "nonzero_cmd": 359
+  },
+  "self_test_finished": false,
+  "self_test": {},
+  "output_free_gb": 32.917143552,
+  "cloud_publishers": 1
+}

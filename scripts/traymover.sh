@@ -9,10 +9,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WORKSPACE_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 ROS_DISTRO_SETUP="/opt/ros/humble/setup.bash"
 WS_SETUP="${WORKSPACE_DIR}/install/setup.bash"
-ROS_LOG_DIR_DEFAULT="/tmp/roslog"
+ROS_LOG_DIR_DEFAULT="${TRAYMOVER_ROS_LOG_DIR:-/tmp/roslog}"
 
 DEFAULT_MAP_DIR="${WORKSPACE_DIR}/src/traymover_robot_nav2/map"
-FASTLIO_PCD_DIR="${WORKSPACE_DIR}/src/traymover_robot_slam/FAST_LIO/PCD"
+FASTLIO_PCD_DIR="${TRAYMOVER_PCD_DIR:-${WORKSPACE_DIR}/src/traymover_robot_slam/FAST_LIO/PCD}"
 FASTLIO_ROSBAG_DIR="${WORKSPACE_DIR}/src/traymover_robot_slam/FAST_LIO/rosbag"
 FASTLIO_POS_LOG="${WORKSPACE_DIR}/src/traymover_robot_slam/FAST_LIO/Log/pos_log.txt"
 FASTLIO_FILTER_STAGING="${FASTLIO_PCD_DIR}/traymover_filtered.pcd"
@@ -75,15 +75,15 @@ echo; echo '[traymover] ${title} exited. Press Enter to close.'; read"
 
     case "${term}" in
         gnome-terminal)
-            gnome-terminal --title="${title}" -- bash -lc "${wrapped}" &
+            gnome-terminal --title="${title}" -- env TRAYMOVER_MANAGED_PROCESS=1 bash -lc "${wrapped}" &
             ;;
         xterm)
-            xterm -T "${title}" -e bash -lc "${wrapped}" &
+            xterm -T "${title}" -e env TRAYMOVER_MANAGED_PROCESS=1 bash -lc "${wrapped}" &
             ;;
         *)
             echo "No supported terminal emulator found (gnome-terminal/xterm)."
             echo "Running in this window instead. Ctrl+C to return to the menu."
-            bash -lc "${wrapped}"
+            TRAYMOVER_MANAGED_PROCESS=1 bash -lc "${wrapped}"
             return
             ;;
     esac
@@ -118,7 +118,7 @@ KILL_PATTERNS=(
     'traymover_robot.py'
     # setuptools launches this console entry point, not the source .py file.
     'lib/turn_on_traymover_robot/traymover_robot_node([[:space:]]|$)'
-    'lib/hipnuc_imu/talker([[:space:]]|$)'
+    'lib/hipnuc_imu/(talker|hipnuc_imu_node)([[:space:]]|$)'
     'traymover_ekf_filter_node'
     'async_slam_toolbox_node'
     'sync_slam_toolbox_node'
@@ -170,6 +170,7 @@ KILL_PATTERNS=(
     'lib/nav2_collision_monitor'
     'lib/nav2_lifecycle_manager'
     'lib/nav2_velocity_smoother'
+    'lib/nav2_smoother'
     '\[traymover\]'  # the wrapper banner, matches bash processes in spawned terminals
 )
 
@@ -324,14 +325,7 @@ kill_previous() {
     local quiet="${1:-false}"
     [ "$quiet" = "true" ] || echo "[traymover] Cleaning up previous processes..."
     stop_rosbag_recorders "$quiet"
-    for p in "${KILL_PATTERNS[@]}"; do
-        pkill -f "$p" 2>/dev/null || true
-    done
-    # Give processes a moment to shut down cleanly, then SIGKILL stragglers.
-    sleep 0.8
-    for p in "${KILL_PATTERNS[@]}"; do
-        pkill -9 -f "$p" 2>/dev/null || true
-    done
+    python3 "${SCRIPT_DIR}/traymover_stop_processes.py" "${KILL_PATTERNS[@]}" || return 1
     reindex_missing_rosbag_metadata "$quiet"
     [ "$quiet" = "true" ] || echo "[traymover] Cleanup done."
 }
@@ -650,7 +644,8 @@ action_show_battery() {
 
     echo "[traymover] Reading /battery_state (waiting up to 5s)..."
     local output
-    output="$(timeout 5 ros2 topic echo /battery_state --once 2>&1)"
+    output="$(timeout 5 ros2 topic echo /battery_state --no-daemon --once \
+        --filter '0.0 <= m.percentage <= 1.0' 2>&1)"
     local rc=$?
     if [ $rc -ne 0 ] || ! echo "${output}" | grep -q 'percentage:'; then
         echo "[traymover] Could not read /battery_state. Is the chassis running?"
@@ -658,10 +653,11 @@ action_show_battery() {
         return 1
     fi
 
-    local pct temp charge_status
+    local pct temp charge_status version
     pct="$(echo "${output}" | awk '/^percentage:/ {print $2}')"
     temp="$(echo "${output}" | awk '/^temperature:/ {print $2}')"
     charge_status="$(echo "${output}" | awk '/^power_supply_status:/ {print $2}')"
+    version="$(echo "${output}" | awk '/^serial_number:/ {print $2}' | tr -d "'\"")"
 
     local pct_display
     if [ -n "${pct}" ]; then
@@ -680,8 +676,10 @@ action_show_battery() {
     esac
 
     echo "  Battery : ${pct_display}"
-    echo "  Temp    : ${temp:-?} °C"
+    [[ "${temp}" =~ ^-?[0-9]+([.][0-9]+)?$ ]] || temp='?'
+    echo "  Temp    : ${temp} °C"
     echo "  Status  : ${charge_text}"
+    echo "  Firmware: ${version:-?}"
 }
 
 prompt_ndt_height_boost() {

@@ -1,4 +1,5 @@
 imu_mode: N300_pro
+imu_serial_port: /dev/serial/by-id/usb-1a86_USB_Single_Serial_5A6C071391-if00
 lidar_type: lscx
 
 # lslidar X10 / N10 系列串口配置

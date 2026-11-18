@@ -68,7 +68,7 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             'imu_serial_port',
-            default_value='/dev/ttyCH343USB0',
+            default_value='',
             description='Serial port used by the N300 Pro IMU.',
         ),
         DeclareLaunchArgument(

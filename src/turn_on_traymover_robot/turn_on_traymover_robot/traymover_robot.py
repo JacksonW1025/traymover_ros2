@@ -19,7 +19,7 @@ from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 import serial
-from sensor_msgs.msg import BatteryState
+from sensor_msgs.msg import BatteryState, JointState
 from std_msgs.msg import Bool, Int16, UInt8
 from std_srvs.srv import SetBool
 from tf2_ros import TransformBroadcaster
@@ -40,6 +40,7 @@ MSG_ID_GET_BAUD = 0x01
 MSG_ID_GET_MOTOR_DATA = 0x02
 MSG_ID_GET_MOTOR_STATUS = 0x03
 STATUS_SUCCESS = 0x60
+SERIAL_RETRY_INTERVAL_SEC = 1.0
 
 ODOM_POSE_COVARIANCE_MOVING = (
     1e6, 0.0, 0.0, 0.0, 0.0, 0.0,
@@ -393,12 +394,14 @@ class TurnOnTraymoverRobot(Node):
         self.declare_parameter('alarm_led', 1)
         self.declare_parameter('ir_threshold', 20)
         self.declare_parameter('cmd_vel_timeout', 0.5)
+        self.declare_parameter('max_command_angular_speed', 0.0)
         self.declare_parameter('robot_frame_id', 'base_footprint')
         self.declare_parameter('odom_frame_id', 'odom')
         self.declare_parameter('odom_source_mode', 'stm32_feedback')
         self.declare_parameter('publish_odom_tf', False)
         self.declare_parameter('left_encoder_sign', 1)
         self.declare_parameter('right_encoder_sign', 1)
+        self.declare_parameter('angular_feedback_sign', 1)
         self.declare_parameter('poll_rate_hz', 20.0)
         self.declare_parameter('status_poll_rate_hz', 1.0)
         self.declare_parameter('feedback_max_gap_sec', 0.3)
@@ -416,12 +419,18 @@ class TurnOnTraymoverRobot(Node):
         self.alarm_led = self.get_parameter('alarm_led').value
         self.ir_threshold = self.get_parameter('ir_threshold').value
         self.cmd_vel_timeout = self.get_parameter('cmd_vel_timeout').value
+        self.max_command_angular_speed = self.get_parameter('max_command_angular_speed').value
+        if not math.isfinite(self.max_command_angular_speed) or self.max_command_angular_speed < 0:
+            raise ValueError('max_command_angular_speed must be finite and nonnegative')
         self.robot_frame_id = self.get_parameter('robot_frame_id').value
         self.odom_frame_id = self.get_parameter('odom_frame_id').value
         self.odom_source_mode = self.get_parameter('odom_source_mode').value
         self.publish_odom_tf = self.get_parameter('publish_odom_tf').value
         self.left_encoder_sign = int(self.get_parameter('left_encoder_sign').value)
         self.right_encoder_sign = int(self.get_parameter('right_encoder_sign').value)
+        self.angular_feedback_sign = self.get_parameter('angular_feedback_sign').value
+        if self.angular_feedback_sign not in (-1, 1):
+            raise ValueError('angular_feedback_sign must be +1 or -1')
         self.poll_rate_hz = float(self.get_parameter('poll_rate_hz').value)
         self.status_poll_rate_hz = float(self.get_parameter('status_poll_rate_hz').value)
         self.feedback_max_gap_sec = float(self.get_parameter('feedback_max_gap_sec').value)
@@ -470,6 +479,8 @@ class TurnOnTraymoverRobot(Node):
         self.odom_x = 0.0
         self.odom_y = 0.0
         self.odom_yaw = 0.0
+        self.left_wheel_angle = 0.0
+        self.right_wheel_angle = 0.0
         self.receive_buffer = bytearray()
         self.serial_read_timeout = min(0.1, max(0.02, 1.0 / self.poll_rate_hz))
         self.status_poll_period = (
@@ -495,29 +506,16 @@ class TurnOnTraymoverRobot(Node):
             self.odom_enabled = False
 
         self.serial_port = None
-        try:
-            self.serial_port = serial.Serial(
-                port=self.port_name,
-                baudrate=self.baud_rate,
-                bytesize=serial.EIGHTBITS,
-                stopbits=serial.STOPBITS_ONE,
-                parity=serial.PARITY_NONE,
-                timeout=0.0,
-                write_timeout=0.1,
-            )
-            self.serial_port.reset_input_buffer()
-            self.serial_port.reset_output_buffer()
-            self.get_logger().info(
-                f'Serial port opened: {self.port_name} @ {self.baud_rate} bps'
-            )
-        except serial.SerialException as exc:
-            self.get_logger().error(f'Failed to open serial port {self.port_name}: {exc}')
-            self.get_logger().warn('Node will continue without serial (for testing).')
+        self._next_serial_open_mono = 0.0
+        self.open_serial_port()
 
         self.cmd_vel_sub = self.create_subscription(
             Twist, '/cmd_vel', self.cmd_vel_callback, 2
         )
         self.odom_pub = self.create_publisher(Odometry, 'odom', 10) if self.odom_enabled else None
+        self.joint_state_pub = None
+        if self.odom_enabled and self.odom_source_mode == 'stm32_velocity':
+            self.joint_state_pub = self.create_publisher(JointState, 'joint_states', 10)
         self.battery_state_pub = self.create_publisher(BatteryState, 'battery_state', 10)
         self.power_level_pub = self.create_publisher(UInt8, 'power_level', 10)
         self.charge_status_pub = self.create_publisher(UInt8, 'charge_status', 10)
@@ -575,6 +573,51 @@ class TurnOnTraymoverRobot(Node):
             self._last_warning_times[key] = now
             self.get_logger().warn(message)
 
+    def open_serial_port(self):
+        self._next_serial_open_mono = time.monotonic() + SERIAL_RETRY_INTERVAL_SEC
+        port = None
+        try:
+            port = serial.Serial(
+                port=self.port_name,
+                baudrate=self.baud_rate,
+                bytesize=serial.EIGHTBITS,
+                stopbits=serial.STOPBITS_ONE,
+                parity=serial.PARITY_NONE,
+                timeout=0.0,
+                write_timeout=0.1,
+                exclusive=True if self.odom_source_mode == 'stm32_velocity' else None,
+            )
+            port.reset_input_buffer()
+            port.reset_output_buffer()
+        except OSError as exc:
+            if port is not None:
+                port.close()
+            retry = ' Retrying automatically.' if self.odom_source_mode == 'stm32_velocity' else ''
+            self.throttled_warn('serial_open', f'Cannot open {self.port_name}: {exc}.{retry}')
+            return
+
+        self.serial_port = port
+        self.get_logger().info(f'Serial port opened: {self.port_name} @ {self.baud_rate} bps')
+
+    def handle_serial_error(self, key: str, message: str):
+        self.throttled_warn(key, message)
+        if self.odom_source_mode != 'stm32_velocity':
+            return
+
+        port, self.serial_port = self.serial_port, None
+        if port is not None:
+            try:
+                port.close()
+            except OSError as exc:
+                self.throttled_warn('serial_close', f'Serial close failed: {exc}')
+        self._next_serial_open_mono = time.monotonic() + SERIAL_RETRY_INTERVAL_SEC
+        self.vel_x = self.vel_th = 0.0
+        self.receive_buffer.clear()
+        self._last_feedback_mono = self._last_velocity_stamp_ns = None
+        self._last_status_poll_mono = float('-inf')
+        self._latest_motor_feedback = self._latest_motor_status = None
+        self._feedback_active_logged = False
+
     def log_odometry_capability(self):
         if not self.odom_enabled:
             self.get_logger().warn(
@@ -586,6 +629,7 @@ class TurnOnTraymoverRobot(Node):
             self.get_logger().info(
                 'STM32 measured velocity odometry: bytes 29:31 mm/s -> m/s, '
                 '31:33 millirad/s -> rad/s; ROS-time integration, '
+                f'angular_feedback_sign={self.angular_feedback_sign:+d}, '
                 f'max_gap={self.feedback_max_gap_sec:.3f}s, '
                 f'publish_odom_tf={self.publish_odom_tf}.')
             return
@@ -597,18 +641,30 @@ class TurnOnTraymoverRobot(Node):
         )
 
     def cmd_vel_callback(self, twist: Twist):
-        if self.estop_active:
+        if self.estop_active or (self.odom_source_mode == 'stm32_velocity' and
+                                 self._latest_motor_feedback is None):
             self.vel_x = 0.0
             self.vel_th = 0.0
             return
 
         self.vel_x = twist.linear.x
         self.vel_th = twist.angular.z
+        limit = self.max_command_angular_speed
+        if 0.0 < limit < abs(self.vel_th):
+            # Reduce both velocities together to keep the requested turning radius.
+            self.vel_x *= limit / abs(self.vel_th)
+            self.vel_th = math.copysign(limit, self.vel_th)
         self.last_cmd_vel_time = self.get_clock().now()
 
     def send_frame_callback(self):
         now = self.get_clock().now()
         self.refresh_estop_state()
+        if self.serial_port is None and self.odom_source_mode == 'stm32_velocity':
+            if time.monotonic() >= self._next_serial_open_mono:
+                self.open_serial_port()
+        if self.serial_port is None or not self.serial_port.is_open:
+            return
+
         if self.estop_active:
             self.vel_x = 0.0
             self.vel_th = 0.0
@@ -632,13 +688,10 @@ class TurnOnTraymoverRobot(Node):
             ir_threshold=self.ir_threshold,
         )
 
-        if self.serial_port is None or not self.serial_port.is_open:
-            return
-
         try:
             self.serial_port.write(frame)
-        except serial.SerialException as exc:
-            self.throttled_warn('serial_write', f'Serial write failed: {exc}')
+        except OSError as exc:
+            self.handle_serial_error('serial_write', f'Serial write failed: {exc}')
             return
 
         feedback = self.read_motor_feedback()
@@ -652,7 +705,7 @@ class TurnOnTraymoverRobot(Node):
                              if self.odom_source_mode == 'stm32_velocity' else now)
             self.handle_motor_feedback(feedback, feedback_time.to_msg())
 
-        if self.should_poll_motor_status():
+        if self.serial_port is not None and self.should_poll_motor_status():
             status = self.request_motor_status()
             if status is None:
                 self.throttled_warn(
@@ -748,8 +801,8 @@ class TurnOnTraymoverRobot(Node):
         )
         try:
             self.serial_port.write(stop_frame)
-        except serial.SerialException as exc:
-            self.throttled_warn('serial_estop_write', f'EStop serial write failed: {exc}')
+        except OSError as exc:
+            self.handle_serial_error('serial_estop_write', f'EStop serial write failed: {exc}')
 
     def should_poll_motor_status(self) -> bool:
         if self.status_poll_period is None:
@@ -768,18 +821,9 @@ class TurnOnTraymoverRobot(Node):
         deadline = time.monotonic() + self.serial_read_timeout
         while time.monotonic() < deadline:
             try:
-                available = self.serial_port.in_waiting
-            except serial.SerialException as exc:
-                self.throttled_warn('serial_read_status', f'Serial read failed: {exc}')
-                return None
-
-            try:
-                if available > 0:
-                    chunk = self.serial_port.read(available)
-                else:
-                    chunk = self.serial_port.read(1)
-            except serial.SerialException as exc:
-                self.throttled_warn('serial_read', f'Serial read failed: {exc}')
+                chunk = self.serial_port.read(max(1, self.serial_port.in_waiting))
+            except OSError as exc:
+                self.handle_serial_error('serial_read', f'Serial read failed: {exc}')
                 return None
 
             if chunk:
@@ -820,8 +864,8 @@ class TurnOnTraymoverRobot(Node):
 
         try:
             self.serial_port.write(build_motor_status_frame())
-        except serial.SerialException as exc:
-            self.throttled_warn('serial_write_status', f'Serial write failed: {exc}')
+        except OSError as exc:
+            self.handle_serial_error('serial_write_status', f'Serial write failed: {exc}')
             return None
 
         frame = self.read_frame(MSG_ID_GET_MOTOR_STATUS)
@@ -847,10 +891,10 @@ class TurnOnTraymoverRobot(Node):
             dt = 1.0 / self.poll_rate_hz if self.poll_rate_hz > 0 else 0.05
         else:
             dt = now_mono - self._last_feedback_mono
-        # STM32 直接给出 linear / angular;比 tick 积分更可靠:绕开 encoder_sign
-        # 和 Python 端 wheel_track 偏差。tick 字段保留用于构建 odom msg。
+        # Express the raw STM32 body velocity in ROS axes before using it
+        # for odometry, TF, or wheel joint states.
         vx = feedback.linear_velocity_mps
-        wz = feedback.angular_velocity_rads
+        wz = self.angular_feedback_sign * feedback.angular_velocity_rads
         if self.odom_source_mode == 'stm32_velocity':
             stamp_ns = stamp.sec * 1000000000 + stamp.nanosec
             previous = self._last_velocity_stamp_ns
@@ -864,6 +908,7 @@ class TurnOnTraymoverRobot(Node):
                 dt = 0.0
             self.odom_x, self.odom_y, self.odom_yaw = integrate_velocity_step(
                 self.odom_x, self.odom_y, self.odom_yaw, vx, wz, dt)
+            self.publish_wheel_joint_state(stamp, vx, wz, dt)
         else:
             mid_yaw = self.odom_yaw + 0.5 * wz * dt
             self.odom_x += vx * math.cos(mid_yaw) * dt
@@ -880,7 +925,7 @@ class TurnOnTraymoverRobot(Node):
             and abs(wz) < 1e-6
         )
 
-        odom_msg = self.build_odom_message(feedback, left_ticks, right_ticks, stationary, stamp)
+        odom_msg = self.build_odom_message(vx, wz, stationary, stamp)
         if self.odom_pub is not None:
             self.odom_pub.publish(odom_msg)
 
@@ -891,6 +936,22 @@ class TurnOnTraymoverRobot(Node):
         if not self._feedback_active_logged:
             self._feedback_active_logged = True
             self.get_logger().info('STM32 odom feedback active.')
+
+    def publish_wheel_joint_state(self, stamp, vx: float, wz: float, dt: float) -> None:
+        # Estimate drive-wheel rotation from the measured chassis twist.
+        # The URDF's right wheel joint axis is -Y, opposite the left.
+        radius = self.wheel_diameter / 2.0
+        turn_speed = wz * self.wheel_track / 2.0
+        left_rate = (vx - turn_speed) / radius
+        right_rate = -(vx + turn_speed) / radius
+        self.left_wheel_angle += left_rate * dt
+        self.right_wheel_angle += right_rate * dt
+        joints = JointState()
+        joints.header.stamp = stamp
+        joints.name = ['left_wheel_link_joint', 'right_wheel_link_joint']
+        joints.position = [self.left_wheel_angle, self.right_wheel_angle]
+        joints.velocity = [left_rate, right_rate]
+        self.joint_state_pub.publish(joints)
 
     def handle_motor_status(self, status: MotorStatus, stamp) -> None:
         self._latest_motor_status = status
@@ -990,9 +1051,8 @@ class TurnOnTraymoverRobot(Node):
 
     def build_odom_message(
         self,
-        feedback: MotorFeedback,
-        left_ticks: int,
-        right_ticks: int,
+        vx: float,
+        wz: float,
         stationary: bool,
         stamp,
     ) -> Odometry:
@@ -1010,12 +1070,12 @@ class TurnOnTraymoverRobot(Node):
         odom_msg.pose.pose.orientation.z = quat[2]
         odom_msg.pose.pose.orientation.w = quat[3]
 
-        odom_msg.twist.twist.linear.x = feedback.linear_velocity_mps
+        odom_msg.twist.twist.linear.x = vx
         odom_msg.twist.twist.linear.y = 0.0
         odom_msg.twist.twist.linear.z = 0.0
         odom_msg.twist.twist.angular.x = 0.0
         odom_msg.twist.twist.angular.y = 0.0
-        odom_msg.twist.twist.angular.z = feedback.angular_velocity_rads
+        odom_msg.twist.twist.angular.z = wz
 
         if stationary:
             odom_msg.pose.covariance = list(ODOM_POSE_COVARIANCE_STOPPED)

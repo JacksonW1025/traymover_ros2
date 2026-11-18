@@ -1,0 +1,62 @@
+{
+  "passed": true,
+  "checks": {
+    "nav2_goals_succeeded": true,
+    "planner_produced_path": true,
+    "controller_produced_velocity": true,
+    "driver_produced_odometry": true,
+    "preprocessor_produced_cloud": true,
+    "ndt_produced_pose": true,
+    "true_goal_errors_below_30cm": true,
+    "localization_rmse_below_20cm": true,
+    "localization_tf_fresh_95pct": true,
+    "local_planner_produced_trajectory": true,
+    "both_costmaps_published": true,
+    "physical_model_no_collision": true,
+    "plan_detours_around_pillar": true
+  },
+  "goals": [
+    {
+      "goal": [
+        6.0,
+        -4.4,
+        0.0
+      ],
+      "status": 4,
+      "t": 37.25,
+      "true_pose": [
+        6.157305565774717,
+        -4.268130399187772,
+        -0.2812089838983986
+      ],
+      "true_distance_m": 0.20526722252244817
+    }
+  ],
+  "counts": {
+    "odom": 746,
+    "tf": 3853,
+    "tf_static": 2,
+    "map_cloud": 1,
+    "cloud": 340,
+    "initialpose": 1,
+    "ndt": 17,
+    "aligned_cloud": 17,
+    "global_costmap": 21,
+    "local_costmap": 51,
+    "action_status": 2,
+    "plan": 39,
+    "cmd": 786,
+    "nonzero_cmd": 784,
+    "local_plan": 784
+  },
+  "first_global_plan": {
+    "length_m": 9.07925135370644,
+    "straight_distance_m": 7.480808733298179,
+    "max_deviation_from_straight_m": 2.19534070617861,
+    "enters_solid_pillar": false
+  },
+  "minimum_true_footprint_clearance_m": 0.9860561728657495,
+  "physical_collision_blocks": 0,
+  "localization_current_rmse_m": 0.07779688026987569,
+  "max_tf_age_s": 0.04999999999999716
+}

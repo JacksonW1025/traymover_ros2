@@ -1,0 +1,308 @@
+[INFO] [launch]: All log files can be found below /dev/shm/traymover_experiments/full_chain_20261117_174121_clean/ros/2026-11-17-17-41-24-034678-ubuntu-41528
+[INFO] [launch]: Default logging verbosity is set to INFO
+[INFO] [pointcloud_nav_preprocessor.py-1]: process started with pid [41578]
+[INFO] [robot_state_publisher-2]: process started with pid [41580]
+[INFO] [static_transform_publisher-3]: process started with pid [41582]
+[INFO] [lidar_localization_node-4]: process started with pid [41584]
+[INFO] [map_server-5]: process started with pid [41586]
+[INFO] [planner_server-6]: process started with pid [41588]
+[INFO] [controller_server-7]: process started with pid [41590]
+[INFO] [bt_navigator-8]: process started with pid [41592]
+[INFO] [lifecycle_manager-9]: process started with pid [41594]
+[static_transform_publisher-3] [WARN] [1794908485.021439005] []: Old-style arguments are deprecated; see --help for new-style arguments
+[robot_state_publisher-2] [INFO] [1794908485.073581099] [traymover_robot_state_publisher]: got segment base_link
+[robot_state_publisher-2] [INFO] [1794908485.073818050] [traymover_robot_state_publisher]: got segment camera_link
+[robot_state_publisher-2] [INFO] [1794908485.073838914] [traymover_robot_state_publisher]: got segment camera_mount_link
+[robot_state_publisher-2] [INFO] [1794908485.073848225] [traymover_robot_state_publisher]: got segment front_left_caster_link
+[robot_state_publisher-2] [INFO] [1794908485.073855873] [traymover_robot_state_publisher]: got segment front_right_caster_link
+[robot_state_publisher-2] [INFO] [1794908485.073862689] [traymover_robot_state_publisher]: got segment imu_link
+[robot_state_publisher-2] [INFO] [1794908485.073869697] [traymover_robot_state_publisher]: got segment laser
+[robot_state_publisher-2] [INFO] [1794908485.073875744] [traymover_robot_state_publisher]: got segment left_wheel_link
+[robot_state_publisher-2] [INFO] [1794908485.073881888] [traymover_robot_state_publisher]: got segment rear_left_caster_link
+[robot_state_publisher-2] [INFO] [1794908485.073887904] [traymover_robot_state_publisher]: got segment rear_right_caster_link
+[robot_state_publisher-2] [INFO] [1794908485.073894272] [traymover_robot_state_publisher]: got segment right_wheel_link
+[robot_state_publisher-2] [INFO] [1794908485.073900223] [traymover_robot_state_publisher]: got segment sensor_mast_link
+[static_transform_publisher-3] [INFO] [1794908485.075816701] [stm32_base_height]: Spinning until stopped - publishing transform
+[static_transform_publisher-3] translation: ('0.000000', '0.000000', '0.200000')
+[static_transform_publisher-3] rotation: ('0.000000', '0.000000', '0.000000', '1.000000')
+[static_transform_publisher-3] from 'base_footprint' to 'base_link'
+[lifecycle_manager-9] [INFO] [1794908485.091704341] [lifecycle_manager_navigation]: Creating
+[bt_navigator-8] [INFO] [1794908485.096051102] [bt_navigator]: 
+[bt_navigator-8] 	bt_navigator lifecycle node launched. 
+[bt_navigator-8] 	Waiting on external lifecycle transitions to activate
+[bt_navigator-8] 	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[bt_navigator-8] [INFO] [1794908485.096333205] [bt_navigator]: Creating
+[lifecycle_manager-9] [INFO] [1794908485.097880351] [lifecycle_manager_navigation]: [34m[1mCreating and initializing lifecycle service clients[0m[0m
+[map_server-5] [INFO] [1794908485.110816670] [map_server]: 
+[map_server-5] 	map_server lifecycle node launched. 
+[map_server-5] 	Waiting on external lifecycle transitions to activate
+[map_server-5] 	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[map_server-5] [INFO] [1794908485.111115571] [map_server]: Creating
+[controller_server-7] [INFO] [1794908485.448976450] [controller_server]: 
+[controller_server-7] 	controller_server lifecycle node launched. 
+[controller_server-7] 	Waiting on external lifecycle transitions to activate
+[controller_server-7] 	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[controller_server-7] [INFO] [1794908485.472633261] [controller_server]: Creating controller server
+[planner_server-6] [INFO] [1794908485.504779729] [planner_server]: 
+[planner_server-6] 	planner_server lifecycle node launched. 
+[planner_server-6] 	Waiting on external lifecycle transitions to activate
+[planner_server-6] 	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[planner_server-6] [INFO] [1794908485.510415885] [planner_server]: Creating
+[controller_server-7] [INFO] [1794908485.528879084] [local_costmap.local_costmap]: 
+[controller_server-7] 	local_costmap lifecycle node launched. 
+[controller_server-7] 	Waiting on external lifecycle transitions to activate
+[controller_server-7] 	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[controller_server-7] [INFO] [1794908485.530983715] [local_costmap.local_costmap]: Creating Costmap
+[planner_server-6] [INFO] [1794908485.559033621] [global_costmap.global_costmap]: 
+[planner_server-6] 	global_costmap lifecycle node launched. 
+[planner_server-6] 	Waiting on external lifecycle transitions to activate
+[planner_server-6] 	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[planner_server-6] [INFO] [1794908485.560546977] [global_costmap.global_costmap]: Creating Costmap
+[lidar_localization_node-4] [INFO] [1794908485.561066607] [lidar_localization]: Configuring
+[lidar_localization_node-4] [INFO] [1794908485.561378148] [lidar_localization]: initializeParameters
+[lidar_localization_node-4] [INFO] [1794908485.561491360] [lidar_localization]: map_voxel_leaf_size: 0.150 m
+[lidar_localization_node-4] [INFO] [1794908485.561579677] [lidar_localization]: auto_correction_enabled: 1; confirmations=3 absolute=2.50m/0.60rad step=0.15m/0.08rad improvement=0.010
+[lidar_localization_node-4] [INFO] [1794908485.561641691] [lidar_localization]: lock_planar: 0
+[lidar_localization_node-4] [INFO] [1794908485.561675290] [lidar_localization]: max_pose_jump_translation: 0.35 m
+[lidar_localization_node-4] [INFO] [1794908485.561705337] [lidar_localization]: max_pose_jump_rotation: 0.45 rad
+[lidar_localization_node-4] [INFO] [1794908485.561731992] [lidar_localization]: bootstrap jump limits: translation=2.50 m rotation=0.60 rad
+[lidar_localization_node-4] [INFO] [1794908485.561756951] [lidar_localization]: ndt_align_interval_s: 2.00 s
+[lidar_localization_node-4] [INFO] [1794908485.561781750] [lidar_localization]: tf_rebroadcast_rate_hz: 50.00 Hz
+[lidar_localization_node-4] [INFO] [1794908485.561808597] [lidar_localization]: map_odom_smoothing: 0.30
+[lidar_localization_node-4] [INFO] [1794908485.561833428] [lidar_localization]: max_map_odom_update_translation: 0.50 m
+[lidar_localization_node-4] [INFO] [1794908485.561857971] [lidar_localization]: max_map_odom_update_rotation: 0.25 rad
+[lidar_localization_node-4] [INFO] [1794908485.562168617] [lidar_localization]: global_frame_id: map
+[lidar_localization_node-4] [INFO] [1794908485.562205703] [lidar_localization]: odom_frame_id: odom
+[lidar_localization_node-4] [INFO] [1794908485.562241414] [lidar_localization]: base_frame_id: base_link
+[lidar_localization_node-4] [INFO] [1794908485.562270597] [lidar_localization]: enable_map_odom_tf: 1
+[lidar_localization_node-4] [INFO] [1794908485.562289700] [lidar_localization]: registration_method: NDT_OMP
+[lidar_localization_node-4] [INFO] [1794908485.562306820] [lidar_localization]: ndt_resolution: 0.500000
+[lidar_localization_node-4] [INFO] [1794908485.562326531] [lidar_localization]: ndt_step_size: 0.100000
+[lidar_localization_node-4] [INFO] [1794908485.562345890] [lidar_localization]: ndt_num_threads: 4
+[lidar_localization_node-4] [INFO] [1794908485.562365730] [lidar_localization]: adaptive_ndt_resolution: 1
+[lidar_localization_node-4] [INFO] [1794908485.562391073] [lidar_localization]: adaptive_ndt_max_resolution: 3.00 m
+[lidar_localization_node-4] [INFO] [1794908485.562438047] [lidar_localization]: adaptive_ndt_resolution_step: 0.10 m
+[lidar_localization_node-4] [INFO] [1794908485.562465118] [lidar_localization]: adaptive_ndt_min_usable_voxel_ratio: 0.010
+[lidar_localization_node-4] [INFO] [1794908485.562492477] [lidar_localization]: transform_epsilon: 0.001000
+[lidar_localization_node-4] [INFO] [1794908485.562512541] [lidar_localization]: voxel_leaf_size: 0.150000
+[lidar_localization_node-4] [INFO] [1794908485.562531580] [lidar_localization]: scan_max_range: 120.000000
+[lidar_localization_node-4] [INFO] [1794908485.562552123] [lidar_localization]: scan_min_range: 0.500000
+[lidar_localization_node-4] [INFO] [1794908485.562570267] [lidar_localization]: far_point_boost_min_range: 15.000000
+[lidar_localization_node-4] [INFO] [1794908485.562593754] [lidar_localization]: far_point_boost_factor: 2
+[lidar_localization_node-4] [INFO] [1794908485.562625849] [lidar_localization]: height_boost: enabled=0 min_z=2.000 m (base frame) extra_copies=1 max_copies=3 (existing far weighting preserved); fitness gate uses baseline cloud
+[lidar_localization_node-4] [INFO] [1794908485.562652024] [lidar_localization]: scan_period: 0.100000
+[lidar_localization_node-4] [INFO] [1794908485.562675863] [lidar_localization]: use_pcd_map: 1
+[lidar_localization_node-4] [INFO] [1794908485.562698934] [lidar_localization]: map_path: /dev/shm/traymover_experiments/full_chain_20261117_174121_clean/maps/room.pcd
+[lidar_localization_node-4] [INFO] [1794908485.562717909] [lidar_localization]: set_initial_pose: 0
+[lidar_localization_node-4] [INFO] [1794908485.562734965] [lidar_localization]: use_odom: 1
+[lidar_localization_node-4] [INFO] [1794908485.562752276] [lidar_localization]: use_imu: 0
+[lidar_localization_node-4] [INFO] [1794908485.562784307] [lidar_localization]: enable_debug: 0
+[lidar_localization_node-4] [INFO] [1794908485.562808306] [lidar_localization]: enable_timer_publishing: 0
+[lidar_localization_node-4] [INFO] [1794908485.562829298] [lidar_localization]: pose_publish_frequency: 20.000000
+[lidar_localization_node-4] [INFO] [1794908485.562857009] [lidar_localization]: initializePubSub
+[lidar_localization_node-4] [INFO] [1794908485.581046873] [lidar_localization]: initializePubSub end
+[lidar_localization_node-4] [INFO] [1794908485.581149910] [lidar_localization]: initializeRegistration
+[lidar_localization_node-4] [INFO] [1794908485.581294737] [lidar_localization]: initializeRegistration end
+[lidar_localization_node-4] [INFO] [1794908485.581343247] [lidar_localization]: Configuring end
+[lidar_localization_node-4] [INFO] [1794908485.586264932] [lidar_localization]: Activating
+[lidar_localization_node-4] [INFO] [1794908485.586385152] [lidar_localization]: Loading pcd map from: /dev/shm/traymover_experiments/full_chain_20261117_174121_clean/maps/room.pcd
+[lidar_localization_node-4] [INFO] [1794908485.626202554] [lidar_localization]: Map Size 27650
+[lidar_localization_node-4] [INFO] [1794908485.628260658] [lidar_localization]: Map downsample: leaf=0.150 m input=27650 output=17268 retained=62.5% elapsed=0.002 s
+[lidar_localization_node-4] [INFO] [1794908485.628786752] [lidar_localization]: NDT map density at 0.50 m: points=17268 voxels=1566 usable_voxels=1450 usable_points=16883 (97.8%), usable_voxel_ratio=92.59%, max_points_per_voxel=37
+[lidar_localization_node-4] [INFO] [1794908485.631005139] [lidar_localization]: NDT target map cloud: points=17268 x=[-8.00, 8.00] y=[-6.00, 6.00] z=[0.00, 3.00]
+[lidar_localization_node-4] [INFO] [1794908485.631979569] [lidar_localization]: Initial Map Published
+[lidar_localization_node-4] [INFO] [1794908485.632130540] [lidar_localization]: Activating end
+[pointcloud_nav_preprocessor.py-1] [INFO] [1794908485.677936469] [pointcloud_nav_preprocessor]: preprocessing /point_cloud_raw -> /point_cloud_localization, /point_cloud_nav in base_link
+[lifecycle_manager-9] [INFO] [1794908485.726011728] [lifecycle_manager_navigation]: [34m[1mStarting managed nodes bringup...[0m[0m
+[lifecycle_manager-9] [INFO] [1794908485.726398115] [lifecycle_manager_navigation]: [34m[1mConfiguring map_server[0m[0m
+[map_server-5] [INFO] [1794908485.731038466] [map_server]: Configuring
+[map_server-5] [INFO] [1794908485.731417653] [map_io]: Loading yaml file: /dev/shm/traymover_experiments/full_chain_20261117_174121_clean/maps/room_2d.yaml
+[map_server-5] [INFO] [1794908485.732376468] [map_io]: resolution: 0.05
+[map_server-5] [INFO] [1794908485.732416370] [map_io]: origin[0]: -9
+[map_server-5] [INFO] [1794908485.732430514] [map_io]: origin[1]: -7
+[map_server-5] [INFO] [1794908485.732441937] [map_io]: origin[2]: 0
+[map_server-5] [INFO] [1794908485.732454097] [map_io]: free_thresh: 0.25
+[map_server-5] [INFO] [1794908485.732466704] [map_io]: occupied_thresh: 0.65
+[map_server-5] [INFO] [1794908485.732480368] [map_io]: mode: trinary
+[map_server-5] [INFO] [1794908485.732495087] [map_io]: negate: 0
+[map_server-5] [INFO] [1794908485.733112538] [map_io]: Loading image_file: /dev/shm/traymover_experiments/full_chain_20261117_174121_clean/maps/room_2d.pgm
+[map_server-5] [INFO] [1794908485.766682317] [map_io]: Read map /dev/shm/traymover_experiments/full_chain_20261117_174121_clean/maps/room_2d.pgm: 360 X 280 map @ 0.05 m/cell
+[lifecycle_manager-9] [INFO] [1794908485.785847411] [lifecycle_manager_navigation]: [34m[1mConfiguring planner_server[0m[0m
+[planner_server-6] [INFO] [1794908485.786511964] [planner_server]: Configuring
+[planner_server-6] [INFO] [1794908485.786759892] [global_costmap.global_costmap]: Configuring
+[planner_server-6] [INFO] [1794908485.804789186] [global_costmap.global_costmap]: Using plugin "static_layer"
+[planner_server-6] [INFO] [1794908485.813731755] [global_costmap.global_costmap]: Subscribing to the map topic (/map) with transient local durability
+[planner_server-6] [INFO] [1794908485.817546055] [global_costmap.global_costmap]: Initialized plugin "static_layer"
+[planner_server-6] [INFO] [1794908485.817662435] [global_costmap.global_costmap]: Using plugin "inflation_layer"
+[planner_server-6] [INFO] [1794908485.819053490] [global_costmap.global_costmap]: Initialized plugin "inflation_layer"
+[planner_server-6] [INFO] [1794908485.853493319] [planner_server]: Created global planner plugin GridBased of type nav2_navfn_planner/NavfnPlanner
+[planner_server-6] [INFO] [1794908485.853695936] [planner_server]: Configuring plugin GridBased of type NavfnPlanner
+[planner_server-6] [INFO] [1794908485.854402023] [planner_server]: Planner Server has GridBased  planners available.
+[lifecycle_manager-9] [INFO] [1794908485.875958011] [lifecycle_manager_navigation]: [34m[1mConfiguring controller_server[0m[0m
+[controller_server-7] [INFO] [1794908485.876538407] [controller_server]: Configuring controller interface
+[controller_server-7] [INFO] [1794908485.877818554] [controller_server]: getting goal checker plugins..
+[controller_server-7] [INFO] [1794908485.878781273] [controller_server]: Controller frequency set to 20.0000Hz
+[controller_server-7] [INFO] [1794908485.879379300] [local_costmap.local_costmap]: Configuring
+[controller_server-7] [INFO] [1794908485.895532115] [local_costmap.local_costmap]: Using plugin "inflation_layer"
+[controller_server-7] [INFO] [1794908485.909539053] [local_costmap.local_costmap]: Initialized plugin "inflation_layer"
+[controller_server-7] [INFO] [1794908485.943336120] [controller_server]: Created progress_checker : progress_checker of type traymover_robot_nav::YawProgressChecker
+[controller_server-7] [INFO] [1794908485.945893439] [controller_server]: Created goal checker : general_goal_checker of type nav2_controller::SimpleGoalChecker
+[controller_server-7] [INFO] [1794908485.946486186] [controller_server]: Controller Server has general_goal_checker  goal checkers available.
+[controller_server-7] [INFO] [1794908485.947913977] [controller_server]: Created controller : FollowPath of type nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController
+[controller_server-7] [INFO] [1794908485.956647946] [controller_server]: Controller Server has FollowPath  controllers available.
+[lifecycle_manager-9] [INFO] [1794908485.973457282] [lifecycle_manager_navigation]: [34m[1mConfiguring bt_navigator[0m[0m
+[bt_navigator-8] [INFO] [1794908485.974064845] [bt_navigator]: Configuring
+[lifecycle_manager-9] [INFO] [1794908486.132981633] [lifecycle_manager_navigation]: [34m[1mActivating map_server[0m[0m
+[map_server-5] [INFO] [1794908486.133639082] [map_server]: Activating
+[map_server-5] [INFO] [1794908486.134415951] [map_server]: Creating bond (map_server) to lifecycle manager.
+[planner_server-6] [INFO] [1794908486.134994011] [global_costmap.global_costmap]: StaticLayer: Resizing costmap to 360 X 280 at 0.050000 m/pix
+[lifecycle_manager-9] [INFO] [1794908486.246823153] [lifecycle_manager_navigation]: Server map_server connected with bond.
+[lifecycle_manager-9] [INFO] [1794908486.247131974] [lifecycle_manager_navigation]: [34m[1mActivating planner_server[0m[0m
+[planner_server-6] [INFO] [1794908486.248145219] [planner_server]: Activating
+[planner_server-6] [INFO] [1794908486.248464664] [global_costmap.global_costmap]: Activating
+[planner_server-6] [INFO] [1794908486.248603539] [global_costmap.global_costmap]: Checking transform
+[planner_server-6] [INFO] [1794908486.248771309] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908486.748858655] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[pointcloud_nav_preprocessor.py-1] [WARN] [1794908487.227972489] [pointcloud_nav_preprocessor]: cannot transform laser -> base_link: "base_link" passed to lookupTransform argument target_frame does not exist. 
+[planner_server-6] [INFO] [1794908487.248853684] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908487.748845419] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908488.248868323] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[planner_server-6] [INFO] [1794908488.748894939] [global_costmap.global_costmap]: Timed out waiting for transform from base_link to map to become available, tf error: Invalid frame ID "map" passed to canTransform argument target_frame - frame does not exist
+[lidar_localization_node-4] [INFO] [1794908488.807899484] [lidar_localization]: initialPoseReceived
+[lidar_localization_node-4] [INFO] [1794908488.808281998] [lidar_localization]: Initialpose accepted as NDT guess only; waiting for NDT alignment before publishing map->odom
+[lidar_localization_node-4] [INFO] [1794908488.808379403] [lidar_localization]: initialPoseReceived end
+[lidar_localization_node-4] [INFO] [1794908488.923792774] [lidar_localization]: NDT source cloud: raw=9730 filtered=7840 kept=7840 frame=base_link
+[lidar_localization_node-4] [INFO] [1794908489.074013801] [lidar_localization]: NDT aligned: fitness=0.006 map→odom=[-0.07, -0.01, -0.02, yaw=0.002]
+[planner_server-6] [INFO] [1794908489.249266505] [global_costmap.global_costmap]: start
+[planner_server-6] [INFO] [1794908490.299960035] [planner_server]: Activating plugin GridBased of type NavfnPlanner
+[planner_server-6] [INFO] [1794908490.305290250] [planner_server]: Creating bond (planner_server) to lifecycle manager.
+[lifecycle_manager-9] [INFO] [1794908490.424465252] [lifecycle_manager_navigation]: Server planner_server connected with bond.
+[lifecycle_manager-9] [INFO] [1794908490.425023632] [lifecycle_manager_navigation]: [34m[1mActivating controller_server[0m[0m
+[controller_server-7] [INFO] [1794908490.427523066] [controller_server]: Activating
+[controller_server-7] [INFO] [1794908490.427901037] [local_costmap.local_costmap]: Activating
+[controller_server-7] [INFO] [1794908490.428029128] [local_costmap.local_costmap]: Checking transform
+[controller_server-7] [INFO] [1794908490.429141282] [local_costmap.local_costmap]: start
+[controller_server-7] [INFO] [1794908490.479591467] [controller_server]: Activating controller: FollowPath of type regulated_pure_pursuit_controller::RegulatedPurePursuitController
+[controller_server-7] [INFO] [1794908490.479854466] [controller_server]: Creating bond (controller_server) to lifecycle manager.
+[lifecycle_manager-9] [INFO] [1794908490.595641937] [lifecycle_manager_navigation]: Server controller_server connected with bond.
+[lifecycle_manager-9] [INFO] [1794908490.596015460] [lifecycle_manager_navigation]: [34m[1mActivating bt_navigator[0m[0m
+[bt_navigator-8] [INFO] [1794908490.597193852] [bt_navigator]: Activating
+[bt_navigator-8] [INFO] [1794908490.677576535] [bt_navigator]: Creating bond (bt_navigator) to lifecycle manager.
+[lifecycle_manager-9] [INFO] [1794908490.789134937] [lifecycle_manager_navigation]: Server bt_navigator connected with bond.
+[lifecycle_manager-9] [INFO] [1794908490.789464813] [lifecycle_manager_navigation]: [34m[1mManaged nodes are active[0m[0m
+[lifecycle_manager-9] [INFO] [1794908490.789535627] [lifecycle_manager_navigation]: [34m[1mCreating bond timer...[0m[0m
+[lidar_localization_node-4] [INFO] [1794908491.180407988] [lidar_localization]: NDT source cloud: raw=9698 filtered=7804 kept=7804 frame=base_link
+[lidar_localization_node-4] [INFO] [1794908491.220535684] [lidar_localization]: NDT auto correction: applied translation=0.001 rotation=0.000 remaining_translation=0.003 remaining_rotation=0.000
+[lidar_localization_node-4] [INFO] [1794908491.221050354] [lidar_localization]: NDT aligned: fitness=0.006 map→odom=[-0.07, -0.01, -0.02, yaw=0.002]
+[bt_navigator-8] [INFO] [1794908491.386517895] [bt_navigator]: Begin navigating from current location (-0.07, -0.01) to (2.00, 0.00)
+[controller_server-7] [INFO] [1794908491.408484845] [controller_server]: Received a goal, begin computing control effort.
+[controller_server-7] [WARN] [1794908491.408695685] [controller_server]: No goal checker was specified in parameter 'current_goal_checker'. Server will use only plugin loaded general_goal_checker . This warning will appear once.
+[controller_server-7] [INFO] [1794908492.458915003] [controller_server]: Passing new path to controller.
+[controller_server-7] [INFO] [1794908493.508938270] [controller_server]: Passing new path to controller.
+[lidar_localization_node-4] [INFO] [1794908493.517488757] [lidar_localization]: NDT source cloud: raw=9720 filtered=7535 kept=7535 frame=base_link
+[lidar_localization_node-4] [INFO] [1794908493.568590281] [lidar_localization]: NDT auto correction: applied translation=0.003 rotation=0.001 remaining_translation=0.006 remaining_rotation=0.002
+[lidar_localization_node-4] [INFO] [1794908493.569423724] [lidar_localization]: NDT aligned: fitness=0.006 map→odom=[-0.07, -0.02, -0.02, yaw=0.002]
+[controller_server-7] [INFO] [1794908494.508927500] [controller_server]: Passing new path to controller.
+[controller_server-7] [INFO] [1794908495.558914010] [controller_server]: Passing new path to controller.
+[lidar_localization_node-4] [INFO] [1794908495.791354432] [lidar_localization]: NDT source cloud: raw=9597 filtered=7610 kept=7610 frame=base_link
+[lidar_localization_node-4] [INFO] [1794908495.845267699] [lidar_localization]: NDT auto correction: applied translation=0.002 rotation=0.001 remaining_translation=0.004 remaining_rotation=0.002
+[lidar_localization_node-4] [INFO] [1794908495.846000698] [lidar_localization]: NDT aligned: fitness=0.006 map→odom=[-0.07, -0.01, -0.02, yaw=0.001]
+[controller_server-7] [INFO] [1794908496.558944145] [controller_server]: Passing new path to controller.
+[controller_server-7] [INFO] [1794908497.608921482] [controller_server]: Passing new path to controller.
+[lidar_localization_node-4] [INFO] [1794908498.101866223] [lidar_localization]: NDT source cloud: raw=9641 filtered=7572 kept=7572 frame=base_link
+[lidar_localization_node-4] [INFO] [1794908498.151744750] [lidar_localization]: NDT auto correction: applied translation=0.001 rotation=0.001 remaining_translation=0.001 remaining_rotation=0.002
+[lidar_localization_node-4] [INFO] [1794908498.153101983] [lidar_localization]: NDT aligned: fitness=0.006 map→odom=[-0.07, -0.01, -0.02, yaw=0.001]
+[controller_server-7] [INFO] [1794908498.409796928] [controller_server]: Reached the goal!
+[bt_navigator-8] [INFO] [1794908498.447379466] [bt_navigator]: Goal succeeded
+[lidar_localization_node-4] [INFO] [1794908500.359959888] [lidar_localization]: NDT source cloud: raw=9740 filtered=7668 kept=7668 frame=base_link
+[lidar_localization_node-4] [INFO] [1794908500.444253672] [lidar_localization]: NDT auto correction: applied translation=0.006 rotation=0.001 remaining_translation=0.015 remaining_rotation=0.002
+[lidar_localization_node-4] [INFO] [1794908500.445050284] [lidar_localization]: NDT aligned: fitness=0.006 map→odom=[-0.08, -0.01, -0.02, yaw=0.000]
+[bt_navigator-8] [INFO] [1794908500.805824634] [bt_navigator]: Begin navigating from current location (1.82, 0.00) to (2.00, 1.50)
+[controller_server-7] [INFO] [1794908500.827563625] [controller_server]: Received a goal, begin computing control effort.
+[controller_server-7] [INFO] [1794908501.878060614] [controller_server]: Passing new path to controller.
+[lidar_localization_node-4] [INFO] [1794908502.665809076] [lidar_localization]: NDT source cloud: raw=9626 filtered=7588 kept=7588 frame=base_link
+[lidar_localization_node-4] [INFO] [1794908502.720530573] [lidar_localization]: NDT auto correction: applied translation=0.003 rotation=0.000 remaining_translation=0.006 remaining_rotation=0.001
+[lidar_localization_node-4] [INFO] [1794908502.721215637] [lidar_localization]: NDT aligned: fitness=0.006 map→odom=[-0.08, -0.01, -0.02, yaw=0.000]
+[controller_server-7] [INFO] [1794908502.928064794] [controller_server]: Passing new path to controller.
+[controller_server-7] [INFO] [1794908503.928056662] [controller_server]: Passing new path to controller.
+[lidar_localization_node-4] [INFO] [1794908504.968631418] [lidar_localization]: NDT source cloud: raw=9632 filtered=7651 kept=7651 frame=base_link
+[controller_server-7] [INFO] [1794908504.978046548] [controller_server]: Passing new path to controller.
+[lidar_localization_node-4] [INFO] [1794908505.007835437] [lidar_localization]: NDT auto correction: applied translation=0.004 rotation=0.000 remaining_translation=0.009 remaining_rotation=0.001
+[lidar_localization_node-4] [INFO] [1794908505.008321276] [lidar_localization]: NDT aligned: fitness=0.006 map→odom=[-0.07, -0.02, -0.02, yaw=0.000]
+[controller_server-7] [INFO] [1794908505.978039803] [controller_server]: Passing new path to controller.
+[controller_server-7] [INFO] [1794908507.028069858] [controller_server]: Passing new path to controller.
+[lidar_localization_node-4] [INFO] [1794908507.195677754] [lidar_localization]: NDT source cloud: raw=9708 filtered=7616 kept=7616 frame=base_link
+[lidar_localization_node-4] [INFO] [1794908507.244584317] [lidar_localization]: NDT auto correction: applied translation=0.002 rotation=0.000 remaining_translation=0.004 remaining_rotation=0.001
+[lidar_localization_node-4] [INFO] [1794908507.245152681] [lidar_localization]: NDT aligned: fitness=0.006 map→odom=[-0.07, -0.02, -0.02, yaw=-0.000]
+[controller_server-7] [INFO] [1794908508.078079376] [controller_server]: Passing new path to controller.
+[controller_server-7] [INFO] [1794908509.078088676] [controller_server]: Passing new path to controller.
+[lidar_localization_node-4] [INFO] [1794908509.512062622] [lidar_localization]: NDT source cloud: raw=9571 filtered=7478 kept=7478 frame=base_link
+[lidar_localization_node-4] [INFO] [1794908509.559579922] [lidar_localization]: NDT auto correction: applied translation=0.002 rotation=0.000 remaining_translation=0.005 remaining_rotation=0.001
+[lidar_localization_node-4] [INFO] [1794908509.560148830] [lidar_localization]: NDT aligned: fitness=0.006 map→odom=[-0.07, -0.02, -0.02, yaw=0.000]
+[controller_server-7] [INFO] [1794908510.128083869] [controller_server]: Passing new path to controller.
+[controller_server-7] [INFO] [1794908511.128046525] [controller_server]: Passing new path to controller.
+[controller_server-7] [INFO] [1794908511.778444381] [controller_server]: Reached the goal!
+[bt_navigator-8] [INFO] [1794908511.816770383] [bt_navigator]: Goal succeeded
+[lidar_localization_node-4] [INFO] [1794908511.844569869] [lidar_localization]: NDT source cloud: raw=9423 filtered=7357 kept=7357 frame=base_link
+[lidar_localization_node-4] [INFO] [1794908511.915197666] [lidar_localization]: NDT auto correction: applied translation=0.005 rotation=0.001 remaining_translation=0.013 remaining_rotation=0.002
+[lidar_localization_node-4] [INFO] [1794908511.916061285] [lidar_localization]: NDT aligned: fitness=0.007 map→odom=[-0.07, -0.03, -0.02, yaw=0.001]
+[WARNING] [launch]: user interrupted with ctrl-c (SIGINT)
+[bt_navigator-8] [INFO] [1794908512.389930464] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[bt_navigator-8] [INFO] [1794908512.390216886] [bt_navigator]: Running Nav2 LifecycleNode rcl preshutdown (bt_navigator)
+[bt_navigator-8] [INFO] [1794908512.390433934] [bt_navigator]: Deactivating
+[bt_navigator-8] [INFO] [1794908512.390523083] [bt_navigator]: Destroying bond (bt_navigator) to lifecycle manager.
+[INFO] [robot_state_publisher-2]: process has finished cleanly [pid 41580]
+[INFO] [static_transform_publisher-3]: process has finished cleanly [pid 41582]
+[INFO] [map_server-5]: process has finished cleanly [pid 41586]
+[INFO] [lidar_localization_node-4]: process has finished cleanly [pid 41584]
+[INFO] [lifecycle_manager-9]: process has finished cleanly [pid 41594]
+[INFO] [controller_server-7]: process has finished cleanly [pid 41590]
+[INFO] [bt_navigator-8]: process has finished cleanly [pid 41592]
+[controller_server-7] [INFO] [1794908512.389947167] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[controller_server-7] [INFO] [1794908512.390216918] [controller_server]: Running Nav2 LifecycleNode rcl preshutdown (controller_server)
+[controller_server-7] [INFO] [1794908512.390418319] [controller_server]: Deactivating
+[controller_server-7] [INFO] [1794908512.390499212] [controller_server]: Deactivating controller: FollowPath of type regulated_pure_pursuit_controller::RegulatedPurePursuitController
+[controller_server-7] [INFO] [1794908512.390603048] [local_costmap.local_costmap]: Deactivating
+[planner_server-6] [INFO] [1794908512.389946719] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[planner_server-6] [INFO] [1794908512.390217334] [planner_server]: Running Nav2 LifecycleNode rcl preshutdown (planner_server)
+[planner_server-6] [INFO] [1794908512.390436430] [planner_server]: Deactivating
+[planner_server-6] [INFO] [1794908512.390572266] [global_costmap.global_costmap]: Deactivating
+[map_server-5] [INFO] [1794908512.389986238] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[map_server-5] [INFO] [1794908512.390250645] [map_server]: Running Nav2 LifecycleNode rcl preshutdown (map_server)
+[map_server-5] [INFO] [1794908512.390448078] [map_server]: Deactivating
+[map_server-5] [INFO] [1794908512.390510092] [map_server]: Destroying bond (map_server) to lifecycle manager.
+[lidar_localization_node-4] [INFO] [1794908512.389996253] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[lifecycle_manager-9] [INFO] [1794908512.389987486] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[lifecycle_manager-9] [INFO] [1794908512.390245813] [lifecycle_manager_navigation]: Running Nav2 LifecycleManager rcl preshutdown (lifecycle_manager_navigation)
+[lifecycle_manager-9] [INFO] [1794908512.390350609] [lifecycle_manager_navigation]: [34m[1mTerminating bond timer...[0m[0m
+[robot_state_publisher-2] [INFO] [1794908512.389999357] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[static_transform_publisher-3] [INFO] [1794908512.390011549] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[INFO] [planner_server-6]: sending signal 'SIGINT' to process[planner_server-6]
+[INFO] [pointcloud_nav_preprocessor.py-1]: sending signal 'SIGINT' to process[pointcloud_nav_preprocessor.py-1]
+[bt_navigator-8] [INFO] [1794908512.401510639] [bt_navigator]: Cleaning up
+[bt_navigator-8] [INFO] [1794908512.530561600] [bt_navigator]: Completed Cleaning up
+[bt_navigator-8] [INFO] [1794908512.530787128] [bt_navigator]: Destroying bond (bt_navigator) to lifecycle manager.
+[bt_navigator-8] [INFO] [1794908512.541207600] [bt_navigator]: Destroying
+[map_server-5] [INFO] [1794908512.401509551] [map_server]: Cleaning up
+[map_server-5] [INFO] [1794908512.401773126] [map_server]: Destroying bond (map_server) to lifecycle manager.
+[map_server-5] [INFO] [1794908512.414648201] [map_server]: Destroying
+[controller_server-7] [INFO] [1794908512.430526884] [controller_server]: Destroying bond (controller_server) to lifecycle manager.
+[controller_server-7] [INFO] [1794908512.441489737] [controller_server]: Cleaning up
+[controller_server-7] [INFO] [1794908512.441673954] [controller_server]: Cleaning up controller: FollowPath of type regulated_pure_pursuit_controller::RegulatedPurePursuitController
+[controller_server-7] [INFO] [1794908512.441843612] [local_costmap.local_costmap]: Cleaning up
+[controller_server-7] [INFO] [1794908512.492980052] [controller_server]: Destroying bond (controller_server) to lifecycle manager.
+[controller_server-7] [INFO] [1794908512.499450996] [local_costmap.local_costmap]: Destroying
+[controller_server-7] [INFO] [1794908512.516319533] [controller_server]: Destroying
+[lifecycle_manager-9] [INFO] [1794908512.494607260] [lifecycle_manager_navigation]: Destroying lifecycle_manager_navigation
+[ERROR] [pointcloud_nav_preprocessor.py-1]: process has died [pid 41578, exit code -2, cmd '/home/fdmover/traymover_ros2/install/traymover_robot_nav/lib/traymover_robot_nav/pointcloud_nav_preprocessor.py --ros-args -r __node:=pointcloud_nav_preprocessor --params-file /dev/shm/traymover_experiments/full_chain_20261117_174121_clean/tmp/launch_params_81wej731'].
+[planner_server-6] [INFO] [1794908513.250140939] [planner_server]: Deactivating plugin GridBased of type NavfnPlanner
+[planner_server-6] [INFO] [1794908513.250378435] [planner_server]: Destroying bond (planner_server) to lifecycle manager.
+[planner_server-6] [INFO] [1794908513.260765180] [planner_server]: Cleaning up
+[planner_server-6] [INFO] [1794908513.271610117] [global_costmap.global_costmap]: Cleaning up
+[planner_server-6] [INFO] [1794908513.276438718] [planner_server]: Cleaning up plugin GridBased of type NavfnPlanner
+[planner_server-6] [INFO] [1794908513.276912334] [planner_server]: Destroying plugin GridBased of type NavfnPlanner
+[planner_server-6] [INFO] [1794908513.280929795] [planner_server]: Destroying bond (planner_server) to lifecycle manager.
+[planner_server-6] [INFO] [1794908513.282770147] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[planner_server-6] [INFO] [1794908513.285536707] [global_costmap.global_costmap]: Destroying
+[planner_server-6] [INFO] [1794908513.296148692] [planner_server]: Destroying
+[INFO] [planner_server-6]: process has finished cleanly [pid 41588]

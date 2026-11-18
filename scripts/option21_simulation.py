@@ -62,6 +62,10 @@ def plant_step(pose, vx, wz, dt):
     return np.array([x, y, yaw])
 
 
+ROOM_PILLARS = ((4.5, 3.8, .7, 2.7), (-3.5, -2.5, .9, 2.3),
+                (4.2, -3.1, 1.2, 1.8))
+
+
 def room_points():
     """Asymmetric 16 x 12 m room, floor, walls and three differently sized pillars."""
     surfaces = []
@@ -77,7 +81,7 @@ def room_points():
         rectangle(0, x, (-6, 6.01), (0, 3.01))
     for y in (-6, 6):
         rectangle(1, y, (-8, 8.01), (0, 3.01))
-    for x, y, w, h in ((4.5, 3.8, .7, 2.7), (-3.5, -2.5, .9, 2.3), (4.2, -3.1, 1.2, 1.8)):
+    for x, y, w, h in ROOM_PILLARS:
         for xx in (x-w/2, x+w/2):
             rectangle(0, xx, (y-w/2, y+w/2+.01), (0, h))
         for yy in (y-w/2, y+w/2):
@@ -202,7 +206,8 @@ class VirtualMCU:
                 frame[:5] = bytes.fromhex('7f 7f 28 02 60')
                 frame[6:8] = bytes([1, 71])
                 frame[29:31] = round(vx*scale*1000).to_bytes(2, 'big', signed=True)
-                frame[31:33] = round(wz*scale*1000).to_bytes(2, 'big', signed=True)
+                # The option-21 STM32 returns yaw with the opposite sign to ROS +Z.
+                frame[31:33] = round(-wz*scale*1000).to_bytes(2, 'big', signed=True)
                 frame[37] = driver.compute_checksum(frame)
                 frame[38:] = b'\r\n'
                 self.output.write(json.dumps({'t': elapsed, 'tx': request.hex(), 'rx': frame.hex()})+'\n')

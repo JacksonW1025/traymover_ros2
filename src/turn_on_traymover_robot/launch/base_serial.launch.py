@@ -4,7 +4,8 @@ from pathlib import Path
 import yaml
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, OpaqueFunction
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, OpaqueFunction
+from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
@@ -44,20 +45,14 @@ def include_base_launch(context, *args, **kwargs):
     ]
 
     if use_imu and imu_mode == 'N300_pro':
-        nodes.append(
-            Node(
-                package='hipnuc_imu',
-                executable='talker',
-                name='traymover_imu_publisher',
-                output='screen',
-                parameters=[{
-                    'serial_port': LaunchConfiguration('imu_serial_port'),
-                    'baud_rate': LaunchConfiguration('imu_baud_rate'),
-                    'frame_id': LaunchConfiguration('imu_frame_id'),
-                    'imu_topic': LaunchConfiguration('imu_topic'),
-                }],
-            )
-        )
+        launch_dir = Path(get_package_share_directory('turn_on_traymover_robot')) / 'launch'
+        nodes.append(IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(str(launch_dir / 'traymover_imu.launch.py')),
+            launch_arguments={key: LaunchConfiguration(key) for key in (
+                'traymover_param_yaml', 'imu_mode', 'imu_serial_port',
+                'imu_baud_rate', 'imu_frame_id', 'imu_topic',
+            )}.items(),
+        ))
     elif use_imu and imu_mode != 'stm32':
         raise ValueError(f'Unsupported imu_mode: {imu_mode}')
 
@@ -112,7 +107,7 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             'imu_serial_port',
-            default_value='/dev/ttyCH343USB0',
+            default_value='',
             description='Serial port used by the N300 Pro IMU.',
         ),
         DeclareLaunchArgument(

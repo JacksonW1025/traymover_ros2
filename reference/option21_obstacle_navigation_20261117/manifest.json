@@ -1,0 +1,46 @@
+{
+  "mode": "full option21 Nav2 closed loop with virtual STM32",
+  "ros_domain_id": 172,
+  "hardware_port": "/dev/pts/3",
+  "navigation_command": [
+    "ros2",
+    "launch",
+    "traymover_robot_nav",
+    "traymover_nav_stm32.launch.py",
+    "use_sim_time:=true",
+    "bringup_hardware:=false",
+    "launch_rviz:=false",
+    "pcd_path:=/dev/shm/traymover_experiments/obstacle_20261117_180001_validation/maps/room.pcd",
+    "map:=/dev/shm/traymover_experiments/obstacle_20261117_180001_validation/maps/room_2d.yaml",
+    "params_file:=/dev/shm/traymover_experiments/obstacle_20261117_180001_validation/parameters/full_navigation.yaml",
+    "bt_xml:=/opt/ros/humble/share/nav2_bt_navigator/behavior_trees/navigate_to_pose_w_replanning_and_recovery.xml",
+    "through_poses_bt_xml:=/opt/ros/humble/share/nav2_bt_navigator/behavior_trees/navigate_through_poses_w_replanning_and_recovery.xml"
+  ],
+  "map_points": 27650,
+  "self_test": true,
+  "model_dt_s": 0.05,
+  "map_validation": {
+    "occupied_cells": 27804,
+    "solid_pillars": 3,
+    "projection_min_region_cells": 1,
+    "solid_geometry_infill": true
+  },
+  "controller": "DWBLocalPlanner",
+  "local_and_global_obstacle_layers": true,
+  "recovery_behaviors": true,
+  "lidar_hz": 10,
+  "feedback_velocity_gain": 1.0,
+  "ground_truth_not_supplied_to_localizer": true,
+  "raw_cloud_recorded": false,
+  "output": "/dev/shm/traymover_experiments/obstacle_20261117_180001_validation",
+  "limitations": [
+    "Synthetic ideal wheel feedback; no physical unit calibration",
+    "No physical slip, actuator delay identification or hardware safety test"
+  ],
+  "source_sha256": {
+    "scripts/option21_full_chain.py": "fac365a29707006a7f0a3c5ee3ddfc49ef584da63ec675be959d112adc0d3042",
+    "src/turn_on_traymover_robot/turn_on_traymover_robot/traymover_robot.py": "e8cd5bbeb4d4fd25a5dc11af01d3848d10842f575ca6239b079d0357d38c7b8f",
+    "src/traymover_robot_nav/config/nav2_params.yaml": "30ceb9d101244ea0ed5be012a9db2c57e5655b565e863ff37975f7dbfe0bf38d",
+    "src/traymover_robot_nav/config/localization.yaml": "e0c2526cb5fd7d82464c0f1653db9ecdeb557b5feaa19cbbd893b52be80ac298"
+  }
+}

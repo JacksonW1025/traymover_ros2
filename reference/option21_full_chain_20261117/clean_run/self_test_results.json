@@ -1,0 +1,62 @@
+{
+  "passed": true,
+  "checks": {
+    "nav2_goals_succeeded": true,
+    "planner_produced_path": true,
+    "controller_produced_velocity": true,
+    "driver_produced_odometry": true,
+    "preprocessor_produced_cloud": true,
+    "ndt_produced_pose": true,
+    "true_goal_errors_below_30cm": true,
+    "localization_rmse_below_20cm": true,
+    "localization_tf_fresh_95pct": true
+  },
+  "goals": [
+    {
+      "goal": [
+        2.0,
+        0.0,
+        0.0
+      ],
+      "status": 4,
+      "t": 13.5,
+      "true_pose": [
+        1.8856654141192528,
+        0.011967395163915165,
+        -0.004935453558957942
+      ],
+      "true_distance_m": 0.11495919308837921
+    },
+    {
+      "goal": [
+        2.0,
+        1.5,
+        1.5707963267948966
+      ],
+      "status": 4,
+      "t": 25.1,
+      "true_pose": [
+        2.016224264021993,
+        1.3409723074848805,
+        1.3245954443005465
+      ],
+      "true_distance_m": 0.15985316302700653
+    }
+  ],
+  "counts": {
+    "odom": 504,
+    "tf": 2299,
+    "tf_static": 2,
+    "map_cloud": 1,
+    "initialpose": 1,
+    "cloud": 202,
+    "ndt": 10,
+    "aligned_cloud": 10,
+    "action_status": 4,
+    "plan": 18,
+    "cmd": 363,
+    "nonzero_cmd": 361
+  },
+  "localization_current_rmse_m": 0.07246843977524446,
+  "max_tf_age_s": 0.04999999999999716
+}
