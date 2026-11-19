@@ -111,7 +111,7 @@ def test_chassis_and_controller_have_separate_scoped_transports(monkeypatch, bri
     assert remaps['/option22_obstacle_gate'] == {}
     profile = module.rviz_profile(PKG)
     displays = {item['Name']: item for item in profile['Visualization Manager']['Displays']}
-    assert displays['GlobalPlan']['Topic']['Value'] == '/option22/display_plan'
+    assert displays['Tracking path']['Topic']['Value'] == '/option22/display_plan'
     assert displays['Navigation status']['Topic']['Value'] == '/option22/navigation_marker'
     assert not displays['LocalPlan']['Enabled']
 
@@ -354,13 +354,15 @@ def _ranges(x, y, angles, obstacles, front_wall=55.8, half_width=1.6):
     return ranges
 
 
-@pytest.mark.parametrize('scene', ['close_planner', 'corridor', 'unknown_boundary', 'mapped_wall'])
+@pytest.mark.parametrize('scene', [
+    'close_planner', 'corridor', 'unknown_boundary', 'mapped_wall', 'goal_update',
+])
 def test_nav2_bounded_detour(tmp_path, monkeypatch, scene):
-    from action_msgs.msg import GoalStatus
-    from geometry_msgs.msg import TransformStamped, Twist
+    from action_msgs.msg import GoalStatus, GoalStatusArray
+    from geometry_msgs.msg import PoseStamped, TransformStamped, Twist
     from lifecycle_msgs.msg import State
     from lifecycle_msgs.srv import GetState
-    from nav2_msgs.action import ComputePathToPose, NavigateToPose
+    from nav2_msgs.action import ComputePathToPose, NavigateThroughPoses, NavigateToPose
     from nav_msgs.msg import Odometry, Path as NavPath
     from rclpy.action import ActionClient
     from rclpy.context import Context
@@ -370,6 +372,7 @@ def test_nav2_bounded_detour(tmp_path, monkeypatch, scene):
     from sensor_msgs.msg import CameraInfo, Image, PointCloud2
     from std_msgs.msg import Bool, String
     from tf2_ros import StaticTransformBroadcaster, TransformBroadcaster
+    from traymover_robot_nav.srv import UpdateOption22Path
     from visualization_msgs.msg import Marker
 
     narrow, facing_wall = scene == 'unknown_boundary', scene == 'mapped_wall'
@@ -420,6 +423,9 @@ def test_nav2_bounded_detour(tmp_path, monkeypatch, scene):
     pose = [0., 0., 0.]
     command = [0., 0.]
     states, plans, requests, positions, obstacles = [], [], [], [], []
+    global_plans = []
+    follow_goals = set()
+    waypoint_counts = []
     depth_enabled = True
     occluder_depth_mm = None
     beams = np.linspace(-np.pi, np.pi, 720, endpoint=False)
@@ -493,7 +499,14 @@ def test_nav2_bounded_detour(tmp_path, monkeypatch, scene):
     node.create_subscription(Twist, '/option22/cmd_vel_safe', receive_velocity, 1)
     node.create_subscription(Bool, '/option22/auto_request', lambda msg: requests.append(msg.data), 1)
     node.create_subscription(String, '/option22/state', lambda msg: states.append(msg.data), 1)
-    node.create_subscription(NavPath, '/plan', plans.append, 1)
+    node.create_subscription(NavPath, '/plan', global_plans.append, 10)
+    node.create_subscription(NavPath, '/option22/tracking_path', plans.append, 1)
+
+    def receive_follow_status(msg):
+        follow_goals.update(bytes(status.goal_info.goal_id.uuid) for status in msg.status_list)
+
+    node.create_subscription(GoalStatusArray, '/follow_path/_action/status', receive_follow_status,
+                             QoSProfile(depth=10, durability=DurabilityPolicy.TRANSIENT_LOCAL))
     if scene == 'close_planner':
         displayed_stop, markers, displayed_paths = [], [], []
         latched = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
@@ -502,7 +515,9 @@ def test_nav2_bounded_detour(tmp_path, monkeypatch, scene):
         node.create_subscription(Marker, '/option22/navigation_marker', markers.append, latched)
         node.create_subscription(NavPath, '/option22/display_plan', displayed_paths.append, latched)
     client = ActionClient(node, NavigateToPose, '/navigate_to_pose')
+    through_poses = ActionClient(node, NavigateThroughPoses, '/navigate_through_poses')
     planner = ActionClient(node, ComputePathToPose, '/compute_path_to_pose')
+    update_path = node.create_client(UpdateOption22Path, '/option22/update_path')
     navigator_state = node.create_client(GetState, '/bt_navigator/get_state')
 
     log = tmp_path / 'option22.log'
@@ -532,42 +547,35 @@ def test_nav2_bounded_detour(tmp_path, monkeypatch, scene):
             assert active, log.read_text()
             until(client.server_is_ready)
             until(lambda: requests and not requests[-1])
+            # Nav2 can activate before the gate has matched and checked its sensor feeds.
+            until(lambda: states and states[-1] == 'IDLE')
             startup_clear_index = requests.index(False)
-            if scene in ('close_planner', 'corridor'):
-                until(planner.server_is_ready)
-                until(lambda: states and states[-1] == 'IDLE')
-                # Lifecycle activation can precede DDS matching of the obstacle feed.
-                startup_goal = ComputePathToPose.Goal(planner_id='GridBased')
-                startup_goal.goal.header.frame_id = 'map'
-                startup_goal.goal.pose.position.x, startup_goal.goal.pose.orientation.w = .6, 1.
-                deadline = time.monotonic() + 5.0
-                while True:
-                    accepted = planner.send_goal_async(startup_goal)
-                    until(accepted.done)
-                    startup_result = accepted.result().get_result_async()
-                    until(startup_result.done)
-                    if startup_result.result().status == GoalStatus.STATUS_SUCCEEDED:
-                        break
-                    assert time.monotonic() < deadline, log.read_text()
             if scene == 'close_planner':
+                until(planner.server_is_ready)
+                until(update_path.service_is_ready)
                 goal = ComputePathToPose.Goal(planner_id='GridBased')
                 goal.goal.header.frame_id = 'map'
                 goal.goal.pose.position.x, goal.goal.pose.orientation.w = 5.75, 1.
+                accepted = planner.send_goal_async(goal)
+                until(accepted.done)
+                result = accepted.result().get_result_async()
+                until(result.done)
+                response = result.result()
+                assert response.status == GoalStatus.STATUS_SUCCEEDED, log.read_text()
+                reference = response.result.path
 
-                def compute_path():
-                    accepted = planner.send_goal_async(goal)
-                    until(accepted.done)
-                    result = accepted.result().get_result_async()
+                def check_path():
+                    result = update_path.call_async(UpdateOption22Path.Request(global_path=reference))
                     until(result.done)
-                    response = result.result()
-                    assert response.status == GoalStatus.STATUS_SUCCEEDED, log.read_text()
-                    return response.result.path
+                    return result.result().tracking_path
 
                 for obstacle_x, expect_bypass in [(1.64, False), (1.44, True)]:
                     obstacles[:] = [(obstacle_x, 0., .24)]
                     observed_at = time.monotonic() + (0.55 if expect_bypass else 1.50)
                     until(lambda: time.monotonic() >= observed_at)
-                    poses = compute_path().poses
+                    tracking = check_path()
+                    assert tracking.poses, log.read_text()
+                    poses = tracking.poses
                     offset = max(abs(p.pose.position.y) for p in poses)
                     assert (offset > .45) if expect_bypass else (offset < .10)
                     if expect_bypass:
@@ -580,20 +588,13 @@ def test_nav2_bounded_detour(tmp_path, monkeypatch, scene):
                 obstacles.clear()
                 after_turn = time.monotonic() + 3.2
                 until(lambda: time.monotonic() >= after_turn)
-                kept = compute_path().poses
-                assert [(p.pose.position.x, p.pose.position.y) for p in kept] == [
-                    (p.pose.position.x, p.pose.position.y) for p in poses]
-                assert kept[0].pose.orientation == heading
+                assert check_path() == tracking
                 pose[2] = 0.
                 occluder_depth_mm = 180
                 until(lambda: requests and requests[-1] and displayed_stop and displayed_stop[-1]
                       and markers and markers[-1].text == 'E-STOP'
                       and displayed_paths and not displayed_paths[-1].poses)
-                accepted = planner.send_goal_async(goal)
-                until(accepted.done)
-                result = accepted.result().get_result_async()
-                until(result.done)
-                assert result.result().status == GoalStatus.STATUS_ABORTED
+                assert not check_path().poses
                 assert pose[:2] == [0., 0.] and command == [0., 0.]
                 occluder_depth_mm = None
                 until(lambda: not requests[-1] and not displayed_stop[-1]
@@ -615,16 +616,30 @@ def test_nav2_bounded_detour(tmp_path, monkeypatch, scene):
                 long_plan = long_result.result().result.path.poses
                 assert long_plan[-1].pose.position.x == pytest.approx(52.)
                 assert max(abs(p.pose.position.y) for p in long_plan) < .10
-            goal = NavigateToPose.Goal()
-            goal.pose.header.frame_id = 'map'
+                until(lambda: global_plans and global_plans[-1].poses == long_plan)
             goal_x = 1.44 if facing_wall else 5.75
-            goal.pose.pose.position.x, goal.pose.pose.orientation.w = goal_x, 1.
-            accepted = client.send_goal_async(goal)
+            target = PoseStamped()
+            target.header.frame_id = 'map'
+            target.pose.position.x, target.pose.orientation.w = goal_x, 1.
+            global_plans.clear()
+            if facing_wall:
+                waypoint = PoseStamped(header=target.header)
+                waypoint.pose.position.x, waypoint.pose.orientation.w = .8, 1.
+                until(through_poses.server_is_ready)
+                accepted = through_poses.send_goal_async(
+                    NavigateThroughPoses.Goal(poses=[waypoint, target]),
+                    feedback_callback=lambda msg: waypoint_counts.append(
+                        msg.feedback.number_of_poses_remaining))
+            else:
+                accepted = client.send_goal_async(NavigateToPose.Goal(pose=target))
             until(accepted.done)
             handle = accepted.result()
             assert handle.accepted
             result = handle.get_result_async()
-            until(lambda: pose[0] > .25)
+            until(lambda: pose[0] > .25 and global_plans and len(plans) >= 2 and follow_goals)
+            assert len(global_plans) == 1
+            assert len(follow_goals) == 1
+            reference = global_plans[0]
             assert max(abs(p.pose.position.y) for p in plans[-1].poses) < .10
             assert not any(requests[startup_clear_index:])
             assert not {'WAITING', 'TRAJECTORY_BLOCKED', 'NO_LOCAL_DETOUR'}.intersection(states)
@@ -637,12 +652,37 @@ def test_nav2_bounded_detour(tmp_path, monkeypatch, scene):
                 assert not {'WAITING', 'DETOURING', 'NO_LOCAL_DETOUR'}.intersection(states)
                 assert not any(requests[startup_clear_index:])
                 assert abs(pose[0] - goal_x) < .22
+                assert any(p.pose.position.x == .8 for p in reference.poses)
+                assert global_plans == [reference] and len(follow_goals) == 1
+                assert 1 in waypoint_counts
                 occluder_depth_mm = 180
                 until(lambda: states[-1] == 'CAMERA_ESTOP' and requests[-1])
                 return
 
+            if scene == 'goal_update':
+                target.pose.position.x = 1.25
+                revised = client.send_goal_async(NavigateToPose.Goal(pose=target))
+                until(revised.done)
+                revised_result = revised.result().get_result_async()
+                until(revised_result.done)
+                assert revised_result.result().status == GoalStatus.STATUS_SUCCEEDED, log.read_text()
+                assert result.done() and len(global_plans) == 2
+                assert global_plans[-1].poses[-1].pose.position.x == 1.25
+                repeated = client.send_goal_async(NavigateToPose.Goal(pose=target))
+                until(repeated.done)
+                repeated_result = repeated.result().get_result_async()
+                until(repeated_result.done)
+                assert repeated_result.result().status == GoalStatus.STATUS_SUCCEEDED, log.read_text()
+                assert len(global_plans) == 3
+                return
+
             if scene == 'corridor':
-                until(lambda: command[0] >= .49)
+                pose[1] += .035
+                pose[2] += .04
+                until(lambda: pose[0] > 1.0 and command[0] >= .49)
+                assert global_plans == [reference] and len(follow_goals) == 1
+                assert plans[0].poses == plans[-1].poses
+                assert max(abs(p[1]) for p in positions) < .06
             obstacles.append((pose[0] + 1.65, 0., .24))
             if narrow:
                 until(lambda: states[-1] == 'NO_LOCAL_DETOUR')
@@ -668,6 +708,8 @@ def test_nav2_bounded_detour(tmp_path, monkeypatch, scene):
                            for a, b in zip(bypass, bypass[1:]))
                 suffix = [p for p in bypass if p.pose.position.x > stopped[0] + 3.82]
                 assert suffix and all(abs(p.pose.position.y) < .07 for p in suffix)
+                assert [p.pose for p in suffix] == [
+                    p.pose for p in reference.poses if p.pose.position.x > stopped[0] + 3.82]
                 for pose_on_path in bypass:
                     q = pose_on_path.pose.orientation
                     yaw = 2.0 * math.atan2(q.z, q.w)
@@ -687,6 +729,7 @@ def test_nav2_bounded_detour(tmp_path, monkeypatch, scene):
                 assert result.result().status == GoalStatus.STATUS_SUCCEEDED, log.read_text()
                 assert max(abs(p[1]) for p in positions) > .45
                 assert abs(pose[0] - goal_x) < .22 and abs(pose[1]) < .22
+            assert global_plans == [reference]
             depth_enabled = False
             until(lambda: states[-1] == 'CAMERA_ESTOP' and requests[-1]
                   and command == [0., 0.])

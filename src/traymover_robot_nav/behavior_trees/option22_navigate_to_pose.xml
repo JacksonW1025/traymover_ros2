@@ -1,15 +1,18 @@
 <root main_tree_to_execute="MainTree">
   <BehaviorTree ID="MainTree">
-    <RecoveryNode number_of_retries="60">
-      <PipelineSequence name="NavigateWithReplanning">
-        <RateController hz="4.0">
-          <ComputePathToPose goal="{goal}" path="{path}" planner_id="GridBased"/>
-        </RateController>
-        <FollowPath path="{path}" controller_id="FollowPath"/>
-      </PipelineSequence>
-      <Delay delay_msec="1000">
-        <AlwaysSuccess/>
-      </Delay>
-    </RecoveryNode>
+    <Option22GlobalRoute>
+      <RecoveryNode number_of_retries="60">
+        <ComputePathToPose goal="{goal}" path="{global_path}" planner_id="GridBased"/>
+        <Delay delay_msec="1000"><AlwaysSuccess/></Delay>
+      </RecoveryNode>
+      <RecoveryNode number_of_retries="60">
+        <PipelineSequence name="FollowWithLocalDetours">
+          <Option22UpdatePath service_name="/option22/update_path" server_timeout="1000"
+                              global_path="{global_path}" path="{path}"/>
+          <FollowPath path="{path}" controller_id="FollowPath"/>
+        </PipelineSequence>
+        <Delay delay_msec="1000"><AlwaysSuccess/></Delay>
+      </RecoveryNode>
+    </Option22GlobalRoute>
   </BehaviorTree>
 </root>

@@ -22,6 +22,7 @@
 #include "std_msgs/msg/string.hpp"
 #include "tf2/utils.h"
 #include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
+#include "traymover_robot_nav/srv/update_option22_path.hpp"
 
 namespace traymover_robot_nav
 {
@@ -290,13 +291,15 @@ Route makePatch(
 class Option22LocalDetour : public nav2_core::GlobalPlanner
 {
 public:
+  using UpdatePath = srv::UpdateOption22Path;
+
   void configure(
     const rclcpp_lifecycle::LifecycleNode::WeakPtr & parent, std::string name,
     std::shared_ptr<tf2_ros::Buffer> tf,
     std::shared_ptr<nav2_costmap_2d::Costmap2DROS> costmap) override
   {
     node_ = parent;
-    tf_ = tf;
+    costmap_ = costmap;
     map_ = costmap->getCostmap();
     baseline_ = loader_.createSharedInstance("traymover_robot_nav::StraightLinePlanner");
     baseline_->configure(parent, name, std::move(tf), std::move(costmap));
@@ -324,6 +327,12 @@ public:
 
     state_ = node->create_publisher<std_msgs::msg::String>("/option22/planner_state", 1);
     entry_ = node->create_publisher<PoseStamped>("/option22/detour_entry", 1);
+    tracking_ = node->create_publisher<Path>("/option22/tracking_path", 1);
+    update_path_ = node->create_service<UpdatePath>(
+      "/option22/update_path",
+      [this](const UpdatePath::Request::SharedPtr request, UpdatePath::Response::SharedPtr reply) {
+        updatePath(*request, *reply);
+      });
     camera_stop_ = node->create_subscription<std_msgs::msg::Bool>(
       "/option22/auto_request", 1,
       [this](std_msgs::msg::Bool::ConstSharedPtr msg) {camera_stop_requested_ = msg->data;});
@@ -338,18 +347,18 @@ public:
 
   void cleanup() override
   {
+    update_path_.reset();
     obstacles_.reset();
     camera_stop_.reset();
     camera_stop_requested_ = false;
     state_.reset();
     entry_.reset();
+    tracking_.reset();
     baseline_->cleanup();
     baseline_.reset();
-    route_ = Route();
-    detour_ = Route();
-    remembered_obstacles_.clear();
-    replacement_pending_ = false;
-    waiting_ = false;
+    costmap_.reset();
+    resetRoute(Path());
+    cloud_.reset();
   }
 
   void activate() override
@@ -357,35 +366,18 @@ public:
     baseline_->activate();
     state_->on_activate();
     entry_->on_activate();
+    tracking_->on_activate();
   }
 
   void deactivate() override
   {
     state_->on_deactivate();
     entry_->on_deactivate();
+    tracking_->on_deactivate();
     baseline_->deactivate();
   }
 
   Path createPlan(const PoseStamped & start, const PoseStamped & goal) override
-  {
-    std::lock_guard<std::mutex> lock(plan_mutex_);
-    const auto robot = tf_->lookupTransform("map", "base_link", tf2::TimePointZero);
-    const Point robot_xy{robot.transform.translation.x, robot.transform.translation.y};
-    const bool current_leg = (xy(start) - robot_xy).norm() < 0.30;
-    try {
-      return current_leg ? planCurrentLeg(start, goal) : staticRoute(start, goal).path;
-    } catch (const HoldPosition &) {
-      throw;
-    } catch (const std::exception & error) {
-      if (current_leg) {
-        publish("ROUTE_UNAVAILABLE");
-      }
-      throw nav2_core::PlannerException(error.what());
-    }
-  }
-
-private:
-  Route staticRoute(const PoseStamped & start, const PoseStamped & goal)
   {
     const auto plan = baseline_->createPlan(start, goal);
     Route route;
@@ -404,7 +396,57 @@ private:
     {
       throw std::runtime_error("Static route footprint crosses unknown or occupied space");
     }
-    return route;
+    return remaining(route, 0.0, plan.header.stamp);
+  }
+
+private:
+  void resetRoute(const Path & reference)
+  {
+    reference_ = reference;
+    route_ = Route();
+    route_.path.header = reference.header;
+    for (const auto & pose : reference.poses) {
+      route_.append(pose);
+    }
+    tracking_path_ = Path();
+    detour_ = Route();
+    remembered_obstacles_.clear();
+    replacement_pending_ = false;
+    waiting_ = false;
+    progress_ = 0.0;
+  }
+
+  void updatePath(const UpdatePath::Request & request, UpdatePath::Response & reply)
+  {
+    if (!state_->is_activated()) {
+      return;
+    }
+    const auto node = node_.lock();
+    try {
+      PoseStamped start;
+      if (request.global_path.poses.empty() || request.global_path.header.frame_id != "map" ||
+        !costmap_->isCurrent() || !costmap_->getRobotPose(start))
+      {
+        hold("ROUTE_UNAVAILABLE");
+      }
+      if (request.global_path != reference_) {
+        resetRoute(request.global_path);
+      }
+      if (request.restart_tracking) {
+        tracking_path_ = Path();
+      }
+      const builtin_interfaces::msg::Time stamp = node->now();
+      reply.tracking_path = checkRoute(start, stamp);
+      // Only the display heartbeat gets a new timestamp. FollowPath compares the
+      // complete ROS message, and a new stamp would reset controller pruning.
+      auto display = reply.tracking_path;
+      display.header.stamp = stamp;
+      tracking_->publish(display);
+    } catch (const HoldPosition &) {
+    } catch (const std::exception & error) {
+      publish("ROUTE_UNAVAILABLE");
+      RCLCPP_WARN_THROTTLE(node->get_logger(), *node->get_clock(), 2000, "%s", error.what());
+    }
   }
 
   void publish(const std::string & state)
@@ -468,28 +510,13 @@ private:
     }
   }
 
-  Path planCurrentLeg(const PoseStamped & start, const PoseStamped & goal)
+  Path checkRoute(const PoseStamped & start, const builtin_interfaces::msg::Time & stamp)
   {
     if (camera_stop_requested_) {
       return hold("CAMERA_ESTOP");
     }
     const auto frame = latestObstacles();
     const auto now = SteadyClock::now();
-    const bool resumed = detour_.empty() && now - last_request_ > std::chrono::seconds(3);
-    last_request_ = now;
-    if (resumed || route_.empty() || (xy(goal) - xy(route_.path.poses.back())).norm() > 1e-4 ||
-      std::abs(std::remainder(tf2::getYaw(goal.pose.orientation) -
-      tf2::getYaw(route_.path.poses.back().pose.orientation), 2 * M_PI)) > 1e-4)
-    {
-      route_ = Route();
-      detour_ = Route();
-      remembered_obstacles_.clear();
-      replacement_pending_ = false;
-      waiting_ = false;
-      progress_ = 0.0;
-      route_ = staticRoute(start, goal);
-    }
-    const builtin_interfaces::msg::Time stamp = node_.lock()->now();
     std::lock_guard<Costmap2D::mutex_t> lock(*map_->getMutex());
     progress_ = route_.project(xy(start), progress_);
     if (!detour_.empty()) {
@@ -500,6 +527,7 @@ private:
         remembered_obstacles_.clear();
         replacement_pending_ = false;
         progress_ = std::max(progress_, rejoin_);
+        tracking_path_ = Path();
       } else {
         return continueDetour(start, frame, stamp);
       }
@@ -530,8 +558,11 @@ private:
         return hold("ROUTE_UNAVAILABLE");
       }
       waiting_ = false;
+      if (tracking_path_.poses.empty()) {
+        tracking_path_ = remaining(route_, progress_, stamp);
+      }
       publish("FOLLOWING_ROUTE");
-      return remaining(route_, progress_, stamp);
+      return tracking_path_;
     }
 
     if (!waiting_) {
@@ -658,6 +689,7 @@ private:
                 waiting_ = false;
                 entry_pose_ = poseAt(detour_.path.header, xy(start), yaw);
                 entry_pose_.header.stamp = stamp;
+                tracking_path_ = Path();
                 return activeDetour(stamp);
               }
             }
@@ -676,9 +708,12 @@ private:
     if (camera_stop_requested_) {
       return hold("CAMERA_ESTOP");
     }
+    if (tracking_path_.poses.empty()) {
+      tracking_path_ = withSuffix(detour_, detour_progress_, rejoin_, stamp);
+    }
     entry_->publish(entry_pose_);
     publish("DETOURING");
-    return withSuffix(detour_, detour_progress_, rejoin_, stamp);
+    return tracking_path_;
   }
 
   Path withSuffix(
@@ -699,15 +734,18 @@ private:
   rclcpp_lifecycle::LifecycleNode::WeakPtr node_;
   rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::String>::SharedPtr state_;
   rclcpp_lifecycle::LifecyclePublisher<PoseStamped>::SharedPtr entry_;
+  rclcpp_lifecycle::LifecyclePublisher<Path>::SharedPtr tracking_;
+  rclcpp::Service<UpdatePath>::SharedPtr update_path_;
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr obstacles_;
   rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr camera_stop_;
   std::atomic_bool camera_stop_requested_{false};
-  std::shared_ptr<tf2_ros::Buffer> tf_;
+  std::shared_ptr<nav2_costmap_2d::Costmap2DROS> costmap_;
   Costmap2D * map_{nullptr};
-  std::mutex plan_mutex_, cloud_mutex_;
+  std::mutex cloud_mutex_;
   sensor_msgs::msg::PointCloud2::ConstSharedPtr cloud_;
-  SteadyClock::time_point cloud_received_{}, blocked_since_{}, last_request_{};
+  SteadyClock::time_point cloud_received_{}, blocked_since_{};
   Route route_, detour_;
+  Path reference_, tracking_path_;
   PoseStamped entry_pose_;
   double progress_{}, detour_progress_{}, rejoin_{};
   double wait_{}, max_lateral_{}, max_length_{}, clearance_{}, tracking_clearance_{};

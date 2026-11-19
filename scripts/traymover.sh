@@ -1752,7 +1752,7 @@ print_menu() {
  19) Single-button Straight-line Detour Test (No Map / No Nav2)
  20) Conservative 2D AMCL navigation (3 height bands + LiDAR/IMU odom + depth safety + 3D RViz)
  21) Navigation with STM32 wheel feedback odometry (option 10 + NDT; no FAST-LIO)
- 22) STM32 wheel feedback navigation + LiDAR/RealSense wait and replan
+ 22) STM32 navigation + fixed global route and local obstacle detours
   q) Quit
 ==============================
 EOF

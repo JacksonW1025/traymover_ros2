@@ -380,7 +380,7 @@ class ObstacleGateNode(Node):
         self.create_subscription(Bool, '/traymover_estop/manual_state', self.on_manual, 1)
         self.create_subscription(Bool, '/traymover_estop/state', self.on_chassis_estop, latched)
         self.create_subscription(Bool, '/traymover_estop/auto_state', self.on_chassis_auto, latched)
-        self.create_subscription(Path, '/plan', self.on_plan, 1)
+        self.create_subscription(Path, '/option22/tracking_path', self.on_plan, 1)
         self.create_subscription(OccupancyGrid, '/map', self.on_map,
                                  QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL))
         self.create_timer(CONTROL_PERIOD, self.update, clock=Clock(clock_type=ClockType.STEADY_TIME))

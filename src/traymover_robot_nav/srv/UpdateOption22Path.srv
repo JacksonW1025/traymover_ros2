@@ -1,0 +1,6 @@
+nav_msgs/Path global_path
+# Refresh the controller's starting index after a tracking interruption.
+bool restart_tracking
+---
+# An empty path means the robot must wait.
+nav_msgs/Path tracking_path

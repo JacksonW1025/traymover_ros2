@@ -8,8 +8,11 @@
   <license>BSD</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
+  <buildtool_depend>rosidl_default_generators</buildtool_depend>
 
+  <depend>behaviortree_cpp_v3</depend>
   <depend>geometry_msgs</depend>
+  <depend>nav2_behavior_tree</depend>
   <depend>nav2_core</depend>
   <depend>nav2_costmap_2d</depend>
   <depend>nav2_lifecycle_manager</depend>
@@ -32,7 +35,8 @@
   <depend>sensor_msgs</depend>
   <exec_depend>sensor_msgs_py</exec_depend>
   <depend>std_msgs</depend>
-  <exec_depend>nav_msgs</exec_depend>
+  <depend>nav_msgs</depend>
+  <exec_depend>rosidl_default_runtime</exec_depend>
   <exec_depend>visualization_msgs</exec_depend>
   <exec_depend>lidar_localization_ros2</exec_depend>
   <exec_depend>fast_lio</exec_depend>
@@ -52,6 +56,7 @@
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
   <test_depend>ament_cmake_pytest</test_depend>
+  <member_of_group>rosidl_interface_packages</member_of_group>
 
   <export>
     <build_type>ament_cmake</build_type>

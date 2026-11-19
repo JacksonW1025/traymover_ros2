@@ -1,4 +1,4 @@
-"""STM32/NDT navigation with fused dynamic obstacles and guarded chassis output."""
+"""STM32/NDT navigation with a fixed global route and guarded local detours."""
 import math
 from pathlib import Path
 from tempfile import NamedTemporaryFile
@@ -20,7 +20,18 @@ from launch_ros.parameter_descriptions import ParameterValue
 
 def navigation_parameters(share, planner, gate):
     params = yaml.safe_load((share / 'config' / 'nav2_params.yaml').read_text())
-    params['bt_navigator']['ros__parameters']['default_server_timeout'] = 100
+    params['bt_navigator']['ros__parameters'].update(
+        default_server_timeout=100,
+        plugin_lib_names=[
+            'nav2_compute_path_to_pose_action_bt_node',
+            'nav2_compute_path_through_poses_action_bt_node',
+            'nav2_follow_path_action_bt_node',
+            'nav2_pipeline_sequence_bt_node',
+            'nav2_rate_controller_bt_node',
+            'nav2_recovery_node_bt_node',
+            'nav2_remove_passed_goals_action_bt_node',
+            'traymover_robot_nav_option22_bt',
+        ])
     local = params['local_costmap']['local_costmap']['ros__parameters']
     global_map = params['global_costmap']['global_costmap']['ros__parameters']
     local['static_layer'] = global_map['static_layer'].copy()
@@ -57,6 +68,7 @@ def rviz_profile(share):
     displays = profile['Visualization Manager']['Displays']
     for display in displays:
         if display.get('Name') == 'GlobalPlan':
+            display['Name'] = 'Tracking path'
             display['Topic'].update({
                 'Value': '/option22/display_plan', 'Durability Policy': 'Transient Local'})
         elif display.get('Name') == 'LocalPlan':
