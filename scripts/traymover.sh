@@ -115,6 +115,7 @@ KILL_PATTERNS=(
     'traymover_estop_keyboard'
     'traymover_auto_estop'
     'detour_supervisor.py'
+    'option22_obstacle_gate.py'
     'traymover_robot.py'
     # setuptools launches this console entry point, not the source .py file.
     'lib/turn_on_traymover_robot/traymover_robot_node([[:space:]]|$)'
@@ -720,8 +721,12 @@ PY
 }
 
 action_start_nav() {
-    # Options 18 and 21 share map selection, conversion and Nav2 settings.
+    # Options 18, 21 and 22 share map selection and conversion.
     local nav_option="${1:-10}" nav_auto_estop_enabled
+    local odometry_label="FAST-LIO" chassis_velocity_topic="/cmd_vel"
+    if [[ "${nav_option}" = 21 || "${nav_option}" = 22 ]]; then
+        odometry_label="STM32 feedback"
+    fi
     # Autonomous navigation bringup. Prompts the user to:
     #   1) pick a PCD map from FAST_LIO/PCD/ (the prior map for lidar_localization_ros2)
     #   2) choose ground-plane fitting, then regenerate a matching PGM/YAML
@@ -786,6 +791,11 @@ action_start_nav() {
     mkdir -p "${NAV_RUNTIME_DIR}"
     local runtime_name runtime_prefix runtime_map_yaml
     runtime_name="$(basename "${pcd_path}" .pcd)"
+    local -a map_options=()
+    if [ "${nav_option}" = 22 ]; then
+        runtime_name="${runtime_name}_option22"
+        map_options+=(--observed-ground-only)
+    fi
     runtime_prefix="${NAV_RUNTIME_DIR}/${runtime_name}_2d"
     runtime_map_yaml="${runtime_prefix}.yaml"
 
@@ -812,7 +822,7 @@ action_start_nav() {
             --z-max "${NAV_PGM_Z_MAX}" \
             --min-points "${NAV_PGM_MIN_POINTS}" \
             --dilate "${NAV_PGM_DILATE}" \
-            --min-region-cells "${NAV_PGM_MIN_REGION_CELLS}"; then
+            --min-region-cells "${NAV_PGM_MIN_REGION_CELLS}" "${map_options[@]}"; then
         echo "[traymover] pcd2pgm failed. Aborting nav startup."
         return 1
     fi
@@ -834,7 +844,7 @@ action_start_nav() {
     if [ "${nav_option}" = 18 ]; then
         prompt_wait_detour_settings || return 1
         nav_auto_estop_enabled="${DETOUR_AUTO_ESTOP_ENABLED}"
-    else
+    elif [ "${nav_option}" != 22 ]; then
         prompt_auto_estop
         nav_auto_estop_enabled="${AUTO_ESTOP_ENABLED}"
     fi
@@ -856,7 +866,7 @@ action_start_nav() {
     printf 'height_boost_enabled=%s\nheight_boost_min_z=%s\nheight_boost_frame=base_link\nheight_boost_extra_copies=1\n' \
         "${NDT_HEIGHT_BOOST_ENABLED}" "${NDT_HEIGHT_BOOST_MIN_Z}" >> "${nav_run_dir}/run_info.txt"
     printf 'auto_correction_enabled=true\n' >> "${nav_run_dir}/run_info.txt"
-    if [ "${nav_option}" = 21 ]; then
+    if [ "${odometry_label}" = "STM32 feedback" ]; then
         printf 'odometry_source=stm32_velocity\n' >> "${nav_run_dir}/run_info.txt"
     fi
     cp -- "${runtime_map_yaml}" "${nav_run_dir}/map.yaml"
@@ -864,7 +874,9 @@ action_start_nav() {
     git -C "${WORKSPACE_DIR}" status --short > "${nav_run_dir}/software_status.txt" 2>/dev/null || true
     echo "[traymover] Option ${nav_option} logs: ${nav_run_dir}"
 
-    if [ "${nav_option}" = 21 ]; then
+    if [ "${nav_option}" = 22 ]; then
+        echo "[traymover] Option 22 starts the chassis, LiDAR and RealSense under its guarded launch."
+    elif [ "${nav_option}" = 21 ]; then
         echo "[traymover] Starting chassis with measured wheel odometry (no IMU estimator) ..."
         spawn_in_terminal "traymover: chassis_serial" \
             "ros2 launch turn_on_traymover_robot base_serial.launch.py use_imu:=false odom_source_mode:=stm32_velocity robot_config:='${WORKSPACE_DIR}/src/turn_on_traymover_robot/config/stm32_navigation.yaml' auto_estop_enabled:=${nav_auto_estop_enabled}"
@@ -876,17 +888,18 @@ action_start_nav() {
     action_start_estop_keyboard
     # The detour launch owns one camera and the Auto EStop node. Baseline
     # navigation retains its existing optional standalone Auto EStop launch.
-    if [ "${nav_option}" != 18 ]; then
+    if [[ "${nav_option}" != 18 && "${nav_option}" != 22 ]]; then
         action_start_auto_estop
     fi
 
-    echo "[traymover] Starting LiDAR driver ..."
-    spawn_in_terminal "traymover: lidar" \
-        "ros2 launch turn_on_traymover_robot traymover_lidar.launch.py enable_scan_bridge:=false"
+    if [ "${nav_option}" != 22 ]; then
+        echo "[traymover] Starting LiDAR driver ..."
+        spawn_in_terminal "traymover: lidar" \
+            "ros2 launch turn_on_traymover_robot traymover_lidar.launch.py enable_scan_bridge:=false"
 
-    # Let sensors stabilize before Nav2 bringup (lidar_localization needs /point_cloud_raw
-    # and /imu/data_raw already flowing, otherwise it'll hang at Activating).
-    sleep 6
+        # Let sensors stabilize before legacy Nav2 bringup.
+        sleep 6
+    fi
 
     echo "[traymover] Starting nav stack with pcd_path=${pcd_path} map=${runtime_map_yaml} ..."
     echo "[traymover] NDT automatic correction enabled (bounded, multi-frame confirmation for larger corrections)."
@@ -894,11 +907,14 @@ action_start_nav() {
     local -a nav_args=("${rviz_arg}" "pcd_path:=${pcd_path}" "map:=${runtime_map_yaml}"
         "height_boost_enabled:=${NDT_HEIGHT_BOOST_ENABLED}"
         "height_boost_min_z:=${NDT_HEIGHT_BOOST_MIN_Z}" "auto_correction_enabled:=true")
-    local odometry_label="FAST-LIO"
     if [ "${nav_option}" = 21 ]; then
         nav_launch="traymover_nav_stm32.launch.py"
         nav_title="traymover: stm32_nav_stack"
-        odometry_label="STM32 feedback"
+    elif [ "${nav_option}" = 22 ]; then
+        nav_launch="option22.launch.py"
+        nav_title="traymover: stm32_dynamic_nav_stack"
+        chassis_velocity_topic="/option22/cmd_vel_safe"
+        nav_args+=("bringup_hardware:=true")
     fi
     if [ "${nav_option}" = 18 ]; then
         nav_launch="traymover_nav_lidar_realsense_detour.launch.py"
@@ -912,7 +928,7 @@ action_start_nav() {
     fi
     printf -v logged_nav_cmd '%q ' bash "${SCRIPT_DIR}/run_nav_logged.sh" "${nav_run_dir}" \
         ros2 launch traymover_robot_nav "${nav_launch}" "${nav_args[@]}"
-    if [ "${nav_option}" = 21 ]; then
+    if [ "${odometry_label}" = "STM32 feedback" ]; then
         logged_nav_cmd="TRAYMOVER_ODOMETRY_SOURCE=stm32 ${logged_nav_cmd}"
     fi
     spawn_in_terminal "${nav_title}" "${logged_nav_cmd}"
@@ -927,8 +943,11 @@ action_start_nav() {
     ros2 topic info /odom -v
     ./scripts/check_localization.sh
     ros2 action list | grep navigate_to_pose
-    ros2 topic echo --once /cmd_vel
+    ros2 topic echo --once ${chassis_velocity_topic}
 EOF
+    if [ "${nav_option}" = 22 ]; then
+        echo "  Option 22 motion and EStop status: ros2 topic echo /option22/state"
+    fi
     if [ "${nav_option}" = 18 ]; then
         cat <<EOF
 [traymover] Wait detour speed chain:
@@ -1733,6 +1752,7 @@ print_menu() {
  19) Single-button Straight-line Detour Test (No Map / No Nav2)
  20) Conservative 2D AMCL navigation (3 height bands + LiDAR/IMU odom + depth safety + 3D RViz)
  21) Navigation with STM32 wheel feedback odometry (option 10 + NDT; no FAST-LIO)
+ 22) STM32 wheel feedback navigation + LiDAR/RealSense wait and replan
   q) Quit
 ==============================
 EOF
@@ -1773,6 +1793,7 @@ main() {
             19) action_start_guided_detour_test ;;
             20) action_start_option20 ;;
             21) action_start_nav 21 ;;
+            22) action_start_nav 22 ;;
             q|Q|quit|exit) echo "Bye."; exit 0 ;;
             "") ;;
             *) echo "Unknown option: ${choice}" ;;

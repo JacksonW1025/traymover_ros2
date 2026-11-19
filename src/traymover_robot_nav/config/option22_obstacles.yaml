@@ -1,0 +1,36 @@
+# Sensor thresholds are clearances from the robot envelope.
+planner:
+  wait_before_detour_sec: 0.0
+  detour_max_lateral_m: 0.75
+  detour_max_length_m: 3.80
+  detour_clearance_m: 0.14
+  detour_wall_clearance_m: 0.06
+
+gate:
+  detour_trigger_m: 0.80
+  lidar_detour_fov_deg: 45.0
+  detour_approach_distance_m: 0.95
+  detour_approach_speed_mps: 0.16
+  detour_approach_ramp_m: 0.25  # Start easing toward the approach speed outside the threshold.
+  mapped_wall_match_m: 0.14
+  lidar_range_m: 5.0
+  obstacle_min_height_m: 0.08
+  obstacle_max_height_m: 1.70
+  cluster_cell_m: 0.035
+  cluster_radius_m: 0.14
+  lidar_cluster_cells: 4
+  depth_cluster_cells: 4
+  lidar_cluster_span_m: 0.10
+  depth_cluster_span_m: 0.08
+  confirmation_radius_m: 0.15
+  obstacle_hold_sec: 0.30
+  depth_min_valid_fraction: 0.05
+  motion_clearance_m: 0.08
+  camera_estop_clearance_m: 0.20
+  camera_clear_sec: 0.35
+  cruise_linear_speed_mps: 0.35
+  detour_linear_speed_mps: 0.18
+  angular_limit_radps: 0.25
+  # Rate limits for normal motion. Safety stops still command zero immediately.
+  linear_accel_limit_mps2: 0.55
+  angular_accel_limit_radps2: 1.0

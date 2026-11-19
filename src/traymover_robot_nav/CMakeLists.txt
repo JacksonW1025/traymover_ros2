@@ -12,12 +12,17 @@ endif()
 find_package(ament_cmake REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(nav2_core REQUIRED)
+find_package(nav2_costmap_2d REQUIRED)
 find_package(nav2_lifecycle_manager REQUIRED)
+find_package(nav2_navfn_planner REQUIRED)
+find_package(sensor_msgs REQUIRED)
+find_package(std_msgs REQUIRED)
 find_package(pluginlib REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_lifecycle REQUIRED)
 find_package(rcl_interfaces REQUIRED)
 find_package(tf2_ros REQUIRED)
+find_package(tf2_geometry_msgs REQUIRED)
 
 set(dependencies
   geometry_msgs
@@ -33,12 +38,21 @@ add_library(${PROJECT_NAME}_progress_checker SHARED
 )
 ament_target_dependencies(${PROJECT_NAME}_progress_checker ${dependencies})
 
+add_library(${PROJECT_NAME}_straight_line_planner SHARED src/straight_line_planner.cpp)
+ament_target_dependencies(${PROJECT_NAME}_straight_line_planner
+  nav2_core nav2_costmap_2d nav2_navfn_planner pluginlib)
+
+add_library(${PROJECT_NAME}_option22_local_detour SHARED src/option22_local_detour.cpp)
+ament_target_dependencies(${PROJECT_NAME}_option22_local_detour
+  nav2_core nav2_costmap_2d pluginlib sensor_msgs std_msgs tf2_geometry_msgs tf2_ros)
+
 add_executable(option18_lifecycle_manager src/option18_lifecycle_manager.cpp)
 ament_target_dependencies(option18_lifecycle_manager nav2_lifecycle_manager tf2_ros)
 
 if(BUILD_TESTING)
   find_package(ament_cmake_pytest REQUIRED)
   ament_add_pytest_test(test_option21_launch test/test_option21_launch.py)
+  ament_add_pytest_test(test_option22 test/test_option22.py TIMEOUT 125)
   ament_add_pytest_test(test_launcher_cleanup test/test_launcher_cleanup.py)
   ament_add_pytest_test(test_option21_simulation test/test_option21_simulation.py)
   ament_add_pytest_test(test_option21_airport test/test_option21_airport.py)
@@ -156,7 +170,8 @@ install(
 )
 
 install(
-  TARGETS ${PROJECT_NAME}_progress_checker
+  TARGETS ${PROJECT_NAME}_progress_checker ${PROJECT_NAME}_straight_line_planner
+    ${PROJECT_NAME}_option22_local_detour
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin

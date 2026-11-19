@@ -20,6 +20,8 @@ from PIL import Image
 
 FREE_VAL = 254
 OCC_VAL = 0
+# In trinary mode this is between occupied_thresh=0.65 and free_thresh=0.25.
+UNKNOWN_VAL = 128
 
 
 def dilate3x3(grid):
@@ -233,9 +235,10 @@ def resolve_z_bounds(z_reference, z_min, z_max, floor_z=None):
     raise ValueError(f'unsupported Z reference: {z_reference}')
 
 
-def occupancy_from_points(slab_xy, resolution, padding, min_points):
-    x_min, y_min = slab_xy.min(axis=0) - padding
-    x_max, y_max = slab_xy.max(axis=0) + padding
+def occupancy_from_points(slab_xy, resolution, padding, min_points, extent_xy=None):
+    extent = slab_xy if extent_xy is None else extent_xy
+    x_min, y_min = extent.min(axis=0) - padding
+    x_max, y_max = extent.max(axis=0) + padding
     width = int(np.ceil((x_max - x_min) / resolution))
     height = int(np.ceil((y_max - y_min) / resolution))
 
@@ -248,6 +251,23 @@ def occupancy_from_points(slab_xy, resolution, padding, min_points):
 
     occ = counts >= min_points
     return occ, x_min, y_min, width, height
+
+
+def observed_ground(xy, shape, origin, resolution):
+    """Allow small interpolation gaps between returns near the estimated floor."""
+    from scipy.ndimage import distance_transform_edt, uniform_filter
+
+    cells = np.floor((xy - origin) / resolution).astype(np.intp)
+    x, y = cells.T
+    inside = (x >= 0) & (y >= 0) & (x < shape[1]) & (y < shape[0])
+    anchors = np.zeros(shape, dtype=bool)
+    anchors[y[inside], x[inside]] = True
+    width = 2 * int(np.ceil(0.18 / resolution)) + 1
+    neighbors = uniform_filter(anchors.astype(float), size=width, mode='constant') * width**2
+    anchors &= neighbors >= 2.5
+    if not anchors.any():
+        raise ValueError('PCD has no clustered ground returns for the option 22 map')
+    return distance_transform_edt(~anchors, sampling=resolution) <= 0.32
 
 
 def main():
@@ -278,6 +298,8 @@ def main():
                    help='drop occupied 4-connected islands smaller than this many cells')
     p.add_argument('--padding', type=float, default=1.0,
                    help='extra free-space border around mapped extent [m]')
+    p.add_argument('--observed-ground-only', action='store_true',
+                   help='mark areas without nearby ground returns as unknown')
     args = p.parse_args()
 
     cloud = o3d.io.read_point_cloud(args.pcd)
@@ -324,14 +346,23 @@ def main():
         f'kept {len(slab)} points in {args.z_reference} Z slab '
         f'[{slab_z_min:.2f}, {slab_z_max:.2f}]'
     )
-    if slab.size == 0:
+    extent = None
+    if args.observed_ground_only:
+        if args.z_reference == 'absolute':
+            raise SystemExit('--observed-ground-only requires a floor or plane reference')
+        ground_heights = heights - floor_z if args.z_reference == 'floor' else heights
+        ground = pts[np.abs(ground_heights) <= 0.18, :2]
+        if len(ground) < 3:
+            raise SystemExit('PCD has too few ground returns for the option 22 map')
+        extent = np.vstack((slab, ground))
+    elif slab.size == 0:
         raise SystemExit('no points survived z filter; adjust --z-min/--z-max')
 
     res = args.resolution
     occ, x_min, y_min, width, height = occupancy_from_points(
         slab_xy=slab,
         resolution=res,
-        padding=args.padding,
+        padding=args.padding, extent_xy=extent,
         min_points=args.min_points,
     )
     print(f'grid: {width}x{height} cells, resolution {res} m, '
@@ -348,6 +379,14 @@ def main():
     print(f'occupied cells after cleanup+dilate: {occ_final}')
 
     img = np.full((height, width), FREE_VAL, dtype=np.uint8)
+    if args.observed_ground_only:
+        try:
+            supported = observed_ground(ground, occ.shape, [x_min, y_min], res)
+        except ValueError as exc:
+            raise SystemExit(str(exc)) from exc
+        img[~supported] = UNKNOWN_VAL
+        print(f'ground support: {np.count_nonzero(supported & ~occ)} free cells, '
+              f'{np.count_nonzero(~supported & ~occ)} unknown cells')
     img[occ] = OCC_VAL
     img = np.flipud(img)  # PGM: row 0 is top; map YAML origin is bottom-left
 

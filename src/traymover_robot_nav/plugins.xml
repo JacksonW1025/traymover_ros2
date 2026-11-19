@@ -1,10 +1,28 @@
-<library path="traymover_robot_nav_progress_checker">
-  <class
-    name="traymover_robot_nav::YawProgressChecker"
-    type="traymover_robot_nav::YawProgressChecker"
-    base_class_type="nav2_core::ProgressChecker">
-    <description>
-      Progress checker that accepts either x/y translation or yaw rotation as movement.
-    </description>
-  </class>
-</library>
+<class_libraries>
+  <library path="traymover_robot_nav_progress_checker">
+    <class
+      name="traymover_robot_nav::YawProgressChecker"
+      type="traymover_robot_nav::YawProgressChecker"
+      base_class_type="nav2_core::ProgressChecker">
+      <description>
+        Progress checker that accepts either x/y translation or yaw rotation as movement.
+      </description>
+    </class>
+  </library>
+  <library path="traymover_robot_nav_straight_line_planner">
+    <class
+      name="traymover_robot_nav::StraightLinePlanner"
+      type="traymover_robot_nav::StraightLinePlanner"
+      base_class_type="nav2_core::GlobalPlanner">
+      <description>NavFn with costmap-checked straight segments.</description>
+    </class>
+  </library>
+  <library path="traymover_robot_nav_option22_local_detour">
+    <class
+      name="traymover_robot_nav::Option22LocalDetour"
+      type="traymover_robot_nav::Option22LocalDetour"
+      base_class_type="nav2_core::GlobalPlanner">
+      <description>Option 22 forward detours along a bounded section of the static route.</description>
+    </class>
+  </library>
+</class_libraries>
