@@ -1,8 +1,9 @@
 import os
 
-from ament_index_python.packages import get_package_share_directory
+from ament_index_python.packages import PackageNotFoundError, get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, GroupAction, IncludeLaunchDescription
+from launch.actions import LogInfo, OpaqueFunction
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
@@ -10,13 +11,16 @@ from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 
 
-def generate_launch_description():
-    realsense_share = get_package_share_directory('realsense2_camera')
-    start_realsense_driver = LaunchConfiguration('start_realsense_driver')
-    depth_topic = LaunchConfiguration('depth_topic')
+def start_realsense(_context):
+    try:
+        realsense_share = get_package_share_directory('realsense2_camera')
+    except PackageNotFoundError:
+        return [LogInfo(msg=(
+            'Automatic EStop requires a RealSense depth publisher. '
+            'Source the RealSense ROS overlay or install ros-humble-realsense2-camera. '
+            'Automatic EStop will stay engaged while depth is unavailable.'))]
 
-    realsense = GroupAction(
-        condition=IfCondition(start_realsense_driver),
+    return [GroupAction(
         scoped=True,
         forwarding=False,
         launch_configurations={
@@ -34,15 +38,17 @@ def generate_launch_description():
                 )
             )
         ],
-    )
+    )]
 
+
+def generate_launch_description():
     auto_estop = Node(
         package='traymover_robot_safety',
         executable='traymover_auto_estop',
         name='traymover_auto_estop',
         output='screen',
         parameters=[{
-            'depth_topic': depth_topic,
+            'depth_topic': LaunchConfiguration('depth_topic'),
             'depth_timeout_sec': ParameterValue(
                 LaunchConfiguration('depth_timeout_sec'), value_type=float),
             'heartbeat_rate_hz': ParameterValue(
@@ -108,6 +114,8 @@ def generate_launch_description():
         DeclareLaunchArgument('obstacle_frame_count', default_value='2'),
         DeclareLaunchArgument('low_valid_frame_count', default_value='2'),
         DeclareLaunchArgument('clear_frame_count', default_value='8'),
-        realsense,
+        OpaqueFunction(
+            function=start_realsense,
+            condition=IfCondition(LaunchConfiguration('start_realsense_driver'))),
         auto_estop,
     ])

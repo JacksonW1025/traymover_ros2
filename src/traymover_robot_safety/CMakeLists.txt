@@ -100,6 +100,8 @@ install(
   DESTINATION share/${PROJECT_NAME}
 )
 
+ament_environment_hooks(env/realsense.sh)
+
 if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
   find_package(ament_cmake_pytest REQUIRED)

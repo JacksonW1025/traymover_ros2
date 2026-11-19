@@ -19,8 +19,8 @@ from test_nav_simple_config import _run_option10_prompt
 PKG = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PKG / 'scripts'))
 from option22_obstacle_gate import (
-    CONFIG, CameraStop, ClusterFilter, Confirmation, Decision, DetourTurn,
-    MapEnvelope, ObstacleGateNode, Sample, ZERO, approach_speed_limit, camera_near, clearances,
+    CONFIG, ClusterFilter, Confirmation, Decision, DetourTurn,
+    MapEnvelope, ObstacleGateNode, Sample, ZERO, approach_speed_limit, clearances,
     detour_trigger, front_returns, motion_is_clear, ramp_command,
     robot_returns, xyz_cloud,
 )
@@ -40,7 +40,8 @@ def test_menu_starts_one_guarded_stm32_stack(tmp_path):
     assert '22) action_start_nav 22 ;;' in (PKG.parents[1] / 'scripts/traymover.sh').read_text()
 
 
-def test_chassis_and_controller_have_separate_scoped_transports(monkeypatch):
+@pytest.mark.parametrize('bringup_hardware', [True, False])
+def test_chassis_and_controller_have_separate_scoped_transports(monkeypatch, bringup_hardware):
     import ament_index_python.packages
     from launch import LaunchDescription, LaunchService
     from launch.actions import IncludeLaunchDescription, SetLaunchConfiguration
@@ -54,7 +55,8 @@ def test_chassis_and_controller_have_separate_scoped_transports(monkeypatch):
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     original = IncludeLaunchDescription.execute
-    included = {'base_serial.launch.py', 'traymover_nav_stm32.launch.py', 'traymover_nav.launch.py'}
+    included = {'base_serial.launch.py', 'traymover_auto_estop.launch.py',
+                'traymover_nav_stm32.launch.py', 'traymover_nav.launch.py'}
 
     def select_includes(action, context):
         path = action.launch_description_source._LaunchDescriptionSource__location
@@ -63,10 +65,14 @@ def test_chassis_and_controller_have_separate_scoped_transports(monkeypatch):
         return []
 
     remaps = {}
+    estop_arguments = {}
 
     def capture_node(action, context):
         action._perform_substitutions(context)
         remaps[action.node_name] = dict(action.expanded_remapping_rules or [])
+        if action.node_name == '/traymover_auto_estop':
+            estop_arguments.update({key: context.launch_configurations[key] for key in (
+                'start_realsense_driver', 'depth_topic', 'stop_distance_m', 'release_distance_m')})
         return []
 
     monkeypatch.setattr(IncludeLaunchDescription, 'execute', select_includes)
@@ -75,23 +81,34 @@ def test_chassis_and_controller_have_separate_scoped_transports(monkeypatch):
     service.include_launch_description(LaunchDescription([
         SetLaunchConfiguration('ros_namespace', '/'),
         SetLaunchConfiguration('pcd_path', '/tmp/simulated.pcd'),
-        SetLaunchConfiguration('bringup_hardware', 'true'),
+        SetLaunchConfiguration('bringup_hardware', str(bringup_hardware).lower()),
         SetLaunchConfiguration('map', '/tmp/simulated.yaml'),
         SetLaunchConfiguration('launch_rviz', 'true'),
         SetLaunchConfiguration('start_realsense_driver', 'false'),
         module.generate_launch_description(),
     ]))
     assert service.run() == 0
-    assert remaps['/turn_on_traymover_robot'] == {
-        '/cmd_vel': '/option22/cmd_vel_safe',
+    if bringup_hardware:
+        assert remaps['/turn_on_traymover_robot'] == {
+            '/cmd_vel': '/option22/cmd_vel_safe',
+            '/traymover_estop/auto_request': '/option22/auto_request',
+        }
+        assert remaps['/rviz2'] == {}
+    else:
+        assert '/turn_on_traymover_robot' not in remaps
+        assert remaps['/rviz2'] == {
+            '/traymover_estop/state': '/option22/display_estop',
+            '/traymover_estop/auto_state': '/option22/display_auto_estop',
+        }
+    assert remaps['/controller_server'] == {'/cmd_vel': '/option22/cmd_vel_nav'}
+    assert remaps['/traymover_auto_estop'] == {
         '/traymover_estop/auto_request': '/option22/auto_request',
     }
-    assert remaps['/controller_server'] == {'/cmd_vel': '/option22/cmd_vel_nav'}
-    assert remaps['/option22_obstacle_gate'] == {}
-    assert remaps['/rviz2'] == {
-        '/traymover_estop/state': '/option22/display_estop',
-        '/traymover_estop/auto_state': '/option22/display_auto_estop',
+    assert estop_arguments == {
+        'start_realsense_driver': 'false', 'depth_topic': '/camera/camera/depth/image_rect_raw',
+        'stop_distance_m': '0.20', 'release_distance_m': '0.25',
     }
+    assert remaps['/option22_obstacle_gate'] == {}
     profile = module.rviz_profile(PKG)
     displays = {item['Name']: item for item in profile['Visualization Manager']['Displays']}
     assert displays['GlobalPlan']['Topic']['Value'] == '/option22/display_plan'
@@ -99,12 +116,15 @@ def test_chassis_and_controller_have_separate_scoped_transports(monkeypatch):
     assert not displays['LocalPlan']['Enabled']
 
     config = yaml.safe_load((PKG / 'config' / 'option22_obstacles.yaml').read_text())
+    assert config['gate'] == CONFIG
     follow = module.navigation_parameters(PKG, **config)['controller_server']['ros__parameters'][
         'FollowPath']
     assert follow['use_velocity_scaled_lookahead_dist'] and follow['use_interpolation']
     assert (follow['min_lookahead_dist'], follow['max_lookahead_dist']) == (.45, .65)
     assert follow['lookahead_time'] == 1.85
     assert follow['use_rotate_to_heading'] and follow['rotate_to_heading_min_angle'] == .65
+    assert follow['desired_linear_vel'] == .50
+    assert follow['rotate_to_heading_angular_vel'] == .20
     assert follow['use_collision_detection']
 
 
@@ -144,19 +164,14 @@ def test_self_filter_masks_deck_and_mounts_while_retaining_nearby_objects():
     assert robot_returns(points).tolist() == [True, True, True, False, False, False]
 
 
-def test_camera_estop_uses_front_clearance_and_fresh_clear_observations():
-    stop = CameraStop(.35)
-    assert camera_near(np.array([[.70, 0., .50]]), .20)
-    assert not camera_near(np.array([[.50, .32, .50], [.701, 0., .50]]), .20)
-    stop.observe(1., True)
-    assert stop.active
-    stop.observe(1.1, False)
-    stop.observe(1.3, None)
-    stop.observe(1.5, False)
-    stop.observe(1.8, False)
-    assert stop.active
-    stop.observe(1.9, False)
-    assert not stop.active
+@pytest.mark.parametrize('camera_request, state', [
+    (None, 'AUTO_ESTOP_UNAVAILABLE'),
+    ((False, 3.0), 'AUTO_ESTOP_UNAVAILABLE'),
+    ((True, 4.0), 'CAMERA_ESTOP'),
+])
+def test_independent_estop_takes_priority_over_navigation_inputs(camera_request, state):
+    node = SimpleNamespace(camera_estop=camera_request, close_obstacle=True)
+    assert ObstacleGateNode.decision(node, 4.1, 4.1) == Decision(state, estop=True)
 
 
 def test_detour_requires_forward_lidar_cone_and_80_cm_clearance():
@@ -196,6 +211,7 @@ def test_rviz_estop_clears_old_route_and_waits_for_a_new_plan():
     assert marker.text == 'E-STOP' and marker.color.r == 1.0 and marker.color.g < .2
     assert not updates['path'][-1].poses
     ObstacleGateNode.update_display(node, stamp, 4.3, 4.3, Decision('FOLLOWING_ROUTE'))
+    assert not updates['stop'][-1].data and not updates['auto'][-1].data
     assert not updates['path'][-1].poses
     node.latest_plan = Sample(4.35, 4.35, plan)
     ObstacleGateNode.update_display(node, stamp, 4.4, 4.4, Decision('FOLLOWING_ROUTE'))
@@ -232,9 +248,9 @@ def test_command_ramp_stops_immediately_and_limits_the_first_step_after_a_gap():
 
 
 def test_approach_speed_transitions_to_the_existing_near_obstacle_limit():
-    assert approach_speed_limit(float('inf'), CONFIG) == pytest.approx(.35)
-    assert approach_speed_limit(1.20, CONFIG) == pytest.approx(.35)
-    assert approach_speed_limit(1.075, CONFIG) == pytest.approx(.255)
+    assert approach_speed_limit(float('inf'), CONFIG) == pytest.approx(.50)
+    assert approach_speed_limit(1.20, CONFIG) == pytest.approx(.50)
+    assert approach_speed_limit(1.075, CONFIG) == pytest.approx(.33)
     assert approach_speed_limit(.95, CONFIG) == pytest.approx(.16)
     assert approach_speed_limit(.80, CONFIG) == pytest.approx(.16)
 
@@ -405,6 +421,7 @@ def test_nav2_bounded_detour(tmp_path, monkeypatch, scene):
     command = [0., 0.]
     states, plans, requests, positions, obstacles = [], [], [], [], []
     depth_enabled = True
+    occluder_depth_mm = None
     beams = np.linspace(-np.pi, np.pi, 720, endpoint=False)
     columns = np.arctan2(80. - np.arange(160), 90.)
     floor = np.full(96, np.inf)
@@ -454,9 +471,11 @@ def test_nav2_bounded_detour(tmp_path, monkeypatch, scene):
             depth_obstacles = [] if narrow else obstacles
             depth_at_column = _ranges(cx, cy, pose[2] + columns, depth_obstacles,
                                       front_wall=camera_wall, half_width=half_width) * np.cos(columns)
-            values = np.minimum(depth_at_column[None, :], floor[:, None])
+            values = np.minimum(np.minimum(depth_at_column[None, :], floor[:, None]), 4.0)
             mm = np.where((values >= .1) & (values <= 5.), values * 1000, 0).astype('<u2')
             mm[48, 80] = 75  # One short-range pixel, including across consecutive frames.
+            if occluder_depth_mm is not None:
+                mm[25:75, 45:115] = occluder_depth_mm
             image = Image(height=96, width=160, encoding='16UC1', step=320, data=mm.tobytes())
             image.header.stamp, image.header.frame_id = stamp, 'synthetic_optical'
             calibration = CameraInfo(header=image.header, height=96, width=160)
@@ -466,6 +485,9 @@ def test_nav2_bounded_detour(tmp_path, monkeypatch, scene):
 
     def receive_velocity(msg):
         command[:] = [msg.linear.x, msg.angular.z]
+        assert 0. <= msg.linear.x <= .50 + 1e-9
+        if msg.linear.x == 0.:
+            assert abs(msg.angular.z) <= .20 + 1e-9
 
     node.create_timer(.05, publish)
     node.create_subscription(Twist, '/option22/cmd_vel_safe', receive_velocity, 1)
@@ -509,9 +531,25 @@ def test_nav2_bounded_detour(tmp_path, monkeypatch, scene):
                 executor.spin_once(timeout_sec=.05)
             assert active, log.read_text()
             until(client.server_is_ready)
-            if scene == 'close_planner':
+            until(lambda: requests and not requests[-1])
+            startup_clear_index = requests.index(False)
+            if scene in ('close_planner', 'corridor'):
                 until(planner.server_is_ready)
                 until(lambda: states and states[-1] == 'IDLE')
+                # Lifecycle activation can precede DDS matching of the obstacle feed.
+                startup_goal = ComputePathToPose.Goal(planner_id='GridBased')
+                startup_goal.goal.header.frame_id = 'map'
+                startup_goal.goal.pose.position.x, startup_goal.goal.pose.orientation.w = .6, 1.
+                deadline = time.monotonic() + 5.0
+                while True:
+                    accepted = planner.send_goal_async(startup_goal)
+                    until(accepted.done)
+                    startup_result = accepted.result().get_result_async()
+                    until(startup_result.done)
+                    if startup_result.result().status == GoalStatus.STATUS_SUCCEEDED:
+                        break
+                    assert time.monotonic() < deadline, log.read_text()
+            if scene == 'close_planner':
                 goal = ComputePathToPose.Goal(planner_id='GridBased')
                 goal.goal.header.frame_id = 'map'
                 goal.goal.pose.position.x, goal.goal.pose.orientation.w = 5.75, 1.
@@ -547,7 +585,7 @@ def test_nav2_bounded_detour(tmp_path, monkeypatch, scene):
                     (p.pose.position.x, p.pose.position.y) for p in poses]
                 assert kept[0].pose.orientation == heading
                 pose[2] = 0.
-                obstacles[:] = [(.77, 0., .11)]
+                occluder_depth_mm = 180
                 until(lambda: requests and requests[-1] and displayed_stop and displayed_stop[-1]
                       and markers and markers[-1].text == 'E-STOP'
                       and displayed_paths and not displayed_paths[-1].poses)
@@ -557,11 +595,14 @@ def test_nav2_bounded_detour(tmp_path, monkeypatch, scene):
                 until(result.done)
                 assert result.result().status == GoalStatus.STATUS_ABORTED
                 assert pose[:2] == [0., 0.] and command == [0., 0.]
+                occluder_depth_mm = None
+                until(lambda: not requests[-1] and not displayed_stop[-1]
+                      and markers[-1].action == Marker.DELETE)
+                occluder_depth_mm = 0  # A covered lens can return invalid depth.
+                until(lambda: requests[-1] and displayed_stop[-1])
                 return
 
             if scene == 'corridor':
-                until(planner.server_is_ready)
-                until(lambda: states and states[-1] == 'IDLE')
                 corridor_goal = ComputePathToPose.Goal(planner_id='GridBased')
                 corridor_goal.goal.header.frame_id = 'map'
                 corridor_goal.goal.pose.position.x = 52.
@@ -570,7 +611,7 @@ def test_nav2_bounded_detour(tmp_path, monkeypatch, scene):
                 until(long_goal.done)
                 long_result = long_goal.result().get_result_async()
                 until(long_result.done)
-                assert long_result.result().status == GoalStatus.STATUS_SUCCEEDED
+                assert long_result.result().status == GoalStatus.STATUS_SUCCEEDED, log.read_text()
                 long_plan = long_result.result().result.path.poses
                 assert long_plan[-1].pose.position.x == pytest.approx(52.)
                 assert max(abs(p.pose.position.y) for p in long_plan) < .10
@@ -585,7 +626,7 @@ def test_nav2_bounded_detour(tmp_path, monkeypatch, scene):
             result = handle.get_result_async()
             until(lambda: pose[0] > .25)
             assert max(abs(p.pose.position.y) for p in plans[-1].poses) < .10
-            assert not any(requests)
+            assert not any(requests[startup_clear_index:])
             assert not {'WAITING', 'TRAJECTORY_BLOCKED', 'NO_LOCAL_DETOUR'}.intersection(states)
             moving_index = states.index('FOLLOWING_ROUTE')
             assert 'LIDAR_UNAVAILABLE' not in states[moving_index:]
@@ -594,12 +635,14 @@ def test_nav2_bounded_detour(tmp_path, monkeypatch, scene):
                 assert 'WAITING' not in states, log.read_text()
                 assert result.result().status == GoalStatus.STATUS_SUCCEEDED, log.read_text()
                 assert not {'WAITING', 'DETOURING', 'NO_LOCAL_DETOUR'}.intersection(states)
-                assert not any(requests)
+                assert not any(requests[startup_clear_index:])
                 assert abs(pose[0] - goal_x) < .22
-                camera_wall = pose[0] + .69
+                occluder_depth_mm = 180
                 until(lambda: states[-1] == 'CAMERA_ESTOP' and requests[-1])
                 return
 
+            if scene == 'corridor':
+                until(lambda: command[0] >= .49)
             obstacles.append((pose[0] + 1.65, 0., .24))
             if narrow:
                 until(lambda: states[-1] == 'NO_LOCAL_DETOUR')
@@ -617,6 +660,7 @@ def test_nav2_bounded_detour(tmp_path, monkeypatch, scene):
                 until(lambda: states[-1] == 'DETOUR_TURNING' and len(plans)
                       and max(abs(p.pose.position.y) for p in plans[-1].poses) > .45)
                 assert not requests[-1] and command[0] == 0.
+                until(lambda: abs(command[1]) == pytest.approx(.20))
                 stopped = pose.copy()
                 bypass = plans[-1].poses
                 assert max(abs(p.pose.position.y) for p in bypass) <= .76
@@ -628,24 +672,23 @@ def test_nav2_bounded_detour(tmp_path, monkeypatch, scene):
                     q = pose_on_path.pose.orientation
                     yaw = 2.0 * math.atan2(q.z, q.w)
                     s, c = abs(math.sin(yaw)), abs(math.cos(yaw))
-                    half_width = max(.40 * s + .275 * c, .50 * s + .11 * c)
-                    assert abs(pose_on_path.pose.position.y) + half_width < 1.54
+                    footprint_half_width = max(.40 * s + .275 * c, .50 * s + .11 * c)
+                    assert abs(pose_on_path.pose.position.y) + footprint_half_width < 1.54
                 until(lambda: abs(pose[1]) > .35)
-                obstacles.append((pose[0] + .79 * math.cos(pose[2]),
-                                  pose[1] + .79 * math.sin(pose[2]), .11))
+                occluder_depth_mm = 180
                 until(lambda: states[-1] == 'CAMERA_ESTOP' and requests[-1]
                       and command == [0., 0.])
                 stopped = pose.copy()
                 delay = time.monotonic() + .5
                 until(lambda: time.monotonic() >= delay)
                 assert pose == stopped and requests[-1]
-                obstacles.pop()
+                occluder_depth_mm = None
                 until(result.done, timeout=52.)
                 assert result.result().status == GoalStatus.STATUS_SUCCEEDED, log.read_text()
                 assert max(abs(p[1]) for p in positions) > .45
                 assert abs(pose[0] - goal_x) < .22 and abs(pose[1]) < .22
             depth_enabled = False
-            until(lambda: states[-1] == 'DEPTH_UNAVAILABLE' and not requests[-1]
+            until(lambda: states[-1] == 'CAMERA_ESTOP' and requests[-1]
                   and command == [0., 0.])
         finally:
             process.send_signal(signal.SIGINT)

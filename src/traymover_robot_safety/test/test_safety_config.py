@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
+import importlib.util
 from pathlib import Path
+
+from ament_index_python.packages import PackageNotFoundError
+from launch import LaunchContext
+from launch.actions import LogInfo, OpaqueFunction
 
 
 PKG_ROOT = Path(__file__).resolve().parents[1]
@@ -42,6 +47,31 @@ def test_auto_estop_launch_uses_fail_safe_depth_defaults():
     assert "DeclareLaunchArgument('obstacle_frame_count', default_value='2')" in launch_text
     assert "DeclareLaunchArgument('low_valid_frame_count', default_value='2')" in launch_text
     assert "DeclareLaunchArgument('clear_frame_count', default_value='8')" in launch_text
+
+
+def test_realsense_dependency_only_resolved_when_launching_its_driver(monkeypatch):
+    path = PKG_ROOT / 'launch' / 'traymover_auto_estop.launch.py'
+    spec = importlib.util.spec_from_file_location('auto_estop_launch', path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    lookups = []
+
+    def missing_camera(name):
+        lookups.append(name)
+        raise PackageNotFoundError(name)
+
+    monkeypatch.setattr(module, 'get_package_share_directory', missing_camera)
+    entities = module.generate_launch_description().entities
+    camera = next(action for action in entities if isinstance(action, OpaqueFunction))
+    context = LaunchContext()
+    context.launch_configurations['start_realsense_driver'] = 'false'
+    assert not camera.condition.evaluate(context)
+    assert not lookups
+
+    context.launch_configurations['start_realsense_driver'] = 'true'
+    assert camera.condition.evaluate(context)
+    assert isinstance(camera.execute(context)[0], LogInfo)
+    assert lookups == ['realsense2_camera']
 
 
 def test_auto_estop_and_panel_use_shared_aggregate_interface():

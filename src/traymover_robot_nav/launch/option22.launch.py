@@ -45,7 +45,7 @@ def navigation_parameters(share, planner, gate):
         lookahead_time=1.85,
         use_interpolation=True,
         rotate_to_heading_min_angle=0.65,
-        rotate_to_heading_angular_vel=gate['angular_limit_radps'],
+        rotate_to_heading_angular_vel=gate['in_place_angular_limit_radps'],
         max_angular_accel=4.4,
         use_collision_detection=True,
     )
@@ -89,25 +89,24 @@ def launch_nodes(context, nav, base):
         )
 
     use_sim_time = LaunchConfiguration('use_sim_time')
-    start_camera = IfCondition(LaunchConfiguration('start_realsense_driver'))
-    actions = []
-    if start_camera.evaluate(context):
-        camera = Path(get_package_share_directory('realsense2_camera'))
-        actions.append(GroupAction(scoped=True, forwarding=False,
-                                   launch_configurations={
-                                       'enable_depth': 'true', 'enable_color': 'false',
-                                       'depth_module.depth_profile': '640x480x15',
-                                       'align_depth.enable': 'false',
-                                       'pointcloud.enable': 'false', 'enable_sync': 'false',
-                                   }, actions=[include(camera, 'rs_launch.py')]))
+    depth_topic = LaunchConfiguration('depth_topic').perform(context)
+    bringup_hardware = IfCondition(LaunchConfiguration('bringup_hardware'))
+    safety = Path(get_package_share_directory('traymover_robot_safety'))
 
     with NamedTemporaryFile(mode='w', prefix='traymover_option22_', suffix='.yaml',
                             delete=False) as stream:
         yaml.safe_dump(navigation_parameters(nav, **config), stream, sort_keys=False)
     params = Path(stream.name)
-    actions.extend([
+    actions = [
         RegisterEventHandler(OnShutdown(on_shutdown=lambda *_: params.unlink(missing_ok=True))),
-        GroupAction(scoped=True, condition=IfCondition(LaunchConfiguration('bringup_hardware')),
+        # The raw depth detector owns the camera and sends EStop directly to the chassis.
+        GroupAction(scoped=True, actions=[
+            SetRemap(src='/traymover_estop/auto_request', dst='/option22/auto_request'),
+            include(safety, 'traymover_auto_estop.launch.py',
+                    start_realsense_driver=LaunchConfiguration('start_realsense_driver'),
+                    depth_topic=depth_topic, stop_distance_m='0.20', release_distance_m='0.25'),
+        ]),
+        GroupAction(scoped=True, condition=bringup_hardware,
                     actions=[
                         SetRemap(src='/cmd_vel', dst='/option22/cmd_vel_safe'),
                         SetRemap(src='/traymover_estop/auto_request', dst='/option22/auto_request'),
@@ -121,7 +120,7 @@ def launch_nodes(context, nav, base):
              name='option22_obstacle_gate', output='screen',
              additional_env={'OPENBLAS_NUM_THREADS': '1', 'OMP_NUM_THREADS': '1'}, parameters=[{
                  **config['gate'], 'use_sim_time': ParameterValue(use_sim_time, value_type=bool),
-                 'depth_topic': LaunchConfiguration('depth_topic'),
+                 'depth_topic': depth_topic,
                  'camera_info_topic': LaunchConfiguration('camera_info_topic'),
              }]),
         GroupAction(scoped=True, actions=[
@@ -140,19 +139,24 @@ def launch_nodes(context, nav, base):
                     through_poses_bt_xml=str(
                         nav / 'behavior_trees' / 'option22_navigate_through_poses.xml')),
         ]),
-    ])
+    ]
     if IfCondition(LaunchConfiguration('launch_rviz')).evaluate(context):
         with NamedTemporaryFile(mode='w', prefix='traymover_option22_', suffix='.rviz',
                                 delete=False) as stream:
             yaml.safe_dump(rviz_profile(nav), stream, sort_keys=False)
         profile = Path(stream.name)
+        # On the robot, use the chassis-confirmed EStop state, as in option 21.
+        # Without the driver, the gate supplies the state for replay and simulation.
+        status_remaps = [] if bringup_hardware.evaluate(context) else [
+            ('/traymover_estop/state', '/option22/display_estop'),
+            ('/traymover_estop/auto_state', '/option22/display_auto_estop'),
+        ]
         actions.extend([
             RegisterEventHandler(OnShutdown(on_shutdown=lambda *_: profile.unlink(missing_ok=True))),
             Node(package='rviz2', executable='rviz2', name='rviz2', output='screen',
                  arguments=['-d', str(profile)],
                  parameters=[{'use_sim_time': ParameterValue(use_sim_time, value_type=bool)}],
-                 remappings=[('/traymover_estop/state', '/option22/display_estop'),
-                             ('/traymover_estop/auto_state', '/option22/display_auto_estop')]),
+                 remappings=status_remaps),
         ])
     return actions
 

@@ -35,6 +35,7 @@ SENSOR_FRONT = 0.50
 SENSOR_HALF_WIDTH = 0.11
 LIDAR_FORWARD_OFFSET = 0.435
 SENSOR_TIMEOUT = 0.40
+AUTO_ESTOP_TIMEOUT = 0.30
 ODOM_TIMEOUT = 0.30
 COMMAND_TIMEOUT = 0.25
 PLANNER_TIMEOUT = 2.0
@@ -148,11 +149,6 @@ def detour_trigger(front, distance, threshold):
     return front & (distance <= threshold)
 
 
-def camera_near(points, distance):
-    front = points[front_returns(points)]
-    return bool(np.any(clearances(front) <= distance))
-
-
 def planner_cloud(points, trigger, stamp):
     """Keep trigger eligibility attached to each confirmed point."""
     msg = xyz_cloud(EMPTY, stamp, 'map')
@@ -162,25 +158,6 @@ def planner_cloud(points, trigger, stamp):
     msg.row_step = msg.width * msg.point_step
     msg.data = np.column_stack((points, trigger)).astype('<f4').tobytes()
     return msg
-
-
-class CameraStop:
-    def __init__(self, clear_sec):
-        self.clear_sec = clear_sec
-        self.active = False
-        self.clear_since = None
-
-    def observe(self, stamp, near):
-        if near is None:
-            self.clear_since = None
-        elif near:
-            self.active = True
-            self.clear_since = None
-        elif self.active:
-            if self.clear_since is None:
-                self.clear_since = stamp
-            if stamp - self.clear_since >= self.clear_sec:
-                self.active = False
 
 
 def ramp_command(previous, target, elapsed, linear_rate, angular_rate):
@@ -339,11 +316,11 @@ CONFIG = dict(
     mapped_wall_match_m=0.14,
     lidar_range_m=5.0, obstacle_min_height_m=0.08,
     obstacle_max_height_m=1.70, cluster_cell_m=0.035, cluster_radius_m=0.14,
-    lidar_cluster_cells=4, depth_cluster_cells=4, lidar_cluster_span_m=0.10,
-    depth_cluster_span_m=0.08, confirmation_radius_m=0.15,
+    lidar_cluster_cells=4, lidar_cluster_span_m=0.10, confirmation_radius_m=0.15,
     obstacle_hold_sec=0.30, depth_min_valid_fraction=0.05, motion_clearance_m=0.08,
-    camera_estop_clearance_m=0.20, camera_clear_sec=0.35, cruise_linear_speed_mps=0.35,
+    cruise_linear_speed_mps=0.50,
     detour_linear_speed_mps=0.18, angular_limit_radps=0.25,
+    in_place_angular_limit_radps=0.20,
     linear_accel_limit_mps2=0.55, angular_accel_limit_radps2=1.0,
 )
 
@@ -356,21 +333,17 @@ class ObstacleGateNode(Node):
                     'detour_approach_ramp_m'):
             if not math.isfinite(self.cfg[key]) or self.cfg[key] <= 0.0:
                 raise ValueError(f'{key} must be finite and positive')
-        self.camera_stop = CameraStop(self.cfg['camera_clear_sec'])
+        self.camera_estop = None
         self.buffer = Buffer(node=self)
         self.listener = TransformListener(self.buffer, self)
         self.pending = {source: deque(maxlen=4) for source in ('lidar', 'depth')}
-        filters = {source: ClusterFilter(
+        lidar_filter = ClusterFilter(
             self.cfg['cluster_cell_m'], self.cfg['cluster_radius_m'],
-            self.cfg[f'{source}_cluster_cells'], self.cfg[f'{source}_cluster_span_m'])
-                   for source in self.pending}
-        def confirmation(source):
-            return Confirmation(filters[source], self.cfg['confirmation_radius_m'],
-                                self.cfg['obstacle_hold_sec'])
-
-        self.lidar_track = confirmation('lidar')
-        self.lidar_wall_track = confirmation('lidar')
-        self.depth_track = confirmation('depth')
+            self.cfg['lidar_cluster_cells'], self.cfg['lidar_cluster_span_m'])
+        self.lidar_track = Confirmation(
+            lidar_filter, self.cfg['confirmation_radius_m'], self.cfg['obstacle_hold_sec'])
+        self.lidar_wall_track = Confirmation(
+            lidar_filter, self.cfg['confirmation_radius_m'], self.cfg['obstacle_hold_sec'])
         self.samples = {}
         self.processed_stamps = {}
         self.info = self.odom = self.command = self.manual = self.planner = None
@@ -386,9 +359,7 @@ class ObstacleGateNode(Node):
         self.last_output = (time.monotonic(), ZERO)
         self.obstacle_pub = self.create_publisher(PointCloud2, '/option22/obstacles', 1)
         self.velocity_pub = self.create_publisher(Twist, '/option22/cmd_vel_safe', 1)
-        self.stop_pub = self.create_publisher(Bool, '/option22/auto_request', 1)
         self.state_pub = self.create_publisher(String, '/option22/state', 1)
-        self.reason_pub = self.create_publisher(String, '/traymover_estop/auto_reason', 1)
         latched = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
         self.display_estop_pub = self.create_publisher(Bool, '/option22/display_estop', latched)
         self.display_auto_pub = self.create_publisher(Bool, '/option22/display_auto_estop', latched)
@@ -405,6 +376,7 @@ class ObstacleGateNode(Node):
         self.create_subscription(String, '/option22/planner_state', self.on_planner, 1)
         self.create_subscription(PoseStamped, '/option22/detour_entry', self.on_detour_heading, 1)
         self.create_subscription(Twist, '/option22/cmd_vel_nav', self.on_command, 1)
+        self.create_subscription(Bool, '/option22/auto_request', self.on_camera_estop, 1)
         self.create_subscription(Bool, '/traymover_estop/manual_state', self.on_manual, 1)
         self.create_subscription(Bool, '/traymover_estop/state', self.on_chassis_estop, latched)
         self.create_subscription(Bool, '/traymover_estop/auto_state', self.on_chassis_auto, latched)
@@ -432,6 +404,9 @@ class ObstacleGateNode(Node):
 
     def on_command(self, msg):
         self.command = ((msg.linear.x, msg.angular.z), time.monotonic())
+
+    def on_camera_estop(self, msg):
+        self.camera_estop = (msg.data, time.monotonic())
 
     def on_manual(self, msg):
         self.manual = (msg.data, time.monotonic())
@@ -471,21 +446,9 @@ class ObstacleGateNode(Node):
         if self.info is None or abs(stamp - stamp_seconds(self.info.header.stamp)) > 2.0:
             raise ValueError('missing or stale camera calibration')
         points, fraction, _ = depth_xyz(msg, self.info, min_range=0.001, max_range=5.0)
-        healthy = fraction >= self.cfg['depth_min_valid_fraction'] and len(points) >= 30
-        body = self.body_returns(msg, points)
-        threshold = self.cfg['camera_estop_clearance_m']
-        # Camera stop uses the fixed camera-to-body transform. Localization,
-        # LiDAR and the planner are independent of this decision.
-        near_window = front_returns(body) & (
-            body[:, 0] <= SENSOR_FRONT + threshold + self.cfg['cluster_radius_m'])
-        points = self.depth_track.cluster_filter.apply(body[near_window])
-        confirmed = self.depth_track.update(stamp, points, usable=healthy)
-        if camera_near(confirmed, threshold):
-            self.camera_stop.observe(stamp, True)
-        else:
-            clear = healthy and not camera_near(points, threshold)
-            self.camera_stop.observe(stamp, False if clear else None)
-        return healthy
+        # Keep navigation's depth/TF readiness check separate from automatic EStop.
+        transform_points(self.buffer, EMPTY, msg.header.frame_id, msg.header.stamp)
+        return fraction >= self.cfg['depth_min_valid_fraction'] and len(points) >= 30
 
     def observe_lidar(self, msg, stamp, map_pose):
         points = cloud_xyz(msg)
@@ -528,8 +491,6 @@ class ObstacleGateNode(Node):
             except (ValueError, TypeError) as error:
                 healthy = False
                 self.get_logger().warning(f'{source}: {error}', throttle_duration_sec=2.0)
-                if source == 'depth':
-                    self.camera_stop.observe(stamp, None)
             # Tolerate an isolated bad frame while the previous usable one
             # is fresh. Invalid samples never extend the sensor deadline.
             self.processed_stamps[source] = stamp
@@ -541,12 +502,11 @@ class ObstacleGateNode(Node):
 
     def decision(self, ros_now, now):
         self.close_obstacle = False
-        depth = self.samples.get('depth')
-        if depth is None or not depth.fresh(ros_now, now, SENSOR_TIMEOUT):
-            self.camera_stop.observe(ros_now, None)
-        self.refresh_sensor('depth', ros_now, now)
-        if self.camera_stop.active:
+        if self.camera_estop is None or now - self.camera_estop[1] > AUTO_ESTOP_TIMEOUT:
+            return Decision('AUTO_ESTOP_UNAVAILABLE', estop=True)
+        if self.camera_estop[0]:
             return Decision('CAMERA_ESTOP', estop=True)
+        self.refresh_sensor('depth', ros_now, now)
         depth = self.samples.get('depth')
         if depth is None or not depth.fresh(ros_now, now, SENSOR_TIMEOUT):
             return Decision('DEPTH_UNAVAILABLE')
@@ -607,6 +567,7 @@ class ObstacleGateNode(Node):
         if not (math.isfinite(linear) and math.isfinite(angular)) or linear < 0.0:
             return Decision('INVALID_COMMAND')
         map_body_rotation = map_rotation @ rotation
+        turn_limit = self.cfg['in_place_angular_limit_radps']
         turn = None
         if state == 'DETOURING':
             heading = self.detour_heading
@@ -614,17 +575,17 @@ class ObstacleGateNode(Node):
                 return Decision('WAITING_FOR_DETOUR_HEADING')
             yaw = math.atan2(map_body_rotation[1, 0], map_body_rotation[0, 0])
             error = math.remainder(heading.data - yaw, 2 * math.pi)
-            turn = self.detour_turn.decision(
-                heading.stamp, error, measured, self.cfg['angular_limit_radps'])
+            turn = self.detour_turn.decision(heading.stamp, error, measured, turn_limit)
             velocity_limit = self.cfg['detour_linear_speed_mps']
         else:
             velocity_limit = approach_speed_limit(distance[front].min(initial=math.inf), self.cfg)
+        angular_limit = self.cfg['angular_limit_radps'] if linear > 0.0 else turn_limit
         scale = min(1.0, velocity_limit / max(linear, 1e-6),
-                    self.cfg['angular_limit_radps'] / max(abs(angular), 1e-6))
+                    angular_limit / max(abs(angular), 1e-6))
         command = turn.velocity if turn is not None else (linear * scale, angular * scale)
         last_time, previous = self.last_output
         if command[0] == 0.0:
-            previous = (0.0, previous[1])
+            previous = (0.0, math.copysign(min(abs(previous[1]), turn_limit), previous[1]))
         elif previous[0] > velocity_limit:
             # Brake to the active speed cap while retaining the current turning radius.
             previous = (velocity_limit, previous[1] * velocity_limit / previous[0])
@@ -680,11 +641,9 @@ class ObstacleGateNode(Node):
         decision = self.decision(ros_now, now)
         output = Twist()
         output.linear.x, output.angular.z = decision.velocity
-        self.stop_pub.publish(Bool(data=decision.estop))
         self.velocity_pub.publish(output)
         self.last_output = (now, decision.velocity)
         self.state_pub.publish(String(data=decision.state))
-        self.reason_pub.publish(String(data=decision.state if decision.estop else 'NONE'))
         self.update_display(stamp, ros_now, now, decision)
         if self.state != decision.state:
             planner = self.planner[0] if self.planner is not None else 'NONE'
