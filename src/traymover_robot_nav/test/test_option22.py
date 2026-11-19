@@ -98,6 +98,15 @@ def test_chassis_and_controller_have_separate_scoped_transports(monkeypatch):
     assert displays['Navigation status']['Topic']['Value'] == '/option22/navigation_marker'
     assert not displays['LocalPlan']['Enabled']
 
+    config = yaml.safe_load((PKG / 'config' / 'option22_obstacles.yaml').read_text())
+    follow = module.navigation_parameters(PKG, **config)['controller_server']['ros__parameters'][
+        'FollowPath']
+    assert follow['use_velocity_scaled_lookahead_dist'] and follow['use_interpolation']
+    assert (follow['min_lookahead_dist'], follow['max_lookahead_dist']) == (.45, .65)
+    assert follow['lookahead_time'] == 1.85
+    assert follow['use_rotate_to_heading'] and follow['rotate_to_heading_min_angle'] == .65
+    assert follow['use_collision_detection']
+
 
 def test_spatial_support_and_successive_observations_filter_near_lidar_speckles():
     spatial_filter = ClusterFilter(.035, .14, 4, .10)

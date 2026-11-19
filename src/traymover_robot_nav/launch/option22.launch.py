@@ -36,10 +36,19 @@ def navigation_parameters(share, planner, gate):
         tracking_clearance_m=gate['motion_clearance_m'],
         allow_unknown=False, tolerance=0.0)
     follow = params['controller_server']['ros__parameters']['FollowPath']
-    follow.update(max_angular_accel=4.4, rotate_to_heading_angular_vel=gate['angular_limit_radps'],
-                  desired_linear_vel=gate['cruise_linear_speed_mps'],
-                  min_lookahead_dist=0.30, max_lookahead_dist=0.48,
-                  use_collision_detection=True)
+    follow.update(
+        desired_linear_vel=gate['cruise_linear_speed_mps'],
+        # A short carrot magnifies lateral error and can trigger an in-place
+        # turn on a straight segment. Correct smaller errors while advancing.
+        min_lookahead_dist=0.45,
+        max_lookahead_dist=0.65,
+        lookahead_time=1.85,
+        use_interpolation=True,
+        rotate_to_heading_min_angle=0.65,
+        rotate_to_heading_angular_vel=gate['angular_limit_radps'],
+        max_angular_accel=4.4,
+        use_collision_detection=True,
+    )
     return params
 
 
